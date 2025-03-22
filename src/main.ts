@@ -2,9 +2,7 @@ import "./style.css"
 
 import paper from 'paper'
 
-const canvas = <HTMLCanvasElement>document.getElementById("canvas")
-
-paper.setup(canvas)
+const gridLineColor = new paper.Color("lightblue")
 
 function drawGridLine(x1: number, y1: number, x2: number, y2: number, color: paper.Color) {
     const start = new paper.Point(x1, y1)
@@ -17,12 +15,27 @@ function drawGridLine(x1: number, y1: number, x2: number, y2: number, color: pap
     path.lineTo(end)
 }
 
-const gridLineColor = new paper.Color("lightblue")
+function drawGrid(width: number, height: number) {
+    for (let x = 25; x < width; x += 50) {
+        drawGridLine(x, 0, x, height, gridLineColor)
+    }
 
-for (let x = 25; x < 300; x += 50) {
-    drawGridLine(x, 0, x, 150, gridLineColor)
+    for (let y = 25; y < height; y += 50) {
+        drawGridLine(0, y, width, y, gridLineColor)
+    }
 }
 
-for (let y = 25; y < 150; y += 50) {
-    drawGridLine(0, y, 300, y, gridLineColor)
+window.onresize = () => {
+    canvas.width = window.innerWidth
+    canvas.height = window.innerHeight
+    drawGrid(window.innerWidth, window.innerHeight)
 }
+
+let canvas = <HTMLCanvasElement>document.getElementById("canvas")
+
+canvas.width = window.innerWidth
+canvas.height = window.innerHeight
+
+paper.setup(canvas)
+
+drawGrid(window.innerWidth, window.innerHeight)
