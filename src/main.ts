@@ -25,17 +25,12 @@ function drawGrid(width: number, height: number) {
     }
 }
 
-window.onresize = () => {
-    canvas.width = window.innerWidth
-    canvas.height = window.innerHeight
-    drawGrid(window.innerWidth, window.innerHeight)
-}
-
 let canvas = <HTMLCanvasElement>document.getElementById("canvas")
 
-canvas.width = window.innerWidth
-canvas.height = window.innerHeight
-
 paper.setup(canvas)
+
+paper.view.onResize = function() {
+    drawGrid(window.innerWidth, window.innerHeight)
+}
 
 drawGrid(window.innerWidth, window.innerHeight)
