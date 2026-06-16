@@ -1,0 +1,26 @@
+{
+  "name": "empire-builder",
+  "version": "0.0.0",
+  "description": "Design your model railroad empire",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "gts lint",
+    "format": "gts fix",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "paper": "^0.12.18"
+  },
+  "devDependencies": {
+    "gts": "^7.0.0",
+    "typescript": "^5.4.5",
+    "vite": "^5.4.8",
+    "vitest": "^1.6.0"
+  }
+}
