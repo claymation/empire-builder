@@ -9,8 +9,7 @@ describe('trackLength', () => {
   it('returns the arc length of a curved piece', () => {
     const quarterCircle: Track = {
       kind: 'curved',
-      radius: 360,
-      sweepDegrees: 90,
+      arc: {radius: 360, sweep: Math.PI / 2},
     };
     // A quarter of a full circle of radius 360: (2 * pi * 360) / 4.
     expect(trackLength(quarterCircle)).toBeCloseTo((Math.PI * 360) / 2);
@@ -21,7 +20,7 @@ describe('trackLength', () => {
       RangeError
     );
     expect(() =>
-      trackLength({kind: 'curved', radius: -1, sweepDegrees: 90})
+      trackLength({kind: 'curved', arc: {radius: -1, sweep: Math.PI / 2}})
     ).toThrow(RangeError);
   });
 });
