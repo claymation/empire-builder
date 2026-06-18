@@ -1,6 +1,19 @@
 import paper from 'paper';
 import './style.css';
-import {trackLength, type Track} from './domain/track';
+import {posesCoincide, type Pose} from './domain/geometry';
+import {
+  curveLeft,
+  pieceLength,
+  placeRoute,
+  routeBounds,
+  straight,
+  type RoutePiece,
+} from './domain/layout';
+import {makeSpace, spaceContains, type Space} from './domain/space';
+import {feet, inches, toInches} from './domain/units';
+import {drawScene, type Scene} from './render/scene';
+
+const ORIGIN: Pose = {position: {x: 0, y: 0}, heading: 0};
 
 function getLayoutCanvas(): HTMLCanvasElement {
   const canvas = document.querySelector<HTMLCanvasElement>('#layout');
@@ -11,34 +24,71 @@ function getLayoutCanvas(): HTMLCanvasElement {
 }
 
 /**
- * Bootstraps the Paper.js scope onto the layout canvas and draws a placeholder
- * so we can see the canvas is live. Rendering lives here, at the edge; the
- * domain layer (./domain) stays free of Paper.js.
+ * The classic first layout: two straight sides joined by two 180° curves. With
+ * an 18" radius and 48" straights it forms an oval that fits a 4'x8' sheet.
  */
+function oval(straightLength: number, radius: number): RoutePiece[] {
+  return [
+    straight(straightLength),
+    curveLeft(radius, 180),
+    straight(straightLength),
+    curveLeft(radius, 180),
+  ];
+}
+
+/** Returns an anchor pose that centers `route` within `space`. */
+function centeredAnchor(space: Space, route: RoutePiece[]): Pose {
+  const {pieces} = placeRoute(ORIGIN, route);
+  const b = routeBounds(pieces);
+  return {
+    position: {
+      x: (space.width - (b.maxX - b.minX)) / 2 - b.minX,
+      y: (space.height - (b.maxY - b.minY)) / 2 - b.minY,
+    },
+    heading: 0,
+  };
+}
+
+function describeLayout(
+  space: Space,
+  route: RoutePiece[],
+  anchor: Pose,
+  scene: Scene
+): string {
+  const placed = placeRoute(anchor, route);
+  const closed = posesCoincide(placed.exit, anchor, 1e-6, 1e-6);
+  const fits = spaceContains(space, routeBounds(scene.pieces), 1e-6);
+  const run = route.reduce((total, piece) => total + pieceLength(piece), 0);
+  return [
+    `${feetLabel(space.width)}′×${feetLabel(space.height)}′ sheet`,
+    `mainline run ${toInches(run).toFixed(1)}″`,
+    closed ? 'closed loop' : 'open ends',
+    fits ? 'fits the sheet' : 'overflows the sheet',
+  ].join(' · ');
+}
+
+/** A millimeter length as a tidy number of feet, free of round-trip float dust. */
+function feetLabel(millimeters: number): string {
+  const ft = toInches(millimeters) / 12;
+  return String(Math.round(ft * 100) / 100);
+}
+
 function main(): void {
   const canvas = getLayoutCanvas();
   paper.setup(canvas);
 
-  const baseline = new paper.Path.Line({
-    from: [40, paper.view.center.y],
-    to: [paper.view.size.width - 40, paper.view.center.y],
-    strokeColor: '#555',
-    strokeWidth: 2,
-  });
-  baseline.dashArray = [10, 6];
+  const space = makeSpace(feet(8), feet(4));
+  const route = oval(inches(48), inches(18));
+  const anchor = centeredAnchor(space, route);
+  const scene: Scene = {space, pieces: placeRoute(anchor, route).pieces};
 
-  // Demonstrates the domain/render boundary: geometry is computed by pure
-  // domain code, then handed to Paper.js purely for drawing.
-  const piece: Track = {kind: 'curved', radius: 360, sweepDegrees: 90};
-  const label = new paper.PointText({
-    point: [40, 32],
-    content: `Sample curve arc length: ${trackLength(piece).toFixed(1)} mm`,
-    fillColor: '#555',
-    fontSize: 14,
-  });
-  label.bringToFront();
+  drawScene(scene);
+  paper.view.onResize = () => drawScene(scene);
 
-  paper.view.update();
+  const status = document.querySelector('#status');
+  if (status) {
+    status.textContent = describeLayout(space, route, anchor, scene);
+  }
 }
 
 main();
