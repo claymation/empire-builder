@@ -1,5 +1,5 @@
 /**
- * Real-world unit conversions. The domain stores every length in millimetres
+ * Real-world unit conversions. The domain stores every length in millimeters
  * (see the scope note in docs/user-stories.md); these helpers let calling code
  * express dimensions in the units a hobbyist actually reaches for.
  */
@@ -22,7 +22,7 @@ export function feet(value: number): number {
   return requireFinite(value, 'feet') * INCHES_PER_FOOT * MM_PER_INCH;
 }
 
-/** Converts a measurement in millimetres back to inches. */
-export function toInches(millimetres: number): number {
-  return requireFinite(millimetres, 'millimetres') / MM_PER_INCH;
+/** Converts a measurement in millimeters back to inches. */
+export function toInches(millimeters: number): number {
+  return requireFinite(millimeters, 'millimeters') / MM_PER_INCH;
 }

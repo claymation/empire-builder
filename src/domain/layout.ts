@@ -14,26 +14,25 @@
  */
 
 import {
-  advance,
   arc,
   arcBounds,
-  arcEnd,
+  arcEndPose,
   Bounds,
-  boundsOfPoints,
   degToRad,
+  Handedness,
   PlacedArc,
-  Point,
+  PlacedSegment,
   Pose,
+  segmentBounds,
+  segmentEndPose,
   unionBounds,
 } from './geometry';
-import {CurvedTrack, Handedness, StraightTrack} from './track';
+import {CurvedTrack, StraightTrack} from './track';
 import {requirePositive} from './validate';
-
-const QUARTER_TURN = Math.PI / 2;
 
 /**
  * A piece as authored into a route: which track, and — for a curve — which way
- * it is laid. Handedness lives here, on the placement, not on the piece.
+ * it is laid.
  */
 export type RoutePiece =
   | {readonly track: StraightTrack}
@@ -43,9 +42,7 @@ export type RoutePiece =
 export type PlacedPiece = RoutePiece & {readonly entry: Pose};
 
 /** The placed geometry of a piece: a segment for straights, an arc for curves. */
-export type PieceGeometry =
-  | {readonly kind: 'straight'; readonly start: Point; readonly end: Point}
-  | {readonly kind: 'curved'; readonly arc: PlacedArc};
+export type PieceGeometry = PlacedSegment | PlacedArc;
 
 /** The result of placing a whole route: the placed pieces and where they end. */
 export interface PlacedRoute {
@@ -54,17 +51,17 @@ export interface PlacedRoute {
   readonly exit: Pose;
 }
 
-/** A straight route piece of the given length. */
+/** Builds a straight route piece of the given length. */
 export function straight(length: number): RoutePiece {
   return {track: {kind: 'straight', length: requirePositive(length, 'length')}};
 }
 
-/** A curve of the given radius (mm) bending left through `sweepDegrees`. */
+/** Builds a curve of the given radius (mm) bending left through `sweepDegrees`. */
 export function curveLeft(radius: number, sweepDegrees: number): RoutePiece {
   return curve(radius, sweepDegrees, 'left');
 }
 
-/** A curve of the given radius (mm) bending right through `sweepDegrees`. */
+/** Builds a curve of the given radius (mm) bending right through `sweepDegrees`. */
 export function curveRight(radius: number, sweepDegrees: number): RoutePiece {
   return curve(radius, sweepDegrees, 'right');
 }
@@ -80,61 +77,60 @@ function curve(
   };
 }
 
-/** Locates a piece at `entry`. Geometry is derived on demand, not stored. */
+/**
+ * Locates a piece at `entry`. A PlacedPiece stays a plain, serializable value,
+ * so its geometry is computed from it by {@link pieceGeometry} rather than
+ * stored — nothing to keep in sync as pieces move.
+ */
 export function placePiece(entry: Pose, piece: RoutePiece): PlacedPiece {
   return {...piece, entry};
 }
 
+/** Whether a placed piece is a curve (rather than inferring it from handedness). */
+function isPlacedCurve(
+  placed: PlacedPiece
+): placed is Extract<PlacedPiece, {track: CurvedTrack}> {
+  return placed.track.kind === 'curved';
+}
+
 /**
- * The placed geometry of a piece, derived from its entry pose. For a curve the
- * center sits one radius off to the side it bends toward, square to the
- * direction of travel; sweeping from the start angle traces the arc.
- *
- * @throws RangeError if the piece has a non-positive dimension.
+ * The placed geometry of a piece, derived from its entry pose. A curve's
+ * handedness becomes the sign of the arc's sweep — left counter-clockwise,
+ * right clockwise.
  */
 export function pieceGeometry(placed: PlacedPiece): PieceGeometry {
-  if (!('handedness' in placed)) {
-    const start = placed.entry.position;
-    const length = requirePositive(placed.track.length, 'length');
+  if (isPlacedCurve(placed)) {
+    const sweep =
+      (placed.handedness === 'left' ? 1 : -1) * placed.track.arc.sweep;
     return {
-      kind: 'straight',
-      start,
-      end: advance(start, placed.entry.heading, length),
+      kind: 'arc',
+      start: placed.entry,
+      radius: placed.track.arc.radius,
+      sweep,
     };
   }
-  const radius = requirePositive(placed.track.arc.radius, 'radius');
-  const sweep = requirePositive(placed.track.arc.sweep, 'sweep');
-  const turn = placed.handedness === 'left' ? 1 : -1;
-  const towardCenter = placed.entry.heading + turn * QUARTER_TURN;
-  const center = advance(placed.entry.position, towardCenter, radius);
-  const startAngle = towardCenter + Math.PI;
-  const endAngle = startAngle + turn * sweep;
-  return {kind: 'curved', arc: {center, radius, startAngle, endAngle}};
+  return {kind: 'segment', start: placed.entry, length: placed.track.length};
 }
 
 /**
  * Where a train can leave the piece. A straight or curve has one exit; a turnout
- * will have more. The exit heading equals the entry heading rotated by the arc's
- * signed sweep (zero for a straight).
+ * will have more.
  */
 export function exitPoses(placed: PlacedPiece): Pose[] {
   const geometry = pieceGeometry(placed);
-  if (geometry.kind === 'straight') {
-    return [{position: geometry.end, heading: placed.entry.heading}];
-  }
-  const {arc: placedArc} = geometry;
-  const turned = placedArc.endAngle - placedArc.startAngle;
   return [
-    {position: arcEnd(placedArc), heading: placed.entry.heading + turned},
+    geometry.kind === 'segment'
+      ? segmentEndPose(geometry)
+      : arcEndPose(geometry),
   ];
 }
 
 /** The bounding box of a placed piece. Arcs account for their bulge. */
 export function pieceBounds(placed: PlacedPiece): Bounds {
   const geometry = pieceGeometry(placed);
-  return geometry.kind === 'straight'
-    ? boundsOfPoints([geometry.start, geometry.end])
-    : arcBounds(geometry.arc);
+  return geometry.kind === 'segment'
+    ? segmentBounds(geometry)
+    : arcBounds(geometry);
 }
 
 /**
@@ -151,21 +147,20 @@ export function routeBounds(pieces: readonly PlacedPiece[]): Bounds {
 /**
  * Places an ordered run of pieces starting from `anchor`, threading each piece's
  * exit into the next.
- *
- * @throws RangeError if any piece has a non-positive dimension.
  */
 export function placeRoute(
   anchor: Pose,
   route: readonly RoutePiece[]
 ): PlacedRoute {
-  const pieces: PlacedPiece[] = [];
+  const placedPieces: PlacedPiece[] = [];
   let pose = anchor;
   for (const piece of route) {
     const placed = placePiece(pose, piece);
-    pieces.push(placed);
+    placedPieces.push(placed);
+    const exits = exitPoses(placed);
     // A single route follows the one through-exit; a turnout's extra exits are
     // for a future graph traversal, not this fold.
-    pose = exitPoses(placed)[0];
+    pose = exits[0];
   }
-  return {pieces, exit: pose};
+  return {pieces: placedPieces, exit: pose};
 }

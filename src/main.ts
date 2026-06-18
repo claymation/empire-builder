@@ -42,8 +42,8 @@ function centeredAnchor(space: Space, route: RoutePiece[]): Pose {
   const b = routeBounds(pieces);
   return {
     position: {
-      x: (space.size.width - (b.maxX - b.minX)) / 2 - b.minX,
-      y: (space.size.height - (b.maxY - b.minY)) / 2 - b.minY,
+      x: (space.width - (b.maxX - b.minX)) / 2 - b.minX,
+      y: (space.height - (b.maxY - b.minY)) / 2 - b.minY,
     },
     heading: 0,
   };
@@ -63,16 +63,16 @@ function describeLayout(
     0
   );
   return [
-    `${feetLabel(space.size.width)}′×${feetLabel(space.size.height)}′ sheet`,
+    `${feetLabel(space.width)}′×${feetLabel(space.height)}′ sheet`,
     `mainline run ${toInches(run).toFixed(1)}″`,
     closed ? 'closed loop' : 'open ends',
     fits ? 'fits the sheet' : 'overflows the sheet',
   ].join(' · ');
 }
 
-/** A millimetre length as a tidy number of feet, free of round-trip float dust. */
-function feetLabel(millimetres: number): string {
-  const ft = toInches(millimetres) / 12;
+/** A millimeter length as a tidy number of feet, free of round-trip float dust. */
+function feetLabel(millimeters: number): string {
+  const ft = toInches(millimeters) / 12;
   return String(Math.round(ft * 100) / 100);
 }
 

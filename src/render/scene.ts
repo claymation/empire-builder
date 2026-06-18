@@ -1,9 +1,7 @@
 /**
- * Rendering the layout onto a Paper.js canvas. This is the edge: Paper.js and
- * pixel coordinates live here, and the domain (../domain) stays free of them.
- *
- * The domain works in millimetres with +y pointing up; the canvas works in
- * pixels with +y pointing down. A single fitted transform bridges the two.
+ * Rendering the layout onto a Paper.js canvas. This is the edge: Paper.js lives
+ * here, and the domain (../domain) stays free of it. The pure coordinate math
+ * lives in ./transform; this module is the thin Paper.js wrapper around it.
  */
 
 import paper from 'paper';
@@ -13,9 +11,11 @@ import {
   arcStart,
   PlacedArc,
   Point,
+  segmentEnd,
 } from '../domain/geometry';
-import {pieceGeometry, PieceGeometry, PlacedPiece} from '../domain/layout';
+import {pieceGeometry, PlacedPiece} from '../domain/layout';
 import {Space} from '../domain/space';
+import {fitTransform} from './transform';
 
 /** Everything needed to draw one frame: the sheet and the track on it. */
 export interface Scene {
@@ -32,7 +32,7 @@ const RAIL_COLOR = '#2b2b2b';
 const RAIL_WIDTH_PX = 3;
 
 /** Maps a domain point (mm, y-up) to a canvas point (px, y-down). */
-type Transform = (point: Point) => paper.Point;
+type ToCanvas = (point: Point) => paper.Point;
 
 /**
  * Clears the active project and draws the scene, scaled to fit the current view
@@ -41,48 +41,43 @@ type Transform = (point: Point) => paper.Point;
 export function drawScene(scene: Scene): void {
   paper.project.activeLayer.removeChildren();
 
-  const toCanvas = fitTransform(scene.space, paper.view.size);
+  const transform = fitTransform(
+    scene.space,
+    paper.view.size.width,
+    paper.view.size.height,
+    PADDING_PX
+  );
+  const toCanvas: ToCanvas = point => {
+    const {x, y} = transform.toCanvas(point);
+    return new paper.Point(x, y);
+  };
+
   drawSheet(scene.space, toCanvas);
   for (const piece of scene.pieces) {
-    drawPiece(pieceGeometry(piece), toCanvas);
+    drawPiece(piece, toCanvas);
   }
   paper.view.update();
 }
 
-/** Builds a transform that centers the sheet in `viewSize` and flips the y axis. */
-function fitTransform(space: Space, viewSize: paper.Size): Transform {
-  const {width, height} = space.size;
-  const scale = Math.min(
-    (viewSize.width - 2 * PADDING_PX) / width,
-    (viewSize.height - 2 * PADDING_PX) / height
-  );
-  const offsetX = (viewSize.width - width * scale) / 2;
-  const offsetY = (viewSize.height - height * scale) / 2;
-  return point =>
-    new paper.Point(
-      offsetX + point.x * scale,
-      // Flip: domain y grows upward, canvas y grows downward.
-      offsetY + (height - point.y) * scale
-    );
-}
-
-function drawSheet(space: Space, toCanvas: Transform): void {
-  const topLeft = toCanvas({x: 0, y: space.size.height});
-  const bottomRight = toCanvas({x: space.size.width, y: 0});
+function drawSheet(space: Space, toCanvas: ToCanvas): void {
   const sheet = new paper.Path.Rectangle({
-    from: topLeft,
-    to: bottomRight,
+    from: toCanvas({x: 0, y: space.height}),
+    to: toCanvas({x: space.width, y: 0}),
   });
   sheet.fillColor = new paper.Color(PLYWOOD_FILL);
   sheet.strokeColor = new paper.Color(PLYWOOD_EDGE);
   sheet.strokeWidth = 2;
 }
 
-function drawPiece(geometry: PieceGeometry, toCanvas: Transform): void {
+function drawPiece(piece: PlacedPiece, toCanvas: ToCanvas): void {
+  const geometry = pieceGeometry(piece);
   const path =
-    geometry.kind === 'straight'
-      ? new paper.Path.Line(toCanvas(geometry.start), toCanvas(geometry.end))
-      : arcPath(geometry.arc, toCanvas);
+    geometry.kind === 'segment'
+      ? new paper.Path.Line(
+          toCanvas(geometry.start.position),
+          toCanvas(segmentEnd(geometry))
+        )
+      : arcPath(geometry, toCanvas);
   path.strokeColor = new paper.Color(RAIL_COLOR);
   path.strokeWidth = RAIL_WIDTH_PX;
   path.strokeCap = 'round';
@@ -93,7 +88,7 @@ function drawPiece(geometry: PieceGeometry, toCanvas: Transform): void {
  * side; the fitted transform is a uniform scale plus a reflection, so the arc
  * through the three mapped points is the correctly mirrored arc.
  */
-function arcPath(placedArc: PlacedArc, toCanvas: Transform): paper.Path {
+function arcPath(placedArc: PlacedArc, toCanvas: ToCanvas): paper.Path {
   return new paper.Path.Arc(
     toCanvas(arcStart(placedArc)),
     toCanvas(arcMidpoint(placedArc)),

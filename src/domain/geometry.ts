@@ -1,5 +1,5 @@
 /**
- * Plane geometry primitives for the layout, in millimetres. The domain uses
+ * Plane geometry primitives for the layout, in millimeters. The domain uses
  * standard math conventions: +x points right, +y points up, and angles are
  * measured in radians counter-clockwise from the +x axis. The rendering edge is
  * responsible for mapping this onto a y-down canvas.
@@ -7,7 +7,7 @@
 
 import {requireFinite, requirePositive} from './validate';
 
-/** A point in the layout plane, in millimetres. */
+/** A point in the layout plane, in millimeters. */
 export interface Point {
   readonly x: number;
   readonly y: number;
@@ -24,7 +24,7 @@ export interface Pose {
   readonly heading: number;
 }
 
-/** An axis-aligned bounding box, in millimetres. */
+/** An axis-aligned bounding box, in millimeters. */
 export interface Bounds {
   readonly minX: number;
   readonly minY: number;
@@ -32,28 +32,42 @@ export interface Bounds {
   readonly maxY: number;
 }
 
+/** Left bends counter-clockwise, right bends clockwise, about the travel direction. */
+export type Handedness = 'left' | 'right';
+
 /**
  * The shape of a circular arc: a radius and the (unsigned) angle it sweeps. This
- * is shape only — it has no position, orientation, or direction. A full circle
- * is an arc that sweeps 2π.
+ * is shape only — no position, orientation, or direction. A full circle is an
+ * arc that sweeps 2π.
  */
 export interface Arc {
-  /** Radius of the arc, in millimetres. */
+  /** Radius of the arc, in millimeters. */
   readonly radius: number;
   /** Angle the arc subtends, in radians; always positive. */
   readonly sweep: number;
 }
 
 /**
- * An arc placed in the plane: the center of its circle and the angular range it
- * occupies. The signed difference `endAngle - startAngle` gives both the swept
- * magnitude and its direction (counter-clockwise when positive).
+ * A straight segment placed in the plane: anchored at a start pose and running
+ * `length` along its heading.
+ */
+export interface PlacedSegment {
+  readonly kind: 'segment';
+  readonly start: Pose;
+  readonly length: number;
+}
+
+/**
+ * An arc placed in the plane: anchored at a start pose (its entry point and
+ * tangent), with a signed `sweep` — counter-clockwise (left) is positive,
+ * clockwise (right) negative. The center is intentionally not stored; the
+ * endpoints follow from the start pose by closed form (see {@link arcEnd}).
  */
 export interface PlacedArc {
-  readonly center: Point;
+  readonly kind: 'arc';
+  readonly start: Pose;
   readonly radius: number;
-  readonly startAngle: number;
-  readonly endAngle: number;
+  readonly sweep: number;
 }
 
 const TWO_PI = Math.PI * 2;
@@ -65,6 +79,14 @@ export function arc(radius: number, sweep: number): Arc {
     radius: requirePositive(radius, 'radius'),
     sweep: requirePositive(sweep, 'sweep'),
   };
+}
+
+/** The running length of an arc: radius × sweep. */
+export function arcLength(shape: Arc): number {
+  return (
+    requirePositive(shape.radius, 'radius') *
+    requirePositive(shape.sweep, 'sweep')
+  );
 }
 
 /** Converts degrees to radians. */
@@ -83,11 +105,7 @@ export function normalizeAngle(radians: number): number {
   return remainder < 0 ? remainder + TWO_PI : remainder;
 }
 
-/**
- * The point reached by travelling `distance` from `origin` in direction
- * `heading`. This is the one polar-offset primitive: a point on a circle of
- * radius r at angle θ about a center c is simply `advance(c, θ, r)`.
- */
+/** The point reached by travelling `distance` from `origin` in direction `heading`. */
 export function advance(
   origin: Point,
   heading: number,
@@ -99,34 +117,77 @@ export function advance(
   };
 }
 
-/** The point where the placed arc begins. */
+/** Where a placed segment ends. */
+export function segmentEnd(segment: PlacedSegment): Point {
+  return advance(segment.start.position, segment.start.heading, segment.length);
+}
+
+/** The exit pose of a placed segment: its end point, heading unchanged. */
+export function segmentEndPose(segment: PlacedSegment): Pose {
+  return {position: segmentEnd(segment), heading: segment.start.heading};
+}
+
+/** The bounding box of a placed segment. */
+export function segmentBounds(segment: PlacedSegment): Bounds {
+  return boundsOfPoints([segment.start.position, segmentEnd(segment)]);
+}
+
+/** Where a placed arc begins. */
 export function arcStart(placed: PlacedArc): Point {
-  return advance(placed.center, placed.startAngle, placed.radius);
+  return placed.start.position;
 }
 
-/** The point where the placed arc ends. */
+/** Where a placed arc ends. */
 export function arcEnd(placed: PlacedArc): Point {
-  return advance(placed.center, placed.endAngle, placed.radius);
+  return arcPoint(placed, placed.sweep);
 }
 
-/** The point halfway along the placed arc. */
+/** The point halfway along a placed arc. */
 export function arcMidpoint(placed: PlacedArc): Point {
-  const midAngle = (placed.startAngle + placed.endAngle) / 2;
-  return advance(placed.center, midAngle, placed.radius);
+  return arcPoint(placed, placed.sweep / 2);
+}
+
+/** The exit pose of a placed arc: its end point, heading rotated by the sweep. */
+export function arcEndPose(placed: PlacedArc): Pose {
+  return {
+    position: arcEnd(placed),
+    heading: placed.start.heading + placed.sweep,
+  };
 }
 
 /**
- * The bounding box of a placed arc. The extreme x and y of a circular arc occur
- * at its endpoints and at whichever of the four compass directions (angles 0,
- * ½π, π, 1½π) the arc actually passes through, so we include only those.
+ * A point on the placed arc, `swept` radians of (signed) sweep from the start.
+ * Closed form in the start pose, with no center: rotating the start tangent by
+ * `swept` and integrating gives this directly.
+ */
+function arcPoint(placed: PlacedArc, swept: number): Point {
+  const side = placed.sweep >= 0 ? 1 : -1;
+  const h = placed.start.heading;
+  const {x, y} = placed.start.position;
+  return {
+    x: x + side * placed.radius * (Math.sin(h + swept) - Math.sin(h)),
+    y: y + side * placed.radius * (Math.cos(h) - Math.cos(h + swept)),
+  };
+}
+
+/**
+ * The bounding box of a placed arc. The extreme x and y lie at the endpoints and
+ * at whichever compass directions the arc sweeps through, which are the center
+ * offset by a radius — so this is the one place the center is derived.
  */
 export function arcBounds(placed: PlacedArc): Bounds {
-  const sweep = placed.endAngle - placed.startAngle; // signed
+  const side = placed.sweep >= 0 ? 1 : -1;
+  const center = advance(
+    placed.start.position,
+    placed.start.heading + side * QUARTER_TURN,
+    placed.radius
+  );
+  const startAngle = placed.start.heading - side * QUARTER_TURN;
   const points: Point[] = [arcStart(placed), arcEnd(placed)];
   for (let q = 0; q < 4; q++) {
     const angle = q * QUARTER_TURN;
-    if (arcCoversAngle(placed.startAngle, sweep, angle)) {
-      points.push(advance(placed.center, angle, placed.radius));
+    if (arcCoversAngle(startAngle, placed.sweep, angle)) {
+      points.push(advance(center, angle, placed.radius));
     }
   }
   return boundsOfPoints(points);
@@ -180,8 +241,8 @@ export function unionBounds(a: Bounds, b: Bounds): Bounds {
 
 /**
  * Whether two poses coincide within the given tolerances — used to decide
- * whether a chain of pieces closes back on its anchor to form a loop. Headings
- * are compared modulo a full turn.
+ * whether a chain of pieces closes back on its anchor, and (soon) whether two
+ * open ends snap together. Headings are compared modulo a full turn.
  */
 export function posesCoincide(
   a: Pose,

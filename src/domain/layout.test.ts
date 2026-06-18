@@ -15,27 +15,32 @@ import {
 import {makeSpace, spaceContains} from './space';
 import {feet, inches} from './units';
 
-const EAST: Pose = {position: {x: 0, y: 0}, heading: 0};
+/** A pose at the origin, facing east (+x). */
+const ORIGIN: Pose = {position: {x: 0, y: 0}, heading: 0};
 
 describe('placePiece — straight', () => {
   it('advances along the heading and keeps the heading', () => {
-    const placed = placePiece(EAST, straight(100));
-    const geometry = pieceGeometry(placed);
-    expect(geometry.kind).toBe('straight');
+    const placed = placePiece(ORIGIN, straight(100));
+    expect(pieceGeometry(placed).kind).toBe('segment');
     const [exit] = exitPoses(placed);
     expect(exit.position.x).toBeCloseTo(100);
     expect(exit.position.y).toBeCloseTo(0);
     expect(exit.heading).toBeCloseTo(0);
   });
+
+  it('works from a non-axis pose', () => {
+    const facingNorth: Pose = {position: {x: 5, y: 5}, heading: Math.PI / 2};
+    const [exit] = exitPoses(placePiece(facingNorth, straight(10)));
+    expect(exit.position.x).toBeCloseTo(5);
+    expect(exit.position.y).toBeCloseTo(15);
+    expect(exit.heading).toBeCloseTo(Math.PI / 2);
+  });
 });
 
 describe('placePiece — curve', () => {
   it('turns left counter-clockwise', () => {
-    const placed = placePiece(EAST, curveLeft(100, 90));
-    const geometry = pieceGeometry(placed);
-    if (geometry.kind !== 'curved') throw new Error('expected a curve');
-    expect(geometry.arc.center.x).toBeCloseTo(0);
-    expect(geometry.arc.center.y).toBeCloseTo(100);
+    const placed = placePiece(ORIGIN, curveLeft(100, 90));
+    expect(pieceGeometry(placed).kind).toBe('arc');
     const [exit] = exitPoses(placed);
     expect(exit.position.x).toBeCloseTo(100);
     expect(exit.position.y).toBeCloseTo(100);
@@ -43,19 +48,25 @@ describe('placePiece — curve', () => {
   });
 
   it('turns right clockwise', () => {
-    const placed = placePiece(EAST, curveRight(100, 90));
-    const geometry = pieceGeometry(placed);
-    if (geometry.kind !== 'curved') throw new Error('expected a curve');
-    expect(geometry.arc.center.x).toBeCloseTo(0);
-    expect(geometry.arc.center.y).toBeCloseTo(-100);
-    const [exit] = exitPoses(placed);
+    const [exit] = exitPoses(placePiece(ORIGIN, curveRight(100, 90)));
     expect(exit.position.x).toBeCloseTo(100);
     expect(exit.position.y).toBeCloseTo(-100);
     expect(exit.heading).toBeCloseTo(-Math.PI / 2);
   });
 
-  it('rejects a non-positive radius at build time', () => {
+  it('curves correctly from a start heading off the axes', () => {
+    // Facing north, a left quarter turn lands a quarter-circle to the west,
+    // exiting due west.
+    const facingNorth: Pose = {position: {x: 10, y: 10}, heading: Math.PI / 2};
+    const [exit] = exitPoses(placePiece(facingNorth, curveLeft(100, 90)));
+    expect(exit.position.x).toBeCloseTo(-90);
+    expect(exit.position.y).toBeCloseTo(110);
+    expect(exit.heading).toBeCloseTo(Math.PI);
+  });
+
+  it('rejects non-positive radius and sweep at build time', () => {
     expect(() => curveLeft(0, 90)).toThrow(RangeError);
+    expect(() => curveLeft(100, 0)).toThrow(RangeError);
   });
 });
 
@@ -63,8 +74,7 @@ describe('pieceBounds — curve', () => {
   it('accounts for the arc bulge, not just the endpoints', () => {
     // A left 180° semicircle from the origin heading east bulges out to +x = R
     // and spans y from 0 to 2R, even though both endpoints sit on x = 0.
-    const placed = placePiece(EAST, curveLeft(100, 180));
-    const b = pieceBounds(placed);
+    const b = pieceBounds(placePiece(ORIGIN, curveLeft(100, 180)));
     expect(b.minX).toBeCloseTo(0);
     expect(b.maxX).toBeCloseTo(100);
     expect(b.minY).toBeCloseTo(0);
@@ -72,10 +82,7 @@ describe('pieceBounds — curve', () => {
   });
 });
 
-/**
- * The canonical first layout: two straight sides joined by two 180° curves —
- * the classic oval. Built to fit a 4'x8' sheet of plywood with an 18" radius.
- */
+/** The canonical first layout: two straights joined by two 180° curves. */
 function oval(straightLength: number, radius: number): RoutePiece[] {
   return [
     straight(straightLength),
@@ -86,34 +93,31 @@ function oval(straightLength: number, radius: number): RoutePiece[] {
 }
 
 describe('placeRoute — the oval', () => {
-  const radius = inches(18);
-  const straightLength = inches(48);
-
   it('closes back onto its anchor to form a loop', () => {
-    const {exit} = placeRoute(EAST, oval(straightLength, radius));
-    expect(posesCoincide(exit, EAST, 1e-6, 1e-6)).toBe(true);
+    const {exit} = placeRoute(ORIGIN, oval(inches(48), inches(18)));
+    expect(posesCoincide(exit, ORIGIN, 1e-6, 1e-6)).toBe(true);
   });
 
   it('has bounds of (straight + 2·radius) by (2·radius)', () => {
-    const {pieces} = placeRoute(EAST, oval(straightLength, radius));
+    const {pieces} = placeRoute(ORIGIN, oval(inches(48), inches(18)));
     const b = routeBounds(pieces);
-    expect(b.maxX - b.minX).toBeCloseTo(straightLength + 2 * radius);
-    expect(b.maxY - b.minY).toBeCloseTo(2 * radius);
+    expect(b.maxX - b.minX).toBeCloseTo(inches(48) + 2 * inches(18));
+    expect(b.maxY - b.minY).toBeCloseTo(2 * inches(18));
   });
 
-  it('fits on a 4ft x 8ft sheet when centered', () => {
+  it('exactly fills the sheet at the limiting radius', () => {
+    // A 24" radius makes the oval 96"×48" — flush with an 8'×4' sheet.
     const sheet = makeSpace(feet(8), feet(4));
-    // Center the oval on the sheet: see main.ts for the same placement.
-    const anchor: Pose = {position: {x: inches(24), y: inches(6)}, heading: 0};
-    const {pieces} = placeRoute(anchor, oval(straightLength, radius));
+    const anchor: Pose = {position: {x: inches(24), y: 0}, heading: 0};
+    const {pieces} = placeRoute(anchor, oval(inches(48), inches(24)));
     expect(spaceContains(sheet, routeBounds(pieces), 1e-6)).toBe(true);
   });
 
-  it('does not fit when the radius is too large for the sheet depth', () => {
+  it('overflows when the radius is a hair too large for the depth', () => {
+    // 24.001" radius needs 48.002" of depth; the sheet is only 48" deep.
     const sheet = makeSpace(feet(8), feet(4));
-    const anchor: Pose = {position: {x: inches(30), y: inches(30)}, heading: 0};
-    // A 30" radius needs 60" of depth; the sheet is only 48" deep.
-    const {pieces} = placeRoute(anchor, oval(straightLength, inches(30)));
+    const anchor: Pose = {position: {x: inches(24.001), y: 0}, heading: 0};
+    const {pieces} = placeRoute(anchor, oval(inches(48), inches(24.001)));
     expect(spaceContains(sheet, routeBounds(pieces))).toBe(false);
   });
 });
