@@ -28,15 +28,21 @@ import {
   unionBounds,
 } from './geometry';
 import {CurvedTrack, StraightTrack} from './track';
-import {requirePositive} from './validate';
+import {assertNever, requirePositive} from './validate';
 
 /**
  * A piece as authored into a route: which track, and — for a curve — which way
- * it is laid.
+ * it is laid. `kind` is the top-level discriminant (it mirrors the track's kind)
+ * so a placed piece narrows by a plain switch without reaching through `track`,
+ * which TypeScript will not narrow on its own.
  */
 export type RoutePiece =
-  | {readonly track: StraightTrack}
-  | {readonly track: CurvedTrack; readonly handedness: Handedness};
+  | {readonly kind: 'straight'; readonly track: StraightTrack}
+  | {
+      readonly kind: 'curved';
+      readonly track: CurvedTrack;
+      readonly handedness: Handedness;
+    };
 
 /** A route piece located in the plane: it gains an entry pose, and nothing else. */
 export type PlacedPiece = RoutePiece & {readonly entry: Pose};
@@ -53,7 +59,10 @@ export interface PlacedRoute {
 
 /** Builds a straight route piece of the given length. */
 export function straight(length: number): RoutePiece {
-  return {track: {kind: 'straight', length: requirePositive(length, 'length')}};
+  return {
+    kind: 'straight',
+    track: {kind: 'straight', length: requirePositive(length, 'length')},
+  };
 }
 
 /** Builds a curve of the given radius (mm) bending left through `sweepDegrees`. */
@@ -72,6 +81,7 @@ function curve(
   handedness: Handedness
 ): RoutePiece {
   return {
+    kind: 'curved',
     track: {kind: 'curved', arc: arc(radius, degToRad(sweepDegrees))},
     handedness,
   };
@@ -86,51 +96,62 @@ export function placePiece(entry: Pose, piece: RoutePiece): PlacedPiece {
   return {...piece, entry};
 }
 
-/** Whether a placed piece is a curve (rather than inferring it from handedness). */
-function isPlacedCurve(
-  placed: PlacedPiece
-): placed is Extract<PlacedPiece, {track: CurvedTrack}> {
-  return placed.track.kind === 'curved';
-}
-
 /**
  * The placed geometry of a piece, derived from its entry pose. A curve's
  * handedness becomes the sign of the arc's sweep — left counter-clockwise,
- * right clockwise.
+ * right clockwise. The switch is exhaustive: adding a turnout track kind is a
+ * compile error here until it is handled.
  */
 export function pieceGeometry(placed: PlacedPiece): PieceGeometry {
-  if (isPlacedCurve(placed)) {
-    const sweep =
-      (placed.handedness === 'left' ? 1 : -1) * placed.track.arc.sweep;
-    return {
-      kind: 'arc',
-      start: placed.entry,
-      radius: placed.track.arc.radius,
-      sweep,
-    };
+  switch (placed.kind) {
+    case 'straight':
+      return {
+        kind: 'segment',
+        start: placed.entry,
+        length: placed.track.length,
+      };
+    case 'curved': {
+      const sweep =
+        (placed.handedness === 'left' ? 1 : -1) * placed.track.arc.sweep;
+      return {
+        kind: 'arc',
+        start: placed.entry,
+        radius: placed.track.arc.radius,
+        sweep,
+      };
+    }
+    default:
+      return assertNever(placed);
   }
-  return {kind: 'segment', start: placed.entry, length: placed.track.length};
 }
 
 /**
  * Where a train can leave the piece. A straight or curve has one exit; a turnout
- * will have more.
+ * will have more, which is why this returns a list.
  */
 export function exitPoses(placed: PlacedPiece): Pose[] {
   const geometry = pieceGeometry(placed);
-  return [
-    geometry.kind === 'segment'
-      ? segmentEndPose(geometry)
-      : arcEndPose(geometry),
-  ];
+  switch (geometry.kind) {
+    case 'segment':
+      return [segmentEndPose(geometry)];
+    case 'arc':
+      return [arcEndPose(geometry)];
+    default:
+      return assertNever(geometry);
+  }
 }
 
 /** The bounding box of a placed piece. Arcs account for their bulge. */
 export function pieceBounds(placed: PlacedPiece): Bounds {
   const geometry = pieceGeometry(placed);
-  return geometry.kind === 'segment'
-    ? segmentBounds(geometry)
-    : arcBounds(geometry);
+  switch (geometry.kind) {
+    case 'segment':
+      return segmentBounds(geometry);
+    case 'arc':
+      return arcBounds(geometry);
+    default:
+      return assertNever(geometry);
+  }
 }
 
 /**
