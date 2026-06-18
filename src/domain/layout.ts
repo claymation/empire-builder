@@ -1,22 +1,21 @@
 /**
  * Placing track in the plane (US-3, US-4, US-5).
  *
- * The atomic operation is {@link placePiece}: given an entry pose and a piece,
- * it locates that piece, and {@link exitPoses} reports where a train leaves it.
- * Connected pieces share a pose at their join, so tangency (US-5) holds by
+ * The atomic operation is {@link placePiece}: it locates a piece at an entry
+ * pose, and {@link exitPoses} reports the poses at which a train can leave it.
+ * Because connected pieces share a pose at their join, tangency (US-5) holds by
  * construction — there is no way to express a kink.
  *
- * For now a layout is a single route: an ordered run of pieces, each placed at
- * the previous one's exit ({@link placeRoute}). A straight or curve has exactly
- * one exit; a turnout will have two. `exitPoses` already returns a list so that
- * turnouts (US-6) slot in behind a future graph traversal without reshaping the
- * placement primitive — only this linear driver is provisional.
+ * {@link placeRoute} follows a single path, threading each piece's exit into the
+ * next.
  */
 
 import {
   arc,
+  Arc,
   arcBounds,
   arcEndPose,
+  arcLength,
   Bounds,
   degToRad,
   Handedness,
@@ -27,20 +26,18 @@ import {
   segmentEndPose,
   unionBounds,
 } from './geometry';
-import {CurvedTrack, StraightTrack} from './track';
 import {assertNever, requirePositive} from './validate';
 
 /**
- * A piece as authored into a route: which track, and — for a curve — which way
- * it is laid. `kind` is the top-level discriminant (it mirrors the track's kind)
- * so a placed piece narrows by a plain switch without reaching through `track`,
- * which TypeScript will not narrow on its own.
+ * A piece as authored into a route: a straight of a given length, or a curve of
+ * a given arc, laid to bend left or right. A curve piece is symmetric — its
+ * handedness is chosen when laying it, so it lives here rather than on the arc.
  */
 export type RoutePiece =
-  | {readonly kind: 'straight'; readonly track: StraightTrack}
+  | {readonly kind: 'straight'; readonly length: number}
   | {
       readonly kind: 'curved';
-      readonly track: CurvedTrack;
+      readonly arc: Arc;
       readonly handedness: Handedness;
     };
 
@@ -59,10 +56,7 @@ export interface PlacedRoute {
 
 /** Builds a straight route piece of the given length. */
 export function straight(length: number): RoutePiece {
-  return {
-    kind: 'straight',
-    track: {kind: 'straight', length: requirePositive(length, 'length')},
-  };
+  return {kind: 'straight', length: requirePositive(length, 'length')};
 }
 
 /** Builds a curve of the given radius (mm) bending left through `sweepDegrees`. */
@@ -80,11 +74,19 @@ function curve(
   sweepDegrees: number,
   handedness: Handedness
 ): RoutePiece {
-  return {
-    kind: 'curved',
-    track: {kind: 'curved', arc: arc(radius, degToRad(sweepDegrees))},
-    handedness,
-  };
+  return {kind: 'curved', arc: arc(radius, degToRad(sweepDegrees)), handedness};
+}
+
+/** The running length of a piece — the distance a train travels across it. */
+export function pieceLength(piece: RoutePiece): number {
+  switch (piece.kind) {
+    case 'straight':
+      return requirePositive(piece.length, 'length');
+    case 'curved':
+      return arcLength(piece.arc);
+    default:
+      return assertNever(piece);
+  }
 }
 
 /**
@@ -104,18 +106,13 @@ export function placePiece(entry: Pose, piece: RoutePiece): PlacedPiece {
 export function pieceGeometry(placed: PlacedPiece): PieceGeometry {
   switch (placed.kind) {
     case 'straight':
-      return {
-        kind: 'segment',
-        start: placed.entry,
-        length: placed.track.length,
-      };
+      return {kind: 'segment', start: placed.entry, length: placed.length};
     case 'curved': {
-      const sweep =
-        (placed.handedness === 'left' ? 1 : -1) * placed.track.arc.sweep;
+      const sweep = (placed.handedness === 'left' ? 1 : -1) * placed.arc.sweep;
       return {
         kind: 'arc',
         start: placed.entry,
-        radius: placed.track.arc.radius,
+        radius: placed.arc.radius,
         sweep,
       };
     }
@@ -125,8 +122,8 @@ export function pieceGeometry(placed: PlacedPiece): PieceGeometry {
 }
 
 /**
- * Where a train can leave the piece. A straight or curve has one exit; a turnout
- * will have more, which is why this returns a list.
+ * The poses at which a train can leave the piece. The result is a list because a
+ * piece may have more than one exit; a straight or curve has exactly one.
  */
 export function exitPoses(placed: PlacedPiece): Pose[] {
   const geometry = pieceGeometry(placed);
@@ -178,8 +175,7 @@ export function placeRoute(
     const placed = placePiece(pose, piece);
     placedPieces.push(placed);
     const exits = exitPoses(placed);
-    // A single route follows the one through-exit; a turnout's extra exits are
-    // for a future graph traversal, not this fold.
+    // Follow the through route: a piece's first exit continues the path.
     pose = exits[0];
   }
   return {pieces: placedPieces, exit: pose};

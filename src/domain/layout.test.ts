@@ -6,6 +6,7 @@ import {
   exitPoses,
   pieceBounds,
   pieceGeometry,
+  pieceLength,
   placePiece,
   placeRoute,
   routeBounds,
@@ -17,6 +18,24 @@ import {feet, inches} from './units';
 
 /** A pose at the origin, facing east (+x). */
 const ORIGIN: Pose = {position: {x: 0, y: 0}, heading: 0};
+
+describe('pieceLength', () => {
+  it('returns a straight piece length unchanged', () => {
+    expect(pieceLength(straight(168))).toBe(168);
+  });
+
+  it('returns the arc length of a curve, regardless of handedness', () => {
+    const expected = (Math.PI * 360) / 2; // a quarter of a circle of radius 360
+    expect(pieceLength(curveLeft(360, 90))).toBeCloseTo(expected);
+    expect(pieceLength(curveRight(360, 90))).toBeCloseTo(expected);
+  });
+
+  it('rejects a non-positive length', () => {
+    expect(() => pieceLength({kind: 'straight', length: 0})).toThrow(
+      RangeError
+    );
+  });
+});
 
 describe('placePiece — straight', () => {
   it('advances along the heading and keeps the heading', () => {

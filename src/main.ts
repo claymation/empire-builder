@@ -3,13 +3,13 @@ import './style.css';
 import {posesCoincide, type Pose} from './domain/geometry';
 import {
   curveLeft,
+  pieceLength,
   placeRoute,
   routeBounds,
   straight,
   type RoutePiece,
 } from './domain/layout';
 import {makeSpace, spaceContains, type Space} from './domain/space';
-import {trackLength} from './domain/track';
 import {feet, inches, toInches} from './domain/units';
 import {drawScene, type Scene} from './render/scene';
 
@@ -58,10 +58,7 @@ function describeLayout(
   const placed = placeRoute(anchor, route);
   const closed = posesCoincide(placed.exit, anchor, 1e-6, 1e-6);
   const fits = spaceContains(space, routeBounds(scene.pieces), 1e-6);
-  const run = route.reduce(
-    (total, piece) => total + trackLength(piece.track),
-    0
-  );
+  const run = route.reduce((total, piece) => total + pieceLength(piece), 0);
   return [
     `${feetLabel(space.width)}′×${feetLabel(space.height)}′ sheet`,
     `mainline run ${toInches(run).toFixed(1)}″`,
