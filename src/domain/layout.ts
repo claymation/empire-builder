@@ -99,8 +99,7 @@ export function placePiece(entry: Pose, piece: RoutePiece): PlacedPiece {
 /**
  * The placed geometry of a piece, derived from its entry pose. A curve's
  * handedness becomes the sign of the arc's sweep — left counter-clockwise,
- * right clockwise. The switch is exhaustive: adding a turnout track kind is a
- * compile error here until it is handled.
+ * right clockwise.
  */
 export function pieceGeometry(placed: PlacedPiece): PieceGeometry {
   switch (placed.kind) {
