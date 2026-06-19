@@ -124,7 +124,7 @@ export function tangentPieceTo(from: Pose, target: Point): RoutePiece | null {
 
   const offset = distanceSquared / (2 * sideways);
   const radius = Math.abs(offset);
-  const center = {
+  const center: Point = {
     x: from.position.x + offset * left.x,
     y: from.position.y + offset * left.y,
   };
