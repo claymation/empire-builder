@@ -86,6 +86,27 @@ I want to place turnouts where one track diverges into two, so that I can build
 sidings, passing loops, and yards, given that a layout with no branching is just
 a loop and cannot support operations or industries.
 
+### Interaction model for US-3 / US-4
+
+Drawing a straight and drawing a curve are one gesture, not two tools. A single
+"lay track" tool extends the open end of the current run (the railhead): as the
+pointer moves, a preview follows it — a straight when the pointer is aimed
+straight ahead, and the unique arc that stays tangent at the railhead and
+reaches toward the pointer when it is off to one side. A straight is just the
+degenerate, zero-curvature case of that arc. A click commits the previewed piece
+and the railhead advances. Modifier keys add precision (snap heading/radius/
+length to standard values; disable snapping for fine control) rather than
+switching modes.
+
+Two ways to build the same oval, both supported: draw around it as one run
+(straight, curve, straight, curve) and snap the last piece back to the start to
+close the loop; or draw two parallel straights and connect their open ends with
+curves. Both reduce to the same operation — joining two open ends with an
+auto-computed tangent arc, which is the interactive form of US-5.
+
+Because a drawing tool is unusable without forgiving recovery, **undo/redo
+(US-9) is built alongside this work**, not deferred.
+
 ## Editing
 
 **US-7 — Move, reorient, and resize sections.**
