@@ -3,11 +3,11 @@ import './style.css';
 import {posesCoincide, type Pose} from './domain/geometry';
 import {
   curveLeft,
-  pieceLength,
+  sectionLength,
   placeRoute,
   routeBounds,
   straight,
-  type RoutePiece,
+  type RouteSection,
 } from './domain/layout';
 import {makeSpace, spaceContains, type Space} from './domain/space';
 import {feet, inches, toInches} from './domain/units';
@@ -27,7 +27,7 @@ function getLayoutCanvas(): HTMLCanvasElement {
  * The classic first layout: two straight sides joined by two 180° curves. With
  * an 18" radius and 48" straights it forms an oval that fits a 4'x8' sheet.
  */
-function oval(straightLength: number, radius: number): RoutePiece[] {
+function oval(straightLength: number, radius: number): RouteSection[] {
   return [
     straight(straightLength),
     curveLeft(radius, 180),
@@ -37,9 +37,9 @@ function oval(straightLength: number, radius: number): RoutePiece[] {
 }
 
 /** Returns an anchor pose that centers `route` within `space`. */
-function centeredAnchor(space: Space, route: RoutePiece[]): Pose {
-  const {pieces} = placeRoute(ORIGIN, route);
-  const b = routeBounds(pieces);
+function centeredAnchor(space: Space, route: RouteSection[]): Pose {
+  const {sections} = placeRoute(ORIGIN, route);
+  const b = routeBounds(sections);
   return {
     position: {
       x: (space.width - (b.maxX - b.minX)) / 2 - b.minX,
@@ -51,14 +51,17 @@ function centeredAnchor(space: Space, route: RoutePiece[]): Pose {
 
 function describeLayout(
   space: Space,
-  route: RoutePiece[],
+  route: RouteSection[],
   anchor: Pose,
   scene: Scene
 ): string {
   const placed = placeRoute(anchor, route);
   const closed = posesCoincide(placed.exit, anchor, 1e-6, 1e-6);
-  const fits = spaceContains(space, routeBounds(scene.pieces), 1e-6);
-  const run = route.reduce((total, piece) => total + pieceLength(piece), 0);
+  const fits = spaceContains(space, routeBounds(scene.sections), 1e-6);
+  const run = route.reduce(
+    (total, section) => total + sectionLength(section),
+    0
+  );
   return [
     `${feetLabel(space.width)}′×${feetLabel(space.height)}′ sheet`,
     `mainline run ${toInches(run).toFixed(1)}″`,
@@ -80,7 +83,7 @@ function main(): void {
   const space = makeSpace(feet(8), feet(4));
   const route = oval(inches(48), inches(18));
   const anchor = centeredAnchor(space, route);
-  const scene: Scene = {space, pieces: placeRoute(anchor, route).pieces};
+  const scene: Scene = {space, sections: placeRoute(anchor, route).sections};
 
   drawScene(scene);
   paper.view.onResize = () => drawScene(scene);

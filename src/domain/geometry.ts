@@ -22,7 +22,7 @@ export type Vector = Point;
 
 /**
  * A position together with the direction of travel through it. Two connected
- * track pieces share a pose at their join, which is how the model enforces
+ * track sections share a pose at their join, which is how the model enforces
  * tangency (US-5): there is no kink because there is only one heading.
  */
 export interface Pose {
@@ -258,7 +258,7 @@ export function unionBounds(a: Bounds, b: Bounds): Bounds {
 
 /**
  * Whether two poses coincide within the given tolerances — used to decide
- * whether a chain of pieces closes back on its anchor, and (soon) whether two
+ * whether a chain of sections closes back on its anchor, and (soon) whether two
  * open ends snap together. Headings are compared modulo a full turn.
  */
 export function posesCoincide(

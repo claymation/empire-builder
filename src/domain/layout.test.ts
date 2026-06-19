@@ -4,15 +4,15 @@ import {
   curveLeft,
   curveRight,
   exitPoses,
-  pieceBounds,
-  pieceGeometry,
-  pieceLength,
-  placePiece,
+  sectionBounds,
+  sectionGeometry,
+  sectionLength,
+  placeSection,
   placeRoute,
   routeBounds,
   straight,
-  tangentPieceTo,
-  type RoutePiece,
+  tangentSectionTo,
+  type RouteSection,
 } from './layout';
 import {makeSpace, spaceContains} from './space';
 import {feet, inches} from './units';
@@ -20,28 +20,28 @@ import {feet, inches} from './units';
 /** A pose at the origin, facing east (+x). */
 const ORIGIN: Pose = {position: {x: 0, y: 0}, heading: 0};
 
-describe('pieceLength', () => {
-  it('returns a straight piece length unchanged', () => {
-    expect(pieceLength(straight(168))).toBe(168);
+describe('sectionLength', () => {
+  it('returns a straight section length unchanged', () => {
+    expect(sectionLength(straight(168))).toBe(168);
   });
 
   it('returns the arc length of a curve, regardless of handedness', () => {
     const expected = (Math.PI * 360) / 2; // a quarter of a circle of radius 360
-    expect(pieceLength(curveLeft(360, 90))).toBeCloseTo(expected);
-    expect(pieceLength(curveRight(360, 90))).toBeCloseTo(expected);
+    expect(sectionLength(curveLeft(360, 90))).toBeCloseTo(expected);
+    expect(sectionLength(curveRight(360, 90))).toBeCloseTo(expected);
   });
 
   it('rejects a non-positive length', () => {
-    expect(() => pieceLength({kind: 'straight', length: 0})).toThrow(
+    expect(() => sectionLength({kind: 'straight', length: 0})).toThrow(
       RangeError
     );
   });
 });
 
-describe('placePiece — straight', () => {
+describe('placeSection — straight', () => {
   it('advances along the heading and keeps the heading', () => {
-    const placed = placePiece(ORIGIN, straight(100));
-    expect(pieceGeometry(placed).kind).toBe('segment');
+    const placed = placeSection(ORIGIN, straight(100));
+    expect(sectionGeometry(placed).kind).toBe('segment');
     const [exit] = exitPoses(placed);
     expect(exit.position.x).toBeCloseTo(100);
     expect(exit.position.y).toBeCloseTo(0);
@@ -50,17 +50,17 @@ describe('placePiece — straight', () => {
 
   it('works from a non-axis pose', () => {
     const facingNorth: Pose = {position: {x: 5, y: 5}, heading: Math.PI / 2};
-    const [exit] = exitPoses(placePiece(facingNorth, straight(10)));
+    const [exit] = exitPoses(placeSection(facingNorth, straight(10)));
     expect(exit.position.x).toBeCloseTo(5);
     expect(exit.position.y).toBeCloseTo(15);
     expect(exit.heading).toBeCloseTo(Math.PI / 2);
   });
 });
 
-describe('placePiece — curve', () => {
+describe('placeSection — curve', () => {
   it('turns left counter-clockwise', () => {
-    const placed = placePiece(ORIGIN, curveLeft(100, 90));
-    expect(pieceGeometry(placed).kind).toBe('arc');
+    const placed = placeSection(ORIGIN, curveLeft(100, 90));
+    expect(sectionGeometry(placed).kind).toBe('arc');
     const [exit] = exitPoses(placed);
     expect(exit.position.x).toBeCloseTo(100);
     expect(exit.position.y).toBeCloseTo(100);
@@ -68,7 +68,7 @@ describe('placePiece — curve', () => {
   });
 
   it('turns right clockwise', () => {
-    const [exit] = exitPoses(placePiece(ORIGIN, curveRight(100, 90)));
+    const [exit] = exitPoses(placeSection(ORIGIN, curveRight(100, 90)));
     expect(exit.position.x).toBeCloseTo(100);
     expect(exit.position.y).toBeCloseTo(-100);
     expect(exit.heading).toBeCloseTo(-Math.PI / 2);
@@ -78,7 +78,7 @@ describe('placePiece — curve', () => {
     // Facing north, a left quarter turn lands a quarter-circle to the west,
     // exiting due west.
     const facingNorth: Pose = {position: {x: 10, y: 10}, heading: Math.PI / 2};
-    const [exit] = exitPoses(placePiece(facingNorth, curveLeft(100, 90)));
+    const [exit] = exitPoses(placeSection(facingNorth, curveLeft(100, 90)));
     expect(exit.position.x).toBeCloseTo(-90);
     expect(exit.position.y).toBeCloseTo(110);
     expect(exit.heading).toBeCloseTo(Math.PI);
@@ -90,11 +90,11 @@ describe('placePiece — curve', () => {
   });
 });
 
-describe('pieceBounds — curve', () => {
+describe('sectionBounds — curve', () => {
   it('accounts for the arc bulge, not just the endpoints', () => {
     // A left 180° semicircle from the origin heading east bulges out to +x = R
     // and spans y from 0 to 2R, even though both endpoints sit on x = 0.
-    const b = pieceBounds(placePiece(ORIGIN, curveLeft(100, 180)));
+    const b = sectionBounds(placeSection(ORIGIN, curveLeft(100, 180)));
     expect(b.minX).toBeCloseTo(0);
     expect(b.maxX).toBeCloseTo(100);
     expect(b.minY).toBeCloseTo(0);
@@ -103,7 +103,7 @@ describe('pieceBounds — curve', () => {
 });
 
 /** The canonical first layout: two straights joined by two 180° curves. */
-function oval(straightLength: number, radius: number): RoutePiece[] {
+function oval(straightLength: number, radius: number): RouteSection[] {
   return [
     straight(straightLength),
     curveLeft(radius, 180),
@@ -119,8 +119,8 @@ describe('placeRoute — the oval', () => {
   });
 
   it('has bounds of (straight + 2·radius) by (2·radius)', () => {
-    const {pieces} = placeRoute(ORIGIN, oval(inches(48), inches(18)));
-    const b = routeBounds(pieces);
+    const {sections} = placeRoute(ORIGIN, oval(inches(48), inches(18)));
+    const b = routeBounds(sections);
     expect(b.maxX - b.minX).toBeCloseTo(inches(48) + 2 * inches(18));
     expect(b.maxY - b.minY).toBeCloseTo(2 * inches(18));
   });
@@ -129,36 +129,36 @@ describe('placeRoute — the oval', () => {
     // A 24" radius makes the oval 96"×48" — flush with an 8'×4' sheet.
     const sheet = makeSpace(feet(8), feet(4));
     const anchor: Pose = {position: {x: inches(24), y: 0}, heading: 0};
-    const {pieces} = placeRoute(anchor, oval(inches(48), inches(24)));
-    expect(spaceContains(sheet, routeBounds(pieces), 1e-6)).toBe(true);
+    const {sections} = placeRoute(anchor, oval(inches(48), inches(24)));
+    expect(spaceContains(sheet, routeBounds(sections), 1e-6)).toBe(true);
   });
 
   it('overflows when the radius is a hair too large for the depth', () => {
     // 24.001" radius needs 48.002" of depth; the sheet is only 48" deep.
     const sheet = makeSpace(feet(8), feet(4));
     const anchor: Pose = {position: {x: inches(24.001), y: 0}, heading: 0};
-    const {pieces} = placeRoute(anchor, oval(inches(48), inches(24.001)));
-    expect(spaceContains(sheet, routeBounds(pieces))).toBe(false);
+    const {sections} = placeRoute(anchor, oval(inches(48), inches(24.001)));
+    expect(spaceContains(sheet, routeBounds(sections))).toBe(false);
   });
 });
 
-/** Asserts the tangent piece from `from` actually ends at `target`. */
+/** Asserts the tangent section from `from` actually ends at `target`. */
 function reaches(from: Pose, target: Point): void {
-  const piece = tangentPieceTo(from, target);
-  if (!piece) throw new Error('expected a piece');
-  const [exit] = exitPoses(placePiece(from, piece));
+  const section = tangentSectionTo(from, target);
+  if (!section) throw new Error('expected a section');
+  const [exit] = exitPoses(placeSection(from, section));
   expect(exit.position.x).toBeCloseTo(target.x);
   expect(exit.position.y).toBeCloseTo(target.y);
 }
 
-describe('tangentPieceTo', () => {
+describe('tangentSectionTo', () => {
   it('returns a straight to a point dead ahead', () => {
-    expect(tangentPieceTo(ORIGIN, {x: 100, y: 0})?.kind).toBe('straight');
+    expect(tangentSectionTo(ORIGIN, {x: 100, y: 0})?.kind).toBe('straight');
     reaches(ORIGIN, {x: 100, y: 0});
   });
 
   it('curves left toward a point off to the left', () => {
-    expect(tangentPieceTo(ORIGIN, {x: 100, y: 100})).toMatchObject({
+    expect(tangentSectionTo(ORIGIN, {x: 100, y: 100})).toMatchObject({
       kind: 'curved',
       handedness: 'left',
     });
@@ -166,7 +166,7 @@ describe('tangentPieceTo', () => {
   });
 
   it('curves right toward a point off to the right', () => {
-    expect(tangentPieceTo(ORIGIN, {x: 100, y: -100})).toMatchObject({
+    expect(tangentSectionTo(ORIGIN, {x: 100, y: -100})).toMatchObject({
       kind: 'curved',
       handedness: 'right',
     });
@@ -200,7 +200,7 @@ describe('tangentPieceTo', () => {
   });
 
   it('returns null for a degenerate or unreachable target', () => {
-    expect(tangentPieceTo(ORIGIN, {x: 0, y: 0})).toBeNull();
-    expect(tangentPieceTo(ORIGIN, {x: -100, y: 0})).toBeNull();
+    expect(tangentSectionTo(ORIGIN, {x: 0, y: 0})).toBeNull();
+    expect(tangentSectionTo(ORIGIN, {x: -100, y: 0})).toBeNull();
   });
 });
