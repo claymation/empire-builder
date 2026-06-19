@@ -1,12 +1,12 @@
 /**
  * Placing track in the plane (US-3, US-4, US-5).
  *
- * The atomic operation is {@link placePiece}: it locates a piece at an entry
+ * The atomic operation is {@link placeSection}: it locates a section at an entry
  * pose, and {@link exitPoses} reports the poses at which a train can leave it.
- * Because connected pieces share a pose at their join, tangency (US-5) holds by
+ * Because connected sections share a pose at their join, tangency (US-5) holds by
  * construction — there is no way to express a kink.
  *
- * {@link placeRoute} follows a single path, threading each piece's exit into the
+ * {@link placeRoute} follows a single path, threading each section's exit into the
  * next.
  */
 
@@ -38,11 +38,11 @@ import {assertNever, requirePositive} from './validate';
 const EPSILON = 1e-9;
 
 /**
- * A piece as authored into a route: a straight of a given length, or a curve of
- * a given arc, laid to bend left or right. A curve piece is symmetric — its
+ * A section as authored into a route: a straight of a given length, or a curve of
+ * a given arc, laid to bend left or right. A curve section is symmetric — its
  * handedness is chosen when laying it, so it lives here rather than on the arc.
  */
-export type RoutePiece =
+export type RouteSection =
   | {readonly kind: 'straight'; readonly length: number}
   | {
       readonly kind: 'curved';
@@ -50,31 +50,31 @@ export type RoutePiece =
       readonly handedness: Handedness;
     };
 
-/** A route piece located in the plane: it gains an entry pose, and nothing else. */
-export type PlacedPiece = RoutePiece & {readonly entry: Pose};
+/** A route section located in the plane: it gains an entry pose, and nothing else. */
+export type PlacedSection = RouteSection & {readonly entry: Pose};
 
-/** The placed geometry of a piece: a segment for straights, an arc for curves. */
-export type PieceGeometry = PlacedSegment | PlacedArc;
+/** The placed geometry of a section: a segment for straights, an arc for curves. */
+export type SectionGeometry = PlacedSegment | PlacedArc;
 
-/** The result of placing a whole route: the placed pieces and where they end. */
+/** The result of placing a whole route: the placed sections and where they end. */
 export interface PlacedRoute {
-  readonly pieces: readonly PlacedPiece[];
-  /** The pose a train would have on leaving the final piece. */
+  readonly sections: readonly PlacedSection[];
+  /** The pose a train would have on leaving the final section. */
   readonly exit: Pose;
 }
 
-/** Builds a straight route piece of the given length. */
-export function straight(length: number): RoutePiece {
+/** Builds a straight route section of the given length. */
+export function straight(length: number): RouteSection {
   return {kind: 'straight', length: requirePositive(length, 'length')};
 }
 
 /** Builds a curve of the given radius (mm) bending left through `sweepDegrees`. */
-export function curveLeft(radius: number, sweepDegrees: number): RoutePiece {
+export function curveLeft(radius: number, sweepDegrees: number): RouteSection {
   return curve(radius, sweepDegrees, 'left');
 }
 
 /** Builds a curve of the given radius (mm) bending right through `sweepDegrees`. */
-export function curveRight(radius: number, sweepDegrees: number): RoutePiece {
+export function curveRight(radius: number, sweepDegrees: number): RouteSection {
   return curve(radius, sweepDegrees, 'right');
 }
 
@@ -82,14 +82,14 @@ function curve(
   radius: number,
   sweepDegrees: number,
   handedness: Handedness
-): RoutePiece {
+): RouteSection {
   return {kind: 'curved', arc: arc(radius, degToRad(sweepDegrees)), handedness};
 }
 
 /**
- * The piece that continues tangentially from `from` to `target` — the geometry
+ * The section that continues tangentially from `from` to `target` — the geometry
  * behind the lay-track tool's pointer-follow preview — or `null` when no such
- * piece exists (the target is the start point, or lies straight behind it).
+ * section exists (the target is the start point, or lies straight behind it).
  *
  * The arc is the circle tangent to `from`'s heading at its position and passing
  * through `target`: its center lies on the normal at `from`, equidistant from
@@ -98,7 +98,10 @@ function curve(
  * subtended at the center is the sweep. A target on the heading line has no such
  * circle — it is a straight, or, if behind, unreachable.
  */
-export function tangentPieceTo(from: Pose, target: Point): RoutePiece | null {
+export function tangentSectionTo(
+  from: Pose,
+  target: Point
+): RouteSection | null {
   const forward = unitVector(from.heading);
   const left = unitVector(from.heading + Math.PI / 2);
   const toTarget: Vector = {
@@ -140,33 +143,36 @@ export function tangentPieceTo(from: Pose, target: Point): RoutePiece | null {
     : curveRight(radius, radToDeg(normalizeAngle(startAngle - endAngle)));
 }
 
-/** The running length of a piece — the distance a train travels across it. */
-export function pieceLength(piece: RoutePiece): number {
-  switch (piece.kind) {
+/** The running length of a section — the distance a train travels across it. */
+export function sectionLength(section: RouteSection): number {
+  switch (section.kind) {
     case 'straight':
-      return requirePositive(piece.length, 'length');
+      return requirePositive(section.length, 'length');
     case 'curved':
-      return arcLength(piece.arc);
+      return arcLength(section.arc);
     default:
-      return assertNever(piece);
+      return assertNever(section);
   }
 }
 
 /**
- * Locates a piece at `entry`. A PlacedPiece stays a plain, serializable value,
- * so its geometry is computed from it by {@link pieceGeometry} rather than
- * stored — nothing to keep in sync as pieces move.
+ * Locates a section at `entry`. A PlacedSection stays a plain, serializable value,
+ * so its geometry is computed from it by {@link sectionGeometry} rather than
+ * stored — nothing to keep in sync as sections move.
  */
-export function placePiece(entry: Pose, piece: RoutePiece): PlacedPiece {
-  return {...piece, entry};
+export function placeSection(
+  entry: Pose,
+  section: RouteSection
+): PlacedSection {
+  return {...section, entry};
 }
 
 /**
- * The placed geometry of a piece, derived from its entry pose. A curve's
+ * The placed geometry of a section, derived from its entry pose. A curve's
  * handedness becomes the sign of the arc's sweep — left counter-clockwise,
  * right clockwise.
  */
-export function pieceGeometry(placed: PlacedPiece): PieceGeometry {
+export function sectionGeometry(placed: PlacedSection): SectionGeometry {
   switch (placed.kind) {
     case 'straight':
       return {kind: 'segment', start: placed.entry, length: placed.length};
@@ -185,11 +191,11 @@ export function pieceGeometry(placed: PlacedPiece): PieceGeometry {
 }
 
 /**
- * The poses at which a train can leave the piece. The result is a list because a
- * piece may have more than one exit; a straight or curve has exactly one.
+ * The poses at which a train can leave the section. The result is a list because a
+ * section may have more than one exit; a straight or curve has exactly one.
  */
-export function exitPoses(placed: PlacedPiece): Pose[] {
-  const geometry = pieceGeometry(placed);
+export function exitPoses(placed: PlacedSection): Pose[] {
+  const geometry = sectionGeometry(placed);
   switch (geometry.kind) {
     case 'segment':
       return [segmentEndPose(geometry)];
@@ -200,9 +206,9 @@ export function exitPoses(placed: PlacedPiece): Pose[] {
   }
 }
 
-/** The bounding box of a placed piece. Arcs account for their bulge. */
-export function pieceBounds(placed: PlacedPiece): Bounds {
-  const geometry = pieceGeometry(placed);
+/** The bounding box of a placed section. Arcs account for their bulge. */
+export function sectionBounds(placed: PlacedSection): Bounds {
+  const geometry = sectionGeometry(placed);
   switch (geometry.kind) {
     case 'segment':
       return segmentBounds(geometry);
@@ -214,32 +220,32 @@ export function pieceBounds(placed: PlacedPiece): Bounds {
 }
 
 /**
- * The bounding box covering every placed piece. Throws on an empty route, which
+ * The bounding box covering every placed section. Throws on an empty route, which
  * has no extent to bound.
  */
-export function routeBounds(pieces: readonly PlacedPiece[]): Bounds {
-  if (pieces.length === 0) {
-    throw new RangeError('routeBounds requires at least one piece');
+export function routeBounds(sections: readonly PlacedSection[]): Bounds {
+  if (sections.length === 0) {
+    throw new RangeError('routeBounds requires at least one section');
   }
-  return pieces.map(pieceBounds).reduce(unionBounds);
+  return sections.map(sectionBounds).reduce(unionBounds);
 }
 
 /**
- * Places an ordered run of pieces starting from `anchor`, threading each piece's
+ * Places an ordered run of sections starting from `anchor`, threading each section's
  * exit into the next.
  */
 export function placeRoute(
   anchor: Pose,
-  route: readonly RoutePiece[]
+  route: readonly RouteSection[]
 ): PlacedRoute {
-  const placedPieces: PlacedPiece[] = [];
+  const placedSections: PlacedSection[] = [];
   let pose = anchor;
-  for (const piece of route) {
-    const placed = placePiece(pose, piece);
-    placedPieces.push(placed);
+  for (const section of route) {
+    const placed = placeSection(pose, section);
+    placedSections.push(placed);
     const exits = exitPoses(placed);
-    // Follow the through route: a piece's first exit continues the path.
+    // Follow the through route: a section's first exit continues the path.
     pose = exits[0];
   }
-  return {pieces: placedPieces, exit: pose};
+  return {sections: placedSections, exit: pose};
 }

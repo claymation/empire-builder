@@ -13,14 +13,14 @@ import {
   Point,
   segmentEnd,
 } from '../domain/geometry';
-import {pieceGeometry, PlacedPiece} from '../domain/layout';
+import {sectionGeometry, PlacedSection} from '../domain/layout';
 import {Space} from '../domain/space';
 import {fitTransform} from './transform';
 
 /** Everything needed to draw one frame: the sheet and the track on it. */
 export interface Scene {
   readonly space: Space;
-  readonly pieces: readonly PlacedPiece[];
+  readonly sections: readonly PlacedSection[];
 }
 
 /** Pixels of breathing room left between the sheet and the canvas edge. */
@@ -53,8 +53,8 @@ export function drawScene(scene: Scene): void {
   };
 
   drawSheet(scene.space, toCanvas);
-  for (const piece of scene.pieces) {
-    drawPiece(piece, toCanvas);
+  for (const section of scene.sections) {
+    drawSection(section, toCanvas);
   }
   paper.view.update();
 }
@@ -69,8 +69,8 @@ function drawSheet(space: Space, toCanvas: ToCanvas): void {
   sheet.strokeWidth = 2;
 }
 
-function drawPiece(piece: PlacedPiece, toCanvas: ToCanvas): void {
-  const geometry = pieceGeometry(piece);
+function drawSection(section: PlacedSection, toCanvas: ToCanvas): void {
+  const geometry = sectionGeometry(section);
   const path =
     geometry.kind === 'segment'
       ? new paper.Path.Line(
