@@ -3,7 +3,10 @@ import {posesCoincide, type Point, type Pose} from './geometry';
 import {
   curveLeft,
   curveRight,
+  EMPTY_LAYOUT,
   exitPoses,
+  placedSections,
+  railhead,
   sectionBounds,
   sectionGeometry,
   sectionLength,
@@ -12,6 +15,7 @@ import {
   routeBounds,
   straight,
   tangentSectionTo,
+  type Layout,
   type RouteSection,
 } from './layout';
 import {makeSpace, spaceContains} from './space';
@@ -19,6 +23,24 @@ import {feet, inches} from './units';
 
 /** A pose at the origin, facing east (+x). */
 const ORIGIN: Pose = {position: {x: 0, y: 0}, heading: 0};
+
+describe('Layout', () => {
+  it('an empty layout has no railhead and no placed sections', () => {
+    expect(railhead(EMPTY_LAYOUT)).toBeNull();
+    expect(placedSections(EMPTY_LAYOUT)).toHaveLength(0);
+  });
+
+  it('the railhead of an anchor-only layout is the anchor', () => {
+    const layout: Layout = {anchor: ORIGIN, sections: []};
+    expect(railhead(layout)).toEqual(ORIGIN);
+  });
+
+  it('places its sections and advances the railhead', () => {
+    const layout: Layout = {anchor: ORIGIN, sections: [straight(100)]};
+    expect(placedSections(layout)).toHaveLength(1);
+    expect(railhead(layout)?.position.x).toBeCloseTo(100);
+  });
+});
 
 describe('sectionLength', () => {
   it('returns a straight section length unchanged', () => {
