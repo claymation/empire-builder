@@ -18,15 +18,24 @@ import {
   arcLength,
   Bounds,
   degToRad,
+  dot,
   Handedness,
+  normalizeAngle,
   PlacedArc,
   PlacedSegment,
+  Point,
   Pose,
+  radToDeg,
   segmentBounds,
   segmentEndPose,
   unionBounds,
+  unitVector,
+  Vector,
 } from './geometry';
 import {assertNever, requirePositive} from './validate';
+
+// Distances (mm) and dot products (mm²) below this are treated as zero.
+const EPSILON = 1e-9;
 
 /**
  * A piece as authored into a route: a straight of a given length, or a curve of
@@ -75,6 +84,60 @@ function curve(
   handedness: Handedness
 ): RoutePiece {
   return {kind: 'curved', arc: arc(radius, degToRad(sweepDegrees)), handedness};
+}
+
+/**
+ * The piece that continues tangentially from `from` to `target` — the geometry
+ * behind the lay-track tool's pointer-follow preview — or `null` when no such
+ * piece exists (the target is the start point, or lies straight behind it).
+ *
+ * The arc is the circle tangent to `from`'s heading at its position and passing
+ * through `target`: its center lies on the normal at `from`, equidistant from
+ * the two points. The signed perpendicular offset of `target` from the heading
+ * therefore fixes the radius, its sign fixes the bend direction, and the angle
+ * subtended at the center is the sweep. A target on the heading line has no such
+ * circle — it is a straight, or, if behind, unreachable.
+ */
+export function tangentPieceTo(from: Pose, target: Point): RoutePiece | null {
+  const forward = unitVector(from.heading);
+  const left = unitVector(from.heading + Math.PI / 2);
+  const toTarget: Vector = {
+    x: target.x - from.position.x,
+    y: target.y - from.position.y,
+  };
+
+  const distanceSquared = dot(toTarget, toTarget);
+  if (distanceSquared < EPSILON) {
+    return null; // target coincides with the start
+  }
+
+  const ahead = dot(forward, toTarget);
+  const sideways = dot(left, toTarget);
+
+  // A target with no perpendicular offset lies on the heading line: a straight,
+  // which reaches only a point ahead. This test is exact — a target just off the
+  // line yields a valid (large-radius) arc, and any snap-to-straight tolerance
+  // belongs to the UI, not here.
+  if (Math.abs(sideways) < EPSILON) {
+    return ahead > 0 ? straight(ahead) : null;
+  }
+
+  const offset = distanceSquared / (2 * sideways);
+  const radius = Math.abs(offset);
+  const center: Point = {
+    x: from.position.x + offset * left.x,
+    y: from.position.y + offset * left.y,
+  };
+  const startAngle = Math.atan2(
+    from.position.y - center.y,
+    from.position.x - center.x
+  );
+  const endAngle = Math.atan2(target.y - center.y, target.x - center.x);
+
+  // A center to the left of travel bends the track left (counter-clockwise).
+  return offset > 0
+    ? curveLeft(radius, radToDeg(normalizeAngle(endAngle - startAngle)))
+    : curveRight(radius, radToDeg(normalizeAngle(startAngle - endAngle)));
 }
 
 /** The running length of a piece — the distance a train travels across it. */

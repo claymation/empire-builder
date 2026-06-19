@@ -10,6 +10,7 @@ import {
   arcStart,
   boundsOfPoints,
   degToRad,
+  dot,
   normalizeAngle,
   posesCoincide,
   radToDeg,
@@ -17,6 +18,7 @@ import {
   segmentEnd,
   segmentEndPose,
   unionBounds,
+  unitVector,
   type PlacedArc,
   type PlacedSegment,
   type Pose,
@@ -54,6 +56,19 @@ describe('advance', () => {
     const north = advance({x: 1, y: 1}, Math.PI / 2, 5);
     expect(north.x).toBeCloseTo(1);
     expect(north.y).toBeCloseTo(6);
+  });
+});
+
+describe('dot / unitVector', () => {
+  it('computes the dot product', () => {
+    expect(dot({x: 2, y: 3}, {x: 4, y: 5})).toBeCloseTo(23);
+  });
+
+  it('builds a unit vector along a heading', () => {
+    const up = unitVector(Math.PI / 2);
+    expect(up.x).toBeCloseTo(0);
+    expect(up.y).toBeCloseTo(1);
+    expect(dot(up, up)).toBeCloseTo(1);
   });
 });
 

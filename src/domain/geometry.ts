@@ -14,6 +14,13 @@ export interface Point {
 }
 
 /**
+ * A direction or displacement in the plane. The same shape as a {@link Point};
+ * the distinct name marks intent — a vector is a heading or an offset, not a
+ * position.
+ */
+export type Vector = Point;
+
+/**
  * A position together with the direction of travel through it. Two connected
  * track pieces share a pose at their join, which is how the model enforces
  * tangency (US-5): there is no kink because there is only one heading.
@@ -115,6 +122,16 @@ export function advance(
     x: origin.x + Math.cos(heading) * distance,
     y: origin.y + Math.sin(heading) * distance,
   };
+}
+
+/** The dot product of two vectors. */
+export function dot(a: Vector, b: Vector): number {
+  return a.x * b.x + a.y * b.y;
+}
+
+/** The unit vector pointing along `heading` (radians, counter-clockwise from +x). */
+export function unitVector(heading: number): Vector {
+  return {x: Math.cos(heading), y: Math.sin(heading)};
 }
 
 /** Where a placed segment ends. */
