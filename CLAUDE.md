@@ -49,6 +49,7 @@ We follow the [Google TypeScript Style Guide](https://google.github.io/styleguid
 - Named exports only; avoid default exports.
 - Keep Paper.js / canvas concerns separate from domain logic. Domain types (track, segment, layout) should not depend on Paper.js so they stay testable in isolation.
 - Pure functions for layout/geometry math where possible; keep side effects (rendering, DOM) at the edges.
+- Model domain types as plain, immutable data (interfaces/types) operated on by free functions, not classes with methods. Plain data stays trivially serializable (import/export, US-10/US-11) and easy to test; reach for a class only when identity or encapsulated mutable state genuinely calls for it.
 - Use `const` by default; reach for `let` only when reassignment is real.
 - File and directory names in `kebab-case`; types and classes in `PascalCase`; variables and functions in `camelCase`.
 

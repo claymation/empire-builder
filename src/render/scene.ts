@@ -2,6 +2,11 @@
  * Rendering the layout onto a Paper.js canvas. This is the edge: Paper.js lives
  * here, and the domain (../domain) stays free of it. The pure coordinate math
  * lives in ./transform; this module is the thin Paper.js wrapper around it.
+ *
+ * The drawing is split across two layers so the frequent case is cheap: the
+ * static layer (sheet and committed track) changes only when track is committed
+ * or the view resizes, while the overlay (the pointer-follow preview and the
+ * railhead marker) is redrawn on its own every time the pointer moves.
  */
 
 import paper from 'paper';
@@ -17,17 +22,6 @@ import {
 import {sectionGeometry, PlacedSection} from '../domain/layout';
 import {Space} from '../domain/space';
 import {fitTransform, ViewTransform} from './transform';
-
-/** Everything needed to draw one frame. */
-export interface Scene {
-  readonly space: Space;
-  /** The track committed so far. */
-  readonly sections: readonly PlacedSection[];
-  /** The section the pointer would lay next, drawn as a ghost. */
-  readonly preview?: PlacedSection | null;
-  /** The open end the next section extends from, drawn as a marker. */
-  readonly railhead?: Pose | null;
-}
 
 /** Pixels of breathing room left between the sheet and the canvas edge. */
 const PADDING_PX = 24;
@@ -51,25 +45,44 @@ export function sceneTransform(
   return fitTransform(space, viewWidth, viewHeight, PADDING_PX);
 }
 
-/** Clears the active project and draws the scene with the given transform. */
-export function drawScene(transform: ViewTransform, scene: Scene): void {
-  paper.project.activeLayer.removeChildren();
-  const toCanvas: ToCanvas = point => {
+/** Draws the sheet and the committed track. Redraw on commit, undo, or resize. */
+export function drawStatic(
+  transform: ViewTransform,
+  space: Space,
+  sections: readonly PlacedSection[]
+): void {
+  const toCanvas = onLayer('static', transform);
+  drawSheet(space, toCanvas);
+  for (const section of sections) {
+    drawSection(section, toCanvas, RAIL_COLOR, false);
+  }
+}
+
+/** Draws the pointer-follow preview and railhead marker. Redraw on every move. */
+export function drawOverlay(
+  transform: ViewTransform,
+  preview: PlacedSection | null,
+  railhead: Pose | null
+): void {
+  const toCanvas = onLayer('overlay', transform);
+  if (preview) {
+    drawSection(preview, toCanvas, PREVIEW_COLOR, true);
+  }
+  if (railhead) {
+    drawRailhead(railhead.position, toCanvas);
+  }
+}
+
+/** Activates the named layer (creating it once), clears it, and returns a mapper. */
+function onLayer(name: string, transform: ViewTransform): ToCanvas {
+  const existing = paper.project.layers.find(l => l.name === name);
+  const layer = existing ?? new paper.Layer({name});
+  layer.activate();
+  layer.removeChildren();
+  return point => {
     const {x, y} = transform.toCanvas(point);
     return new paper.Point(x, y);
   };
-
-  drawSheet(scene.space, toCanvas);
-  for (const section of scene.sections) {
-    drawSection(section, toCanvas, RAIL_COLOR, false);
-  }
-  if (scene.preview) {
-    drawSection(scene.preview, toCanvas, PREVIEW_COLOR, true);
-  }
-  if (scene.railhead) {
-    drawRailhead(scene.railhead.position, toCanvas);
-  }
-  paper.view.update();
 }
 
 function drawSheet(space: Space, toCanvas: ToCanvas): void {

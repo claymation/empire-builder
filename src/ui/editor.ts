@@ -17,7 +17,8 @@ import {
 } from '../domain/layout';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
-import {drawScene, sceneTransform} from '../render/scene';
+import {drawOverlay, drawStatic, sceneTransform} from '../render/scene';
+import {ViewTransform} from '../render/transform';
 import {click, EditorState, EMPTY, redo, undo} from './state';
 
 /** Wires the lay-track tool onto `canvas`, drawing within `space`. */
@@ -30,46 +31,60 @@ export function startEditor(
   let state = EMPTY;
   let pointer: Point | null = null;
 
-  const transform = () =>
+  // Rebuilt per use so it always reflects the current view size, which changes
+  // on resize; building it is cheap arithmetic, so there is nothing to cache.
+  const transform = (): ViewTransform =>
     sceneTransform(space, paper.view.size.width, paper.view.size.height);
-  const toDomain = (point: paper.Point): Point =>
-    transform().toDomain({x: point.x, y: point.y});
 
-  function render(): void {
-    const head = railhead(state.layout);
-    drawScene(transform(), {
-      space,
-      sections: placedSections(state.layout),
-      preview: head && pointer ? previewSection(head, pointer) : null,
-      railhead: head,
-    });
+  // The sheet and committed track; redraw only when the track or view changes.
+  function renderStatic(view: ViewTransform): void {
+    drawStatic(view, space, placedSections(state.layout));
     if (status) {
       status.textContent = describe(state);
     }
   }
 
+  // The preview and railhead; cheap to redraw on every pointer move.
+  function renderOverlay(view: ViewTransform): void {
+    const head = railhead(state.layout);
+    const preview = head && pointer ? previewSection(head, pointer) : null;
+    drawOverlay(view, preview, head);
+    paper.view.update();
+  }
+
+  function renderAll(): void {
+    const view = transform();
+    renderStatic(view);
+    renderOverlay(view);
+  }
+
   const tool = new paper.Tool();
   tool.onMouseMove = (event: paper.ToolEvent) => {
-    pointer = toDomain(event.point);
-    render();
+    const view = transform();
+    pointer = view.toDomain({x: event.point.x, y: event.point.y});
+    renderOverlay(view);
   };
-  tool.onMouseDown = (event: paper.ToolEvent) => {
-    pointer = toDomain(event.point);
+  // Commit on the click's release, the convention for drawing tools — it leaves
+  // press-and-drag free for a future drag-to-aim gesture.
+  tool.onMouseUp = (event: paper.ToolEvent) => {
+    const view = transform();
+    pointer = view.toDomain({x: event.point.x, y: event.point.y});
     state = click(state, pointer);
-    render();
+    renderStatic(view);
+    renderOverlay(view);
   };
 
-  paper.view.onResize = () => render();
+  paper.view.onResize = () => renderAll();
 
   window.addEventListener('keydown', event => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault();
       state = event.shiftKey ? redo(state) : undo(state);
-      render();
+      renderAll();
     }
   });
 
-  render();
+  renderAll();
 }
 
 /** The section the pointer would lay next, placed at the railhead, or null. */
