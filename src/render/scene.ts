@@ -11,16 +11,19 @@
 
 import paper from 'paper';
 import {
+  arcCenter,
   arcEnd,
   arcMidpoint,
   arcStart,
   PlacedArc,
   Point,
   Pose,
+  radToDeg,
   segmentEnd,
 } from '../domain/geometry';
 import {sectionGeometry, PlacedSection} from '../domain/layout';
 import {Space} from '../domain/space';
+import {toInches} from '../domain/units';
 import {fitTransform, ViewTransform} from './transform';
 
 /** Pixels of breathing room left between the sheet and the canvas edge. */
@@ -32,6 +35,7 @@ const RAIL_COLOR = '#2b2b2b';
 const PREVIEW_COLOR = '#3b82f6';
 const RAIL_WIDTH_PX = 3;
 const RAILHEAD_RADIUS_PX = 5;
+const LABEL_OFFSET_PX = 18;
 
 /** Maps a domain point (mm, y-up) to a canvas point (px, y-down). */
 type ToCanvas = (point: Point) => paper.Point;
@@ -67,10 +71,88 @@ export function renderOverlay(
   const toCanvas = onLayer('overlay', transform);
   if (preview) {
     drawSection(preview, toCanvas, PREVIEW_COLOR, true);
+    drawAngleLabel(preview, toCanvas);
   }
   if (railhead) {
     drawRailhead(railhead.position, toCanvas);
   }
+}
+
+/**
+ * Labels the preview with its sweep (and, for a curve, radius). The label sits
+ * by the ghost's leading end — near the pointer, where the eye is — pushed clear
+ * of the track: radially out from the arc's center for a curve, just above the
+ * end for a straight. A straight reads 0.0°.
+ */
+function drawAngleLabel(section: PlacedSection, toCanvas: ToCanvas): void {
+  const geometry = sectionGeometry(section);
+  if (geometry.kind === 'arc') {
+    const degrees = Math.abs(radToDeg(geometry.sweep));
+    const radius = toInches(geometry.radius);
+    const end = toCanvas(arcEnd(geometry));
+    const outward = end.subtract(toCanvas(arcCenter(geometry))).normalize();
+    placeLabel(
+      `${degrees.toFixed(1)}° · r ${radius.toFixed(1)}″`,
+      end,
+      outward
+    );
+  } else {
+    placeLabel('0.0°', toCanvas(segmentEnd(geometry)), new paper.Point(0, -1));
+  }
+}
+
+/**
+ * Places a label `from` a point, pushed clear of it in the unit `outward`
+ * direction. The push clears the whole label box, not just its center, so wide
+ * text doesn't fall back across a diagonal curve. To stay readable near the
+ * canvas edge the label flips to the inward side rather than run off it; and as
+ * a last resort — a corner, where neither side fully clears — it is nudged back
+ * inside, so it never clips.
+ */
+function placeLabel(
+  content: string,
+  from: paper.Point,
+  outward: paper.Point
+): void {
+  const label = new paper.PointText(from);
+  label.content = content;
+  label.fillColor = new paper.Color(PREVIEW_COLOR);
+  label.fontSize = 13;
+  label.justification = 'center';
+  const positionAlong = (direction: paper.Point) => {
+    const halfExtent =
+      (Math.abs(direction.x) * label.bounds.width +
+        Math.abs(direction.y) * label.bounds.height) /
+      2;
+    return from.add(direction.multiply(LABEL_OFFSET_PX + halfExtent));
+  };
+  label.position = positionAlong(outward);
+  if (!paper.view.bounds.contains(label.bounds)) {
+    label.position = positionAlong(outward.multiply(-1));
+  }
+  label.position = label.position.add(
+    nudgeInside(label.bounds, paper.view.bounds)
+  );
+}
+
+/** The translation bringing `box` fully within `bounds`; zero if already inside. */
+function nudgeInside(
+  box: paper.Rectangle,
+  bounds: paper.Rectangle
+): paper.Point {
+  const dx =
+    box.left < bounds.left
+      ? bounds.left - box.left
+      : box.right > bounds.right
+        ? bounds.right - box.right
+        : 0;
+  const dy =
+    box.top < bounds.top
+      ? bounds.top - box.top
+      : box.bottom > bounds.bottom
+        ? bounds.bottom - box.bottom
+        : 0;
+  return new paper.Point(dx, dy);
 }
 
 /** Activates the named layer (creating it once), clears it, and returns a mapper. */

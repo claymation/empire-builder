@@ -143,6 +143,72 @@ export function tangentSectionTo(
     : curveRight(radius, radToDeg(normalizeAngle(startAngle - endAngle)));
 }
 
+/**
+ * Snaps `value` to the nearest multiple of `increment` if it lands within
+ * `threshold` of one, otherwise leaves it untouched. The gentle threshold is
+ * what lets a deliberate off-grid value stand while still clicking onto tidy
+ * ones — a 38° curve stays 38°, but one dragged near 180° snaps to it.
+ */
+export function snapToIncrement(
+  value: number,
+  increment: number,
+  threshold: number
+): number {
+  const nearest = Math.round(value / increment) * increment;
+  return Math.abs(value - nearest) <= threshold ? nearest : value;
+}
+
+/**
+ * Like {@link tangentSectionTo}, but with the curve's sweep snapped to a tidy
+ * angle (clean angles, arbitrary radii — the flex/handlaid promise). When the
+ * sweep snaps, the radius is *fitted* so the snapped arc still ends as near the
+ * pointer as it can, so the preview keeps tracking the pointer instead of
+ * jumping. A sweep that snaps to zero flattens into a straight; an unsnapped or
+ * already-straight section passes through. `increment`/`threshold` are radians.
+ */
+export function snappedSectionTo(
+  from: Pose,
+  target: Point,
+  increment: number,
+  threshold: number
+): RouteSection | null {
+  const raw = tangentSectionTo(from, target);
+  if (!raw || raw.kind === 'straight') {
+    return raw;
+  }
+  const sweep = snapToIncrement(raw.arc.sweep, increment, threshold);
+  if (sweep === raw.arc.sweep) {
+    return raw;
+  }
+
+  const toTarget: Vector = {
+    x: target.x - from.position.x,
+    y: target.y - from.position.y,
+  };
+  if (sweep === 0) {
+    // Flatten to a straight reaching the pointer's forward projection.
+    const ahead = dot(unitVector(from.heading), toTarget);
+    return ahead > EPSILON ? straight(ahead) : raw;
+  }
+
+  // The snapped arc's end is `from + radius·w` for a fixed direction `w`; the
+  // radius that puts it nearest the pointer is the pointer's projection onto
+  // that ray. Negative means the pointer is behind it, so leave the curve raw.
+  const turn = raw.handedness === 'left' ? 1 : -1;
+  const signed = turn * sweep;
+  const h = from.heading;
+  const w: Vector = {
+    x: turn * (Math.sin(h + signed) - Math.sin(h)),
+    y: turn * (Math.cos(h) - Math.cos(h + signed)),
+  };
+  const wLengthSquared = dot(w, w); // ~0 only for a full-circle sweep
+  const radius =
+    wLengthSquared > EPSILON ? dot(toTarget, w) / wLengthSquared : 0;
+  return radius > 0
+    ? {kind: 'curved', arc: arc(radius, sweep), handedness: raw.handedness}
+    : raw;
+}
+
 /** The running length of a section — the distance a train travels across it. */
 export function sectionLength(section: RouteSection): number {
   switch (section.kind) {

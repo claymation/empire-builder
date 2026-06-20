@@ -1,6 +1,9 @@
 import {describe, it, expect} from 'vitest';
-import {placedSections, railhead} from '../domain/layout';
-import {click, EMPTY, redo, undo} from './state';
+import {type Pose} from '../domain/geometry';
+import {placedSections, railhead, straight} from '../domain/layout';
+import {append, EMPTY, redo, start, undo} from './state';
+
+const ANCHOR: Pose = {position: {x: 0, y: 0}, heading: 0};
 
 describe('editor state', () => {
   it('starts empty, with nothing to draw from', () => {
@@ -8,26 +11,20 @@ describe('editor state', () => {
     expect(placedSections(EMPTY.layout)).toHaveLength(0);
   });
 
-  it('places the anchor on the first click', () => {
-    const state = click(EMPTY, {x: 100, y: 50});
+  it('places the anchor with start', () => {
+    const state = start(EMPTY, {position: {x: 100, y: 50}, heading: 0});
     expect(railhead(state.layout)?.position).toEqual({x: 100, y: 50});
     expect(placedSections(state.layout)).toHaveLength(0);
   });
 
-  it('commits the previewed section on a later click', () => {
-    const drawn = click(click(EMPTY, {x: 0, y: 0}), {x: 300, y: 0});
+  it('commits a section with append', () => {
+    const drawn = append(start(EMPTY, ANCHOR), straight(300));
     expect(placedSections(drawn.layout)).toHaveLength(1);
     expect(railhead(drawn.layout)?.position.x).toBeCloseTo(300);
   });
 
-  it('ignores a click with nothing to commit', () => {
-    const started = click(EMPTY, {x: 0, y: 0});
-    // The railhead itself has no tangent section to draw.
-    expect(click(started, {x: 0, y: 0})).toBe(started);
-  });
-
   it('undoes and redoes a committed section', () => {
-    const drawn = click(click(EMPTY, {x: 0, y: 0}), {x: 300, y: 0});
+    const drawn = append(start(EMPTY, ANCHOR), straight(300));
     const undone = undo(drawn);
     expect(placedSections(undone.layout)).toHaveLength(0);
     expect(railhead(undone.layout)).not.toBeNull(); // anchor still placed
@@ -35,13 +32,12 @@ describe('editor state', () => {
   });
 
   it('undoes the anchor back to empty', () => {
-    const started = click(EMPTY, {x: 0, y: 0});
-    expect(railhead(undo(started).layout)).toBeNull();
+    expect(railhead(undo(start(EMPTY, ANCHOR)).layout)).toBeNull();
   });
 
   it('drops the redo stack once a new section is committed', () => {
-    const drawn = click(click(EMPTY, {x: 0, y: 0}), {x: 300, y: 0});
-    const branched = click(undo(drawn), {x: 200, y: 0});
+    const drawn = append(start(EMPTY, ANCHOR), straight(300));
+    const branched = append(undo(drawn), straight(200));
     expect(redo(branched)).toBe(branched); // nothing to redo
   });
 });

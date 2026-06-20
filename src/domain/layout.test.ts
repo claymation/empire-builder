@@ -1,5 +1,11 @@
 import {describe, it, expect} from 'vitest';
-import {posesCoincide, type Point, type Pose} from './geometry';
+import {
+  degToRad,
+  posesCoincide,
+  radToDeg,
+  type Point,
+  type Pose,
+} from './geometry';
 import {
   curveLeft,
   curveRight,
@@ -13,6 +19,8 @@ import {
   placeSection,
   placeRoute,
   routeBounds,
+  snappedSectionTo,
+  snapToIncrement,
   straight,
   tangentSectionTo,
   type Layout,
@@ -224,5 +232,62 @@ describe('tangentSectionTo', () => {
   it('returns null for a degenerate or unreachable target', () => {
     expect(tangentSectionTo(ORIGIN, {x: 0, y: 0})).toBeNull();
     expect(tangentSectionTo(ORIGIN, {x: -100, y: 0})).toBeNull();
+  });
+});
+
+describe('snappedSectionTo', () => {
+  const increment = degToRad(15);
+  const threshold = degToRad(5);
+
+  it('snaps the sweep and fits the radius so the end stays near the pointer', () => {
+    // From the origin heading east, a pointer just shy of the 90° arc's corner
+    // snaps to 90°, with the radius fitted to the pointer's projection (97.5).
+    const section = snappedSectionTo(
+      ORIGIN,
+      {x: 100, y: 95},
+      increment,
+      threshold
+    );
+    if (section?.kind !== 'curved') throw new Error('expected a curve');
+    expect(radToDeg(section.arc.sweep)).toBeCloseTo(90);
+    const [exit] = exitPoses(placeSection(ORIGIN, section));
+    expect(exit.position.x).toBeCloseTo(97.5);
+    expect(exit.position.y).toBeCloseTo(97.5);
+  });
+
+  it('leaves an off-grid sweep (and its radius) alone', () => {
+    const target = {x: 100, y: 90}; // ~84° — outside the snap threshold
+    expect(snappedSectionTo(ORIGIN, target, increment, threshold)).toEqual(
+      tangentSectionTo(ORIGIN, target)
+    );
+  });
+
+  it('flattens a near-straight curve to the pointer projection', () => {
+    const section = snappedSectionTo(
+      ORIGIN,
+      {x: 200, y: 3},
+      increment,
+      threshold
+    );
+    if (section?.kind !== 'straight') throw new Error('expected a straight');
+    expect(section.length).toBeCloseTo(200); // forward projection of the pointer
+  });
+
+  it('returns null for a degenerate target', () => {
+    expect(
+      snappedSectionTo(ORIGIN, {x: 0, y: 0}, increment, threshold)
+    ).toBeNull();
+  });
+});
+
+describe('snapToIncrement', () => {
+  it('snaps to the nearest multiple within the threshold', () => {
+    expect(snapToIncrement(177, 15, 5)).toBe(180);
+    expect(snapToIncrement(2, 15, 5)).toBe(0); // toward zero too
+  });
+
+  it('leaves values outside the threshold untouched', () => {
+    expect(snapToIncrement(38, 15, 5)).toBe(38);
+    expect(snapToIncrement(8, 15, 5)).toBe(8); // between 0 and 15, snaps to neither
   });
 });

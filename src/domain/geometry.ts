@@ -188,17 +188,27 @@ function arcPoint(placed: PlacedArc, swept: number): Point {
 }
 
 /**
- * The bounding box of a placed arc. The extreme x and y lie at the endpoints and
- * at whichever compass directions the arc sweeps through, which are the center
- * offset by a radius — so this is the one place the center is derived.
+ * The center of a placed arc's circle — one radius off the start, square to the
+ * direction of travel, on the side the arc bends toward. Derived rather than
+ * stored (see {@link PlacedArc}).
  */
-export function arcBounds(placed: PlacedArc): Bounds {
+export function arcCenter(placed: PlacedArc): Point {
   const side = placed.sweep >= 0 ? 1 : -1;
-  const center = advance(
+  return advance(
     placed.start.position,
     placed.start.heading + side * QUARTER_TURN,
     placed.radius
   );
+}
+
+/**
+ * The bounding box of a placed arc. The extreme x and y lie at the endpoints and
+ * at whichever compass directions the arc sweeps through, which are the center
+ * offset by a radius.
+ */
+export function arcBounds(placed: PlacedArc): Bounds {
+  const side = placed.sweep >= 0 ? 1 : -1;
+  const center = arcCenter(placed);
   const startAngle = placed.start.heading - side * QUARTER_TURN;
   const points: Point[] = [arcStart(placed), arcEnd(placed)];
   for (let q = 0; q < 4; q++) {

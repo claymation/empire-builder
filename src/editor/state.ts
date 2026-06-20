@@ -5,18 +5,14 @@
  * and renders the result.
  *
  * The state is the current {@link Layout} plus the history undo/redo walk; the
- * layout itself is the snapshot. Drawing starts when the user clicks an empty
- * canvas, which places the anchor; each later click commits the section the
- * pointer is previewing, extending the run from its open end (the railhead).
+ * layout itself is the snapshot. {@link start} places the anchor on an empty
+ * canvas; {@link append} commits a section onto the railhead. The editor decides
+ * which to call and computes the section (so snapping applies once); these
+ * transitions just record history.
  */
 
-import {Point} from '../domain/geometry';
-import {
-  EMPTY_LAYOUT,
-  Layout,
-  railhead,
-  tangentSectionTo,
-} from '../domain/layout';
+import {Pose} from '../domain/geometry';
+import {EMPTY_LAYOUT, Layout, RouteSection} from '../domain/layout';
 
 export interface EditorState {
   readonly layout: Layout;
@@ -29,26 +25,13 @@ export interface EditorState {
 /** The editor before the first click. */
 export const EMPTY: EditorState = {layout: EMPTY_LAYOUT, past: [], future: []};
 
-/** Direction the first section leaves the start point until drag-to-aim exists. */
-const INITIAL_HEADING = 0;
+/** Begins a layout by placing the anchor at `pose`. */
+export function start(state: EditorState, pose: Pose): EditorState {
+  return commit(state, {anchor: pose, sections: []});
+}
 
-/**
- * Applies a click at `pointer`: places the anchor if drawing hasn't started,
- * otherwise commits the previewed section. A click with no committable section
- * (the pointer is at or behind the railhead) leaves the state unchanged.
- */
-export function click(state: EditorState, pointer: Point): EditorState {
-  const head = railhead(state.layout);
-  if (!head) {
-    return commit(state, {
-      anchor: {position: pointer, heading: INITIAL_HEADING},
-      sections: [],
-    });
-  }
-  const section = tangentSectionTo(head, pointer);
-  if (!section) {
-    return state;
-  }
+/** Commits `section` onto the railhead, extending the run. */
+export function append(state: EditorState, section: RouteSection): EditorState {
   return commit(state, {
     ...state.layout,
     sections: [...state.layout.sections, section],
