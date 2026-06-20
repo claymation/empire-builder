@@ -20,6 +20,7 @@ import {
   placeRoute,
   routeBounds,
   snappedSectionTo,
+  snapToIncrement,
   straight,
   tangentSectionTo,
   type Layout,
@@ -276,5 +277,17 @@ describe('snappedSectionTo', () => {
     expect(
       snappedSectionTo(ORIGIN, {x: 0, y: 0}, increment, threshold)
     ).toBeNull();
+  });
+});
+
+describe('snapToIncrement', () => {
+  it('snaps to the nearest multiple within the threshold', () => {
+    expect(snapToIncrement(177, 15, 5)).toBe(180);
+    expect(snapToIncrement(2, 15, 5)).toBe(0); // toward zero too
+  });
+
+  it('leaves values outside the threshold untouched', () => {
+    expect(snapToIncrement(38, 15, 5)).toBe(38);
+    expect(snapToIncrement(8, 15, 5)).toBe(8); // between 0 and 15, snaps to neither
   });
 });

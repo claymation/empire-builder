@@ -104,7 +104,10 @@ function drawAngleLabel(section: PlacedSection, toCanvas: ToCanvas): void {
 /**
  * Places a label `from` a point, pushed clear of it in the unit `outward`
  * direction. The push clears the whole label box, not just its center, so wide
- * text doesn't fall back across a diagonal curve.
+ * text doesn't fall back across a diagonal curve. To stay readable near the
+ * canvas edge the label flips to the inward side rather than run off it; and as
+ * a last resort — a corner, where neither side fully clears — it is nudged back
+ * inside, so it never clips.
  */
 function placeLabel(
   content: string,
@@ -116,11 +119,40 @@ function placeLabel(
   label.fillColor = new paper.Color(PREVIEW_COLOR);
   label.fontSize = 13;
   label.justification = 'center';
-  const halfExtent =
-    (Math.abs(outward.x) * label.bounds.width +
-      Math.abs(outward.y) * label.bounds.height) /
-    2;
-  label.position = from.add(outward.multiply(LABEL_OFFSET_PX + halfExtent));
+  const positionAlong = (direction: paper.Point) => {
+    const halfExtent =
+      (Math.abs(direction.x) * label.bounds.width +
+        Math.abs(direction.y) * label.bounds.height) /
+      2;
+    return from.add(direction.multiply(LABEL_OFFSET_PX + halfExtent));
+  };
+  label.position = positionAlong(outward);
+  if (!paper.view.bounds.contains(label.bounds)) {
+    label.position = positionAlong(outward.multiply(-1));
+  }
+  label.position = label.position.add(
+    nudgeInside(label.bounds, paper.view.bounds)
+  );
+}
+
+/** The translation bringing `box` fully within `bounds`; zero if already inside. */
+function nudgeInside(
+  box: paper.Rectangle,
+  bounds: paper.Rectangle
+): paper.Point {
+  const dx =
+    box.left < bounds.left
+      ? bounds.left - box.left
+      : box.right > bounds.right
+        ? bounds.right - box.right
+        : 0;
+  const dy =
+    box.top < bounds.top
+      ? bounds.top - box.top
+      : box.bottom > bounds.bottom
+        ? bounds.bottom - box.bottom
+        : 0;
+  return new paper.Point(dx, dy);
 }
 
 /** Activates the named layer (creating it once), clears it, and returns a mapper. */

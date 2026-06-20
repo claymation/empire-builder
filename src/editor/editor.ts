@@ -122,11 +122,17 @@ export function startEditor(
   refreshAll();
 }
 
+// Modifier keys read by their platform names: ⌥/⌘ on macOS, Alt/Ctrl elsewhere.
+// Display only — the handlers already accept both Option/Alt and Cmd/Ctrl.
+const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+const FREE_DRAW_KEY = isMac ? '⌥' : 'Alt';
+const UNDO_KEYS = isMac ? '⌘Z' : 'Ctrl+Z';
+
 function describe(state: EditorState): string {
   const sections = state.layout.sections;
   if (sections.length === 0) {
     return state.layout.anchor
-      ? 'Move and click to lay track. Hold ⌥ to draw freely. ⌘Z to undo.'
+      ? `Move and click to lay track. Hold ${FREE_DRAW_KEY} to draw freely. ${UNDO_KEYS} to undo.`
       : 'Click on the sheet to start laying track.';
   }
   const run = sections.reduce(
@@ -134,5 +140,5 @@ function describe(state: EditorState): string {
     0
   );
   const count = sections.length;
-  return `${count} section${count === 1 ? '' : 's'} · ${toInches(run).toFixed(1)}″ run · ⌘Z to undo`;
+  return `${count} section${count === 1 ? '' : 's'} · ${toInches(run).toFixed(1)}″ run · ${UNDO_KEYS} to undo`;
 }

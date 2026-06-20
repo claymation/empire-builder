@@ -13,7 +13,6 @@ import {
   degToRad,
   dot,
   normalizeAngle,
-  snapToIncrement,
   posesCoincide,
   radToDeg,
   segmentBounds,
@@ -50,18 +49,6 @@ describe('normalizeAngle', () => {
     expect(normalizeAngle(0)).toBeCloseTo(0);
     expect(normalizeAngle(-Math.PI / 2)).toBeCloseTo((3 * Math.PI) / 2);
     expect(normalizeAngle(3 * Math.PI)).toBeCloseTo(Math.PI);
-  });
-});
-
-describe('snapToIncrement', () => {
-  it('snaps to the nearest multiple within the threshold', () => {
-    expect(snapToIncrement(177, 15, 5)).toBe(180);
-    expect(snapToIncrement(2, 15, 5)).toBe(0); // toward zero too
-  });
-
-  it('leaves values outside the threshold untouched', () => {
-    expect(snapToIncrement(38, 15, 5)).toBe(38);
-    expect(snapToIncrement(8, 15, 5)).toBe(8); // between 0 and 15, snaps to neither
   });
 });
 
@@ -128,9 +115,36 @@ describe('placed arc', () => {
     expect(mid.y).toBeCloseTo(100 * (1 - Math.cos(Math.PI / 4)));
   });
 
-  it('centers one radius to the left of an east-facing start', () => {
-    expect(arcCenter(left).x).toBeCloseTo(0);
-    expect(arcCenter(left).y).toBeCloseTo(100);
+  // The center sits one radius square to the travel direction — to its left for
+  // a CCW (positive) sweep, to its right for a CW (negative) one — so sweeping
+  // the start heading around the compass walks the center through every quadrant.
+  const centerOf = (heading: number, sweep: number) =>
+    arcCenter({
+      kind: 'arc',
+      start: {position: {x: 0, y: 0}, heading},
+      radius: 100,
+      sweep,
+    });
+
+  it('sits a radius to the left of travel for a CCW arc, in each quadrant', () => {
+    expect(centerOf(0, Math.PI / 2).x).toBeCloseTo(0); // east → north
+    expect(centerOf(0, Math.PI / 2).y).toBeCloseTo(100);
+    expect(centerOf(Math.PI / 2, Math.PI / 2).x).toBeCloseTo(-100); // north → west
+    expect(centerOf(Math.PI / 2, Math.PI / 2).y).toBeCloseTo(0);
+    expect(centerOf(Math.PI, Math.PI / 2).x).toBeCloseTo(0); // west → south
+    expect(centerOf(Math.PI, Math.PI / 2).y).toBeCloseTo(-100);
+    const diagonal = centerOf(Math.PI / 4, Math.PI / 2); // off-axis: center at 135°
+    expect(diagonal.x).toBeCloseTo(-100 * Math.SQRT1_2);
+    expect(diagonal.y).toBeCloseTo(100 * Math.SQRT1_2);
+  });
+
+  it('sits a radius to the right of travel for a CW arc, in each quadrant', () => {
+    expect(centerOf(0, -Math.PI / 2).x).toBeCloseTo(0); // east → south
+    expect(centerOf(0, -Math.PI / 2).y).toBeCloseTo(-100);
+    expect(centerOf(Math.PI / 2, -Math.PI / 2).x).toBeCloseTo(100); // north → east
+    expect(centerOf(Math.PI / 2, -Math.PI / 2).y).toBeCloseTo(0);
+    expect(centerOf(Math.PI, -Math.PI / 2).x).toBeCloseTo(0); // west → north
+    expect(centerOf(Math.PI, -Math.PI / 2).y).toBeCloseTo(100);
   });
 
   it('bends the other way and shortens the heading for a negative sweep', () => {

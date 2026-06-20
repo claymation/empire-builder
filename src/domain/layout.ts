@@ -28,7 +28,6 @@ import {
   radToDeg,
   segmentBounds,
   segmentEndPose,
-  snapToIncrement,
   unionBounds,
   unitVector,
   Vector,
@@ -142,6 +141,21 @@ export function tangentSectionTo(
   return offset > 0
     ? curveLeft(radius, radToDeg(normalizeAngle(endAngle - startAngle)))
     : curveRight(radius, radToDeg(normalizeAngle(startAngle - endAngle)));
+}
+
+/**
+ * Snaps `value` to the nearest multiple of `increment` if it lands within
+ * `threshold` of one, otherwise leaves it untouched. The gentle threshold is
+ * what lets a deliberate off-grid value stand while still clicking onto tidy
+ * ones — a 38° curve stays 38°, but one dragged near 180° snaps to it.
+ */
+export function snapToIncrement(
+  value: number,
+  increment: number,
+  threshold: number
+): number {
+  const nearest = Math.round(value / increment) * increment;
+  return Math.abs(value - nearest) <= threshold ? nearest : value;
 }
 
 /**

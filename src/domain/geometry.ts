@@ -112,21 +112,6 @@ export function normalizeAngle(radians: number): number {
   return remainder < 0 ? remainder + TWO_PI : remainder;
 }
 
-/**
- * Snaps `value` to the nearest multiple of `increment` if it lands within
- * `threshold` of one, otherwise leaves it untouched. The gentle threshold is
- * what lets a deliberate off-grid value stand while still clicking onto tidy
- * ones — a 38° curve stays 38°, but one dragged near 180° snaps to it.
- */
-export function snapToIncrement(
-  value: number,
-  increment: number,
-  threshold: number
-): number {
-  const nearest = Math.round(value / increment) * increment;
-  return Math.abs(value - nearest) <= threshold ? nearest : value;
-}
-
 /** The point reached by travelling `distance` from `origin` in direction `heading`. */
 export function advance(
   origin: Point,
