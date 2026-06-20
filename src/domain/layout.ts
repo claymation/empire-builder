@@ -28,6 +28,7 @@ import {
   radToDeg,
   segmentBounds,
   segmentEndPose,
+  snapToIncrement,
   unionBounds,
   unitVector,
   Vector,
@@ -141,6 +142,35 @@ export function tangentSectionTo(
   return offset > 0
     ? curveLeft(radius, radToDeg(normalizeAngle(endAngle - startAngle)))
     : curveRight(radius, radToDeg(normalizeAngle(startAngle - endAngle)));
+}
+
+/**
+ * Snaps a curve's sweep to a tidy angle, leaving its (arbitrary) radius alone —
+ * clean angles, free radii, the flex/handlaid promise. A sweep that snaps to
+ * zero flattens into a straight of the same running length; straights and
+ * unsnapped curves pass through unchanged. `increment` and `threshold` are in
+ * radians.
+ */
+export function snapSection(
+  section: RouteSection,
+  increment: number,
+  threshold: number
+): RouteSection {
+  if (section.kind === 'straight') {
+    return section;
+  }
+  const sweep = snapToIncrement(section.arc.sweep, increment, threshold);
+  if (sweep === section.arc.sweep) {
+    return section;
+  }
+  if (sweep === 0) {
+    return straight(section.arc.radius * section.arc.sweep);
+  }
+  return {
+    kind: 'curved',
+    arc: arc(section.arc.radius, sweep),
+    handedness: section.handedness,
+  };
 }
 
 /** The running length of a section — the distance a train travels across it. */

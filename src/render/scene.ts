@@ -17,6 +17,7 @@ import {
   PlacedArc,
   Point,
   Pose,
+  radToDeg,
   segmentEnd,
 } from '../domain/geometry';
 import {sectionGeometry, PlacedSection} from '../domain/layout';
@@ -67,10 +68,30 @@ export function renderOverlay(
   const toCanvas = onLayer('overlay', transform);
   if (preview) {
     drawSection(preview, toCanvas, PREVIEW_COLOR, true);
+    drawAngleLabel(preview, toCanvas);
   }
   if (railhead) {
     drawRailhead(railhead.position, toCanvas);
   }
+}
+
+/** Labels the preview with its sweep in degrees; a straight reads 0.0°. */
+function drawAngleLabel(section: PlacedSection, toCanvas: ToCanvas): void {
+  const degrees = section.kind === 'curved' ? radToDeg(section.arc.sweep) : 0;
+  const geometry = sectionGeometry(section);
+  const midpoint =
+    geometry.kind === 'arc'
+      ? arcMidpoint(geometry)
+      : {
+          x: (geometry.start.position.x + segmentEnd(geometry).x) / 2,
+          y: (geometry.start.position.y + segmentEnd(geometry).y) / 2,
+        };
+  const label = new paper.PointText(
+    toCanvas(midpoint).add(new paper.Point(10, -8))
+  );
+  label.content = `${degrees.toFixed(1)}°`;
+  label.fillColor = new paper.Color(PREVIEW_COLOR);
+  label.fontSize = 13;
 }
 
 /** Activates the named layer (creating it once), clears it, and returns a mapper. */

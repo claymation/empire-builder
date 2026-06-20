@@ -12,6 +12,7 @@ import {
   degToRad,
   dot,
   normalizeAngle,
+  snapToIncrement,
   posesCoincide,
   radToDeg,
   segmentBounds,
@@ -48,6 +49,18 @@ describe('normalizeAngle', () => {
     expect(normalizeAngle(0)).toBeCloseTo(0);
     expect(normalizeAngle(-Math.PI / 2)).toBeCloseTo((3 * Math.PI) / 2);
     expect(normalizeAngle(3 * Math.PI)).toBeCloseTo(Math.PI);
+  });
+});
+
+describe('snapToIncrement', () => {
+  it('snaps to the nearest multiple within the threshold', () => {
+    expect(snapToIncrement(177, 15, 5)).toBe(180);
+    expect(snapToIncrement(2, 15, 5)).toBe(0); // toward zero too
+  });
+
+  it('leaves values outside the threshold untouched', () => {
+    expect(snapToIncrement(38, 15, 5)).toBe(38);
+    expect(snapToIncrement(8, 15, 5)).toBe(8); // between 0 and 15, snaps to neither
   });
 });
 

@@ -6,20 +6,27 @@
  */
 
 import paper from 'paper';
-import {Point, Pose} from '../domain/geometry';
+import {degToRad, Point, Pose} from '../domain/geometry';
 import {
   placedSections,
   placeSection,
-  PlacedSection,
   railhead,
+  RouteSection,
   sectionLength,
+  snapSection,
   tangentSectionTo,
 } from '../domain/layout';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
 import {renderOverlay, renderStatic, sceneTransform} from '../render/scene';
 import {ViewTransform} from '../render/transform';
-import {click, EditorState, EMPTY, redo, undo} from './state';
+import {append, EditorState, EMPTY, redo, start, undo} from './state';
+
+/** Direction the first section leaves the start point until drag-to-aim exists. */
+const INITIAL_HEADING = 0;
+/** Curve sweeps snap to multiples of this when within SNAP_THRESHOLD of one. */
+const SNAP_INCREMENT = degToRad(15);
+const SNAP_THRESHOLD = degToRad(5);
 
 /** Wires the lay-track tool onto `canvas`, drawing within `space`. */
 export function startEditor(
@@ -30,13 +37,26 @@ export function startEditor(
   paper.setup(canvas);
   let state = EMPTY;
   let pointer: Point | null = null;
+  let suspendSnap = false;
 
   // Rebuilt per use so it always reflects the current view size, which changes
   // on resize; building it is cheap arithmetic, so there is nothing to cache.
   const transform = (): ViewTransform =>
     sceneTransform(space, paper.view.size.width, paper.view.size.height);
 
-  // The sheet and committed track; refresh only when the track or view changes.
+  // The section the pointer would lay next, snapped to a tidy angle unless
+  // snapping is suspended. Computed once and used for both preview and commit.
+  function nextSection(head: Pose): RouteSection | null {
+    if (!pointer) {
+      return null;
+    }
+    const section = tangentSectionTo(head, pointer);
+    if (!section || suspendSnap) {
+      return section;
+    }
+    return snapSection(section, SNAP_INCREMENT, SNAP_THRESHOLD);
+  }
+
   function refreshStatic(view: ViewTransform): void {
     renderStatic(view, space, placedSections(state.layout));
     if (status) {
@@ -44,10 +64,10 @@ export function startEditor(
     }
   }
 
-  // The preview and railhead; cheap to refresh on every pointer move.
   function refreshOverlay(view: ViewTransform): void {
     const head = railhead(state.layout);
-    const preview = head && pointer ? previewSection(head, pointer) : null;
+    const section = head ? nextSection(head) : null;
+    const preview = head && section ? placeSection(head, section) : null;
     renderOverlay(view, preview, head);
     paper.view.update();
   }
@@ -69,35 +89,46 @@ export function startEditor(
   tool.onMouseUp = (event: paper.ToolEvent) => {
     const view = transform();
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
-    state = click(state, pointer);
+    const head = railhead(state.layout);
+    if (!head) {
+      state = start(state, {position: pointer, heading: INITIAL_HEADING});
+    } else {
+      const section = nextSection(head);
+      if (section) {
+        state = append(state, section);
+      }
+    }
     refreshStatic(view);
     refreshOverlay(view);
   };
 
   paper.view.onResize = () => refreshAll();
 
+  // Holding Option/Alt suspends snapping for raw freehand placement.
+  const setSuspend = (held: boolean) => {
+    if (held !== suspendSnap) {
+      suspendSnap = held;
+      refreshOverlay(transform());
+    }
+  };
   window.addEventListener('keydown', event => {
+    setSuspend(event.altKey);
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault();
       state = event.shiftKey ? redo(state) : undo(state);
       refreshAll();
     }
   });
+  window.addEventListener('keyup', event => setSuspend(event.altKey));
 
   refreshAll();
-}
-
-/** The section the pointer would lay next, placed at the railhead, or null. */
-function previewSection(head: Pose, pointer: Point): PlacedSection | null {
-  const section = tangentSectionTo(head, pointer);
-  return section ? placeSection(head, section) : null;
 }
 
 function describe(state: EditorState): string {
   const sections = state.layout.sections;
   if (sections.length === 0) {
     return state.layout.anchor
-      ? 'Move and click to lay track. ⌘Z to undo.'
+      ? 'Move and click to lay track. Hold ⌥ to draw freely. ⌘Z to undo.'
       : 'Click on the sheet to start laying track.';
   }
   const run = sections.reduce(

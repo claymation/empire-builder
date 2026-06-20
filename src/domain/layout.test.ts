@@ -1,5 +1,11 @@
 import {describe, it, expect} from 'vitest';
-import {posesCoincide, type Point, type Pose} from './geometry';
+import {
+  degToRad,
+  posesCoincide,
+  radToDeg,
+  type Point,
+  type Pose,
+} from './geometry';
 import {
   curveLeft,
   curveRight,
@@ -13,6 +19,7 @@ import {
   placeSection,
   placeRoute,
   routeBounds,
+  snapSection,
   straight,
   tangentSectionTo,
   type Layout,
@@ -224,5 +231,35 @@ describe('tangentSectionTo', () => {
   it('returns null for a degenerate or unreachable target', () => {
     expect(tangentSectionTo(ORIGIN, {x: 0, y: 0})).toBeNull();
     expect(tangentSectionTo(ORIGIN, {x: -100, y: 0})).toBeNull();
+  });
+});
+
+describe('snapSection', () => {
+  const increment = degToRad(15);
+  const threshold = degToRad(5);
+
+  it('snaps a near-half-circle to exactly 180°, keeping the radius', () => {
+    const snapped = snapSection(curveLeft(173.4, 177), increment, threshold);
+    if (snapped.kind !== 'curved') throw new Error('expected a curve');
+    expect(radToDeg(snapped.arc.sweep)).toBeCloseTo(180);
+    expect(snapped.arc.radius).toBeCloseTo(173.4); // arbitrary radius preserved
+  });
+
+  it('leaves an off-grid sweep alone', () => {
+    expect(snapSection(curveLeft(100, 38), increment, threshold)).toEqual(
+      curveLeft(100, 38)
+    );
+  });
+
+  it('flattens a near-zero sweep into a straight of the same length', () => {
+    const snapped = snapSection(curveLeft(100, 3), increment, threshold);
+    expect(snapped.kind).toBe('straight');
+    if (snapped.kind !== 'straight') throw new Error('expected a straight');
+    expect(snapped.length).toBeCloseTo(100 * degToRad(3)); // radius × sweep
+  });
+
+  it('passes straights through unchanged', () => {
+    const s = straight(120);
+    expect(snapSection(s, increment, threshold)).toBe(s);
   });
 });
