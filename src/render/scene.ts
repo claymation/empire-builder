@@ -11,6 +11,7 @@
 
 import paper from 'paper';
 import {
+  arcCenter,
   arcEnd,
   arcMidpoint,
   arcStart,
@@ -22,6 +23,7 @@ import {
 } from '../domain/geometry';
 import {sectionGeometry, PlacedSection} from '../domain/layout';
 import {Space} from '../domain/space';
+import {toInches} from '../domain/units';
 import {fitTransform, ViewTransform} from './transform';
 
 /** Pixels of breathing room left between the sheet and the canvas edge. */
@@ -33,6 +35,7 @@ const RAIL_COLOR = '#2b2b2b';
 const PREVIEW_COLOR = '#3b82f6';
 const RAIL_WIDTH_PX = 3;
 const RAILHEAD_RADIUS_PX = 5;
+const LABEL_OFFSET_PX = 18;
 
 /** Maps a domain point (mm, y-up) to a canvas point (px, y-down). */
 type ToCanvas = (point: Point) => paper.Point;
@@ -75,23 +78,37 @@ export function renderOverlay(
   }
 }
 
-/** Labels the preview with its sweep in degrees; a straight reads 0.0°. */
+/**
+ * Labels the preview with its sweep (and, for a curve, radius). The label sits
+ * just outside the arc — radially out from its midpoint — so the curve doesn't
+ * obscure it; a straight reads 0.0° just above its midpoint.
+ */
 function drawAngleLabel(section: PlacedSection, toCanvas: ToCanvas): void {
-  const degrees = section.kind === 'curved' ? radToDeg(section.arc.sweep) : 0;
   const geometry = sectionGeometry(section);
-  const midpoint =
-    geometry.kind === 'arc'
-      ? arcMidpoint(geometry)
-      : {
-          x: (geometry.start.position.x + segmentEnd(geometry).x) / 2,
-          y: (geometry.start.position.y + segmentEnd(geometry).y) / 2,
-        };
-  const label = new paper.PointText(
-    toCanvas(midpoint).add(new paper.Point(10, -8))
-  );
-  label.content = `${degrees.toFixed(1)}°`;
+  if (geometry.kind === 'arc') {
+    const degrees = Math.abs(radToDeg(geometry.sweep));
+    const radius = toInches(geometry.radius);
+    const midpoint = toCanvas(arcMidpoint(geometry));
+    const outward = midpoint.subtract(toCanvas(arcCenter(geometry)));
+    placeLabel(
+      `${degrees.toFixed(1)}° · r ${radius.toFixed(1)}″`,
+      midpoint.add(outward.normalize(LABEL_OFFSET_PX))
+    );
+  } else {
+    const midpoint = toCanvas({
+      x: (geometry.start.position.x + segmentEnd(geometry).x) / 2,
+      y: (geometry.start.position.y + segmentEnd(geometry).y) / 2,
+    });
+    placeLabel('0.0°', midpoint.add(new paper.Point(0, -LABEL_OFFSET_PX)));
+  }
+}
+
+function placeLabel(content: string, at: paper.Point): void {
+  const label = new paper.PointText(at);
+  label.content = content;
   label.fillColor = new paper.Color(PREVIEW_COLOR);
   label.fontSize = 13;
+  label.justification = 'center';
 }
 
 /** Activates the named layer (creating it once), clears it, and returns a mapper. */

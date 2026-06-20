@@ -3,6 +3,7 @@ import {
   advance,
   arc,
   arcBounds,
+  arcCenter,
   arcEnd,
   arcEndPose,
   arcLength,
@@ -125,6 +126,11 @@ describe('placed arc', () => {
     const mid = arcMidpoint(left);
     expect(mid.x).toBeCloseTo(100 * Math.sin(Math.PI / 4));
     expect(mid.y).toBeCloseTo(100 * (1 - Math.cos(Math.PI / 4)));
+  });
+
+  it('centers one radius to the left of an east-facing start', () => {
+    expect(arcCenter(left).x).toBeCloseTo(0);
+    expect(arcCenter(left).y).toBeCloseTo(100);
   });
 
   it('bends the other way and shortens the heading for a negative sweep', () => {
