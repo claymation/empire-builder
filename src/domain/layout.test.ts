@@ -19,7 +19,7 @@ import {
   placeSection,
   placeRoute,
   routeBounds,
-  snapSection,
+  snappedSectionTo,
   straight,
   tangentSectionTo,
   type Layout,
@@ -234,32 +234,47 @@ describe('tangentSectionTo', () => {
   });
 });
 
-describe('snapSection', () => {
+describe('snappedSectionTo', () => {
   const increment = degToRad(15);
   const threshold = degToRad(5);
 
-  it('snaps a near-half-circle to exactly 180°, keeping the radius', () => {
-    const snapped = snapSection(curveLeft(173.4, 177), increment, threshold);
-    if (snapped.kind !== 'curved') throw new Error('expected a curve');
-    expect(radToDeg(snapped.arc.sweep)).toBeCloseTo(180);
-    expect(snapped.arc.radius).toBeCloseTo(173.4); // arbitrary radius preserved
+  it('snaps the sweep and fits the radius so the end stays near the pointer', () => {
+    // From the origin heading east, a pointer just shy of the 90° arc's corner
+    // snaps to 90°, with the radius fitted to the pointer's projection (97.5).
+    const section = snappedSectionTo(
+      ORIGIN,
+      {x: 100, y: 95},
+      increment,
+      threshold
+    );
+    if (section?.kind !== 'curved') throw new Error('expected a curve');
+    expect(radToDeg(section.arc.sweep)).toBeCloseTo(90);
+    const [exit] = exitPoses(placeSection(ORIGIN, section));
+    expect(exit.position.x).toBeCloseTo(97.5);
+    expect(exit.position.y).toBeCloseTo(97.5);
   });
 
-  it('leaves an off-grid sweep alone', () => {
-    expect(snapSection(curveLeft(100, 38), increment, threshold)).toEqual(
-      curveLeft(100, 38)
+  it('leaves an off-grid sweep (and its radius) alone', () => {
+    const target = {x: 100, y: 90}; // ~84° — outside the snap threshold
+    expect(snappedSectionTo(ORIGIN, target, increment, threshold)).toEqual(
+      tangentSectionTo(ORIGIN, target)
     );
   });
 
-  it('flattens a near-zero sweep into a straight of the same length', () => {
-    const snapped = snapSection(curveLeft(100, 3), increment, threshold);
-    expect(snapped.kind).toBe('straight');
-    if (snapped.kind !== 'straight') throw new Error('expected a straight');
-    expect(snapped.length).toBeCloseTo(100 * degToRad(3)); // radius × sweep
+  it('flattens a near-straight curve to the pointer projection', () => {
+    const section = snappedSectionTo(
+      ORIGIN,
+      {x: 200, y: 3},
+      increment,
+      threshold
+    );
+    if (section?.kind !== 'straight') throw new Error('expected a straight');
+    expect(section.length).toBeCloseTo(200); // forward projection of the pointer
   });
 
-  it('passes straights through unchanged', () => {
-    const s = straight(120);
-    expect(snapSection(s, increment, threshold)).toBe(s);
+  it('returns null for a degenerate target', () => {
+    expect(
+      snappedSectionTo(ORIGIN, {x: 0, y: 0}, increment, threshold)
+    ).toBeNull();
   });
 });

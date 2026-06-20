@@ -13,7 +13,7 @@ import {
   railhead,
   RouteSection,
   sectionLength,
-  snapSection,
+  snappedSectionTo,
   tangentSectionTo,
 } from '../domain/layout';
 import {Space} from '../domain/space';
@@ -50,11 +50,9 @@ export function startEditor(
     if (!pointer) {
       return null;
     }
-    const section = tangentSectionTo(head, pointer);
-    if (!section || suspendSnap) {
-      return section;
-    }
-    return snapSection(section, SNAP_INCREMENT, SNAP_THRESHOLD);
+    return suspendSnap
+      ? tangentSectionTo(head, pointer)
+      : snappedSectionTo(head, pointer, SNAP_INCREMENT, SNAP_THRESHOLD);
   }
 
   function refreshStatic(view: ViewTransform): void {

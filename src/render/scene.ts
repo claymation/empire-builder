@@ -80,29 +80,24 @@ export function renderOverlay(
 
 /**
  * Labels the preview with its sweep (and, for a curve, radius). The label sits
- * just outside the arc — radially out from its midpoint — so the curve doesn't
- * obscure it; a straight reads 0.0° just above its midpoint.
+ * by the ghost's leading end — near the pointer, where the eye is — pushed clear
+ * of the track: radially out from the arc's center for a curve, just above the
+ * end for a straight. A straight reads 0.0°.
  */
 function drawAngleLabel(section: PlacedSection, toCanvas: ToCanvas): void {
   const geometry = sectionGeometry(section);
   if (geometry.kind === 'arc') {
     const degrees = Math.abs(radToDeg(geometry.sweep));
     const radius = toInches(geometry.radius);
-    const midpoint = toCanvas(arcMidpoint(geometry));
-    const outward = midpoint
-      .subtract(toCanvas(arcCenter(geometry)))
-      .normalize();
+    const end = toCanvas(arcEnd(geometry));
+    const outward = end.subtract(toCanvas(arcCenter(geometry))).normalize();
     placeLabel(
       `${degrees.toFixed(1)}° · r ${radius.toFixed(1)}″`,
-      midpoint,
+      end,
       outward
     );
   } else {
-    const midpoint = toCanvas({
-      x: (geometry.start.position.x + segmentEnd(geometry).x) / 2,
-      y: (geometry.start.position.y + segmentEnd(geometry).y) / 2,
-    });
-    placeLabel('0.0°', midpoint, new paper.Point(0, -1));
+    placeLabel('0.0°', toCanvas(segmentEnd(geometry)), new paper.Point(0, -1));
   }
 }
 
