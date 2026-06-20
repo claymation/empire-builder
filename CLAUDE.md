@@ -49,6 +49,7 @@ We follow the [Google TypeScript Style Guide](https://google.github.io/styleguid
 - Named exports only; avoid default exports.
 - Keep Paper.js / canvas concerns separate from domain logic. Domain types (track, segment, layout) should not depend on Paper.js so they stay testable in isolation.
 - Pure functions for layout/geometry math where possible; keep side effects (rendering, DOM) at the edges.
+- Model domain types as plain, immutable data (interfaces/types) operated on by free functions, not classes with methods. Plain data stays trivially serializable (import/export, US-10/US-11) and easy to test; reach for a class only when identity or encapsulated mutable state genuinely calls for it.
 - Use `const` by default; reach for `let` only when reassignment is real.
 - File and directory names in `kebab-case`; types and classes in `PascalCase`; variables and functions in `camelCase`.
 
@@ -62,9 +63,11 @@ We follow the [Google TypeScript Style Guide](https://google.github.io/styleguid
 
 ## Structure
 
-- `src/domain/` — track/segment/layout types and geometry logic (no Paper.js); pure and unit-tested
-- `src/main.ts` — entry point; Paper.js canvas setup and rendering (side effects live here, at the edge)
+- `src/domain/` — track/section/layout types and geometry logic (no Paper.js); pure and unit-tested
+- `src/render/` — stateless Paper.js drawing given data, plus the domain↔canvas transform. `draw*` draws one shape; `render*` composes a layer from data.
+- `src/editor/` — the interactive controller: editor state (`state.ts`, pure) and the Paper.js event/orchestration edge (`editor.ts`). `refresh*` re-syncs the canvas from current state by calling `render/`'s `render*`.
+- `src/main.ts` — entry point; builds the default space and starts the editor
 - `index.html` — Vite entry document
 - Tests live next to the code they cover as `*.test.ts`
 
-> As the UI grows, add `src/render/` (Paper.js rendering/interaction) and `src/ui/` (controls, panels, app shell), keeping domain logic free of Paper.js.
+> `src/ui/` is reserved for HTML controls (toolbars, panels, the app shell) when we have them; canvas interaction lives in `src/editor/`, not `src/ui/`. Keep domain logic free of Paper.js throughout.

@@ -238,14 +238,41 @@ export function placeRoute(
   anchor: Pose,
   route: readonly RouteSection[]
 ): PlacedRoute {
-  const placedSections: PlacedSection[] = [];
+  const placed: PlacedSection[] = [];
   let pose = anchor;
   for (const section of route) {
-    const placed = placeSection(pose, section);
-    placedSections.push(placed);
-    const exits = exitPoses(placed);
+    const placedSection = placeSection(pose, section);
+    placed.push(placedSection);
+    const exits = exitPoses(placedSection);
     // Follow the through route: a section's first exit continues the path.
     pose = exits[0];
   }
-  return {sections: placedSections, exit: pose};
+  return {sections: placed, exit: pose};
+}
+
+/**
+ * A track plan: where it starts, and the sections laid from there. A null anchor
+ * is an empty plan, before the start has been placed.
+ */
+export interface Layout {
+  readonly anchor: Pose | null;
+  readonly sections: readonly RouteSection[];
+}
+
+/** The empty plan: no start placed, no sections. */
+export const EMPTY_LAYOUT: Layout = {anchor: null, sections: []};
+
+/**
+ * The open end the next section would extend from, or null before the start has
+ * been placed.
+ */
+export function railhead(layout: Layout): Pose | null {
+  return layout.anchor ? placeRoute(layout.anchor, layout.sections).exit : null;
+}
+
+/** The layout's sections placed in the plane. */
+export function placedSections(layout: Layout): readonly PlacedSection[] {
+  return layout.anchor
+    ? placeRoute(layout.anchor, layout.sections).sections
+    : [];
 }
