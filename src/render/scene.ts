@@ -89,26 +89,43 @@ function drawAngleLabel(section: PlacedSection, toCanvas: ToCanvas): void {
     const degrees = Math.abs(radToDeg(geometry.sweep));
     const radius = toInches(geometry.radius);
     const midpoint = toCanvas(arcMidpoint(geometry));
-    const outward = midpoint.subtract(toCanvas(arcCenter(geometry)));
+    const outward = midpoint
+      .subtract(toCanvas(arcCenter(geometry)))
+      .normalize();
     placeLabel(
       `${degrees.toFixed(1)}° · r ${radius.toFixed(1)}″`,
-      midpoint.add(outward.normalize(LABEL_OFFSET_PX))
+      midpoint,
+      outward
     );
   } else {
     const midpoint = toCanvas({
       x: (geometry.start.position.x + segmentEnd(geometry).x) / 2,
       y: (geometry.start.position.y + segmentEnd(geometry).y) / 2,
     });
-    placeLabel('0.0°', midpoint.add(new paper.Point(0, -LABEL_OFFSET_PX)));
+    placeLabel('0.0°', midpoint, new paper.Point(0, -1));
   }
 }
 
-function placeLabel(content: string, at: paper.Point): void {
-  const label = new paper.PointText(at);
+/**
+ * Places a label `from` a point, pushed clear of it in the unit `outward`
+ * direction. The push clears the whole label box, not just its center, so wide
+ * text doesn't fall back across a diagonal curve.
+ */
+function placeLabel(
+  content: string,
+  from: paper.Point,
+  outward: paper.Point
+): void {
+  const label = new paper.PointText(from);
   label.content = content;
   label.fillColor = new paper.Color(PREVIEW_COLOR);
   label.fontSize = 13;
   label.justification = 'center';
+  const halfExtent =
+    (Math.abs(outward.x) * label.bounds.width +
+      Math.abs(outward.y) * label.bounds.height) /
+    2;
+  label.position = from.add(outward.multiply(LABEL_OFFSET_PX + halfExtent));
 }
 
 /** Activates the named layer (creating it once), clears it, and returns a mapper. */
