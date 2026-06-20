@@ -17,7 +17,7 @@ import {
 } from '../domain/layout';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
-import {drawOverlay, drawStatic, sceneTransform} from '../render/scene';
+import {renderOverlay, renderStatic, sceneTransform} from '../render/scene';
 import {ViewTransform} from '../render/transform';
 import {click, EditorState, EMPTY, redo, undo} from './state';
 
@@ -36,33 +36,33 @@ export function startEditor(
   const transform = (): ViewTransform =>
     sceneTransform(space, paper.view.size.width, paper.view.size.height);
 
-  // The sheet and committed track; redraw only when the track or view changes.
-  function renderStatic(view: ViewTransform): void {
-    drawStatic(view, space, placedSections(state.layout));
+  // The sheet and committed track; refresh only when the track or view changes.
+  function refreshStatic(view: ViewTransform): void {
+    renderStatic(view, space, placedSections(state.layout));
     if (status) {
       status.textContent = describe(state);
     }
   }
 
-  // The preview and railhead; cheap to redraw on every pointer move.
-  function renderOverlay(view: ViewTransform): void {
+  // The preview and railhead; cheap to refresh on every pointer move.
+  function refreshOverlay(view: ViewTransform): void {
     const head = railhead(state.layout);
     const preview = head && pointer ? previewSection(head, pointer) : null;
-    drawOverlay(view, preview, head);
+    renderOverlay(view, preview, head);
     paper.view.update();
   }
 
-  function renderAll(): void {
+  function refreshAll(): void {
     const view = transform();
-    renderStatic(view);
-    renderOverlay(view);
+    refreshStatic(view);
+    refreshOverlay(view);
   }
 
   const tool = new paper.Tool();
   tool.onMouseMove = (event: paper.ToolEvent) => {
     const view = transform();
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
-    renderOverlay(view);
+    refreshOverlay(view);
   };
   // Commit on the click's release, the convention for drawing tools — it leaves
   // press-and-drag free for a future drag-to-aim gesture.
@@ -70,21 +70,21 @@ export function startEditor(
     const view = transform();
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
     state = click(state, pointer);
-    renderStatic(view);
-    renderOverlay(view);
+    refreshStatic(view);
+    refreshOverlay(view);
   };
 
-  paper.view.onResize = () => renderAll();
+  paper.view.onResize = () => refreshAll();
 
   window.addEventListener('keydown', event => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault();
       state = event.shiftKey ? redo(state) : undo(state);
-      renderAll();
+      refreshAll();
     }
   });
 
-  renderAll();
+  refreshAll();
 }
 
 /** The section the pointer would lay next, placed at the railhead, or null. */

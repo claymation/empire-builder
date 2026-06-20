@@ -45,8 +45,8 @@ export function sceneTransform(
   return fitTransform(space, viewWidth, viewHeight, PADDING_PX);
 }
 
-/** Draws the sheet and the committed track. Redraw on commit, undo, or resize. */
-export function drawStatic(
+/** Renders the sheet and committed track. Redraw on commit, undo, or resize. */
+export function renderStatic(
   transform: ViewTransform,
   space: Space,
   sections: readonly PlacedSection[]
@@ -58,8 +58,8 @@ export function drawStatic(
   }
 }
 
-/** Draws the pointer-follow preview and railhead marker. Redraw on every move. */
-export function drawOverlay(
+/** Renders the pointer-follow preview and railhead marker. Redraw on every move. */
+export function renderOverlay(
   transform: ViewTransform,
   preview: PlacedSection | null,
   railhead: Pose | null

@@ -1,7 +1,7 @@
 import './style.css';
 import {makeSpace} from './domain/space';
 import {feet} from './domain/units';
-import {startEditor} from './ui/editor';
+import {startEditor} from './editor/editor';
 
 function getLayoutCanvas(): HTMLCanvasElement {
   const canvas = document.querySelector<HTMLCanvasElement>('#layout');
