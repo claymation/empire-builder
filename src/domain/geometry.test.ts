@@ -5,11 +5,11 @@ import {
   arc,
   arcBounds,
   arcCenter,
-  arcEnd,
+  arcEndPoint,
   arcEndPose,
   arcLength,
   arcMidpoint,
-  arcStart,
+  arcStartPoint,
   boundsOfPoints,
   cross,
   degToRad,
@@ -292,9 +292,9 @@ describe('placed arc', () => {
   };
 
   it('ends a quarter-turn to the left, turning the heading with it', () => {
-    expect(arcStart(left)).toEqual({x: 0, y: 0});
-    expect(arcEnd(left).x).toBeCloseTo(100);
-    expect(arcEnd(left).y).toBeCloseTo(100);
+    expect(arcStartPoint(left)).toEqual({x: 0, y: 0});
+    expect(arcEndPoint(left).x).toBeCloseTo(100);
+    expect(arcEndPoint(left).y).toBeCloseTo(100);
     expect(arcEndPose(left).heading).toBeCloseTo(Math.PI / 2);
     const mid = arcMidpoint(left);
     expect(mid.x).toBeCloseTo(100 * Math.sin(Math.PI / 4));
@@ -335,8 +335,8 @@ describe('placed arc', () => {
 
   it('bends the other way and shortens the heading for a negative sweep', () => {
     const right: PlacedArc = {...left, sweep: -Math.PI / 2};
-    expect(arcEnd(right).x).toBeCloseTo(100);
-    expect(arcEnd(right).y).toBeCloseTo(-100);
+    expect(arcEndPoint(right).x).toBeCloseTo(100);
+    expect(arcEndPoint(right).y).toBeCloseTo(-100);
     expect(arcEndPose(right).heading).toBeCloseTo(-Math.PI / 2);
   });
 
@@ -348,8 +348,8 @@ describe('placed arc', () => {
       radius: 100,
       sweep: Math.PI / 2,
     };
-    expect(arcEnd(north).x).toBeCloseTo(-90);
-    expect(arcEnd(north).y).toBeCloseTo(110);
+    expect(arcEndPoint(north).x).toBeCloseTo(-90);
+    expect(arcEndPoint(north).y).toBeCloseTo(110);
     expect(arcEndPose(north).heading).toBeCloseTo(Math.PI);
   });
 

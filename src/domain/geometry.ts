@@ -297,25 +297,25 @@ export interface PlacedArc {
 }
 
 /** Where a placed arc begins. */
-export function arcStart(placed: PlacedArc): Point {
-  return placed.start.position;
+export function arcStartPoint(arc: PlacedArc): Point {
+  return arc.start.position;
 }
 
 /** The point halfway along a placed arc. */
-export function arcMidpoint(placed: PlacedArc): Point {
-  return arcPoint(placed, placed.sweep / 2);
+export function arcMidpoint(arc: PlacedArc): Point {
+  return arcPoint(arc, arc.sweep / 2);
 }
 
 /** Where a placed arc ends. */
-export function arcEnd(placed: PlacedArc): Point {
-  return arcPoint(placed, placed.sweep);
+export function arcEndPoint(arc: PlacedArc): Point {
+  return arcPoint(arc, arc.sweep);
 }
 
 /** The exit pose of a placed arc: its end point, heading rotated by the sweep. */
-export function arcEndPose(placed: PlacedArc): Pose {
+export function arcEndPose(arc: PlacedArc): Pose {
   return {
-    position: arcEnd(placed),
-    heading: placed.start.heading + placed.sweep,
+    position: arcEndPoint(arc),
+    heading: arc.start.heading + arc.sweep,
   };
 }
 
@@ -323,11 +323,11 @@ export function arcEndPose(placed: PlacedArc): Pose {
  * The center of a placed arc's circle — one radius off the start, square to the
  * direction of travel, on the side the arc bends toward.
  */
-export function arcCenter(placed: PlacedArc): Point {
+export function arcCenter(arc: PlacedArc): Point {
   return advance(
-    placed.start.position,
-    placed.start.heading + bendSign(placed.sweep) * QUARTER_TURN,
-    placed.radius
+    arc.start.position,
+    arc.start.heading + bendSign(arc.sweep) * QUARTER_TURN,
+    arc.radius
   );
 }
 
@@ -336,15 +336,14 @@ export function arcCenter(placed: PlacedArc): Point {
  * at whichever compass directions the arc sweeps through, which are the center
  * offset by a radius.
  */
-export function arcBounds(placed: PlacedArc): Bounds {
-  const center = arcCenter(placed);
-  const startAngle =
-    placed.start.heading - bendSign(placed.sweep) * QUARTER_TURN;
-  const points: Point[] = [arcStart(placed), arcEnd(placed)];
+export function arcBounds(arc: PlacedArc): Bounds {
+  const center = arcCenter(arc);
+  const startAngle = arc.start.heading - bendSign(arc.sweep) * QUARTER_TURN;
+  const points: Point[] = [arcStartPoint(arc), arcEndPoint(arc)];
   for (let q = 0; q < 4; q++) {
     const angle = q * QUARTER_TURN;
-    if (arcCoversAngle(startAngle, placed.sweep, angle)) {
-      points.push(advance(center, angle, placed.radius));
+    if (arcCoversAngle(startAngle, arc.sweep, angle)) {
+      points.push(advance(center, angle, arc.radius));
     }
   }
   return boundsOfPoints(points);
@@ -359,10 +358,10 @@ function bendSign(sweep: number): number {
  * A point `swept` (signed) radians along the placed arc from its start: the
  * start position plus `radius` along the unit-arc chord for that partial sweep.
  */
-function arcPoint(placed: PlacedArc, swept: number): Point {
+function arcPoint(arc: PlacedArc, swept: number): Point {
   return add(
-    placed.start.position,
-    scale(unitArcChord(placed.start.heading, swept), placed.radius)
+    arc.start.position,
+    scale(unitArcChord(arc.start.heading, swept), arc.radius)
   );
 }
 
