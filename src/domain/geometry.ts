@@ -296,11 +296,6 @@ export interface PlacedArc {
   readonly sweep: number;
 }
 
-/** Where a placed arc begins. */
-export function arcStartPoint(arc: PlacedArc): Point {
-  return arc.start.position;
-}
-
 /** The point halfway along a placed arc. */
 export function arcMidpoint(arc: PlacedArc): Point {
   return arcPoint(arc, arc.sweep / 2);
@@ -339,7 +334,7 @@ export function arcCenter(arc: PlacedArc): Point {
 export function arcBounds(arc: PlacedArc): Bounds {
   const center = arcCenter(arc);
   const startAngle = arc.start.heading - bendSign(arc.sweep) * QUARTER_TURN;
-  const points: Point[] = [arcStartPoint(arc), arcEndPoint(arc)];
+  const points: Point[] = [arc.start.position, arcEndPoint(arc)];
   for (let q = 0; q < 4; q++) {
     const angle = q * QUARTER_TURN;
     if (arcCoversAngle(startAngle, arc.sweep, angle)) {

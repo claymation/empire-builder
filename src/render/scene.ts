@@ -14,7 +14,6 @@ import {
   arcCenter,
   arcEndPoint,
   arcMidpoint,
-  arcStartPoint,
   PlacedArc,
   Point,
   Pose,
@@ -211,7 +210,7 @@ function drawRailhead(position: Point, toCanvas: ToCanvas): void {
  */
 function arcPath(placedArc: PlacedArc, toCanvas: ToCanvas): paper.Path {
   return new paper.Path.Arc(
-    toCanvas(arcStartPoint(placedArc)),
+    toCanvas(placedArc.start.position),
     toCanvas(arcMidpoint(placedArc)),
     toCanvas(arcEndPoint(placedArc))
   );

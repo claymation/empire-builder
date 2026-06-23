@@ -9,7 +9,6 @@ import {
   arcEndPose,
   arcLength,
   arcMidpoint,
-  arcStartPoint,
   boundsOfPoints,
   cross,
   degToRad,
@@ -29,6 +28,7 @@ import {
   unionBounds,
   unitArcChord,
   unitVector,
+  type Line,
   type PlacedArc,
   type PlacedSegment,
   type Pose,
@@ -37,8 +37,13 @@ import {
 // ── Points ──
 
 describe('distance', () => {
-  it('measures a 3-4-5 triangle', () => {
+  it('measures a 3-4-5 triangle in both quadrants', () => {
     expect(distance({x: 1, y: 2}, {x: 4, y: 6})).toBeCloseTo(5);
+    expect(distance({x: 2, y: 3}, {x: -1, y: -1})).toBeCloseTo(5);
+  });
+
+  it('is zero between a point and itself', () => {
+    expect(distance({x: -7, y: 4}, {x: -7, y: 4})).toBe(0);
   });
 });
 
@@ -48,16 +53,25 @@ describe('dot', () => {
   it('computes the dot product', () => {
     expect(dot({x: 2, y: 3}, {x: 4, y: 5})).toBeCloseTo(23);
   });
+
+  it('is zero for perpendicular vectors', () => {
+    expect(dot({x: 3, y: 0}, {x: 0, y: -4})).toBeCloseTo(0);
+  });
+
+  it('is negative when the vectors oppose', () => {
+    expect(dot({x: 1, y: 2}, {x: -3, y: -1})).toBeCloseTo(-5);
+  });
 });
 
 describe('cross', () => {
-  it('is the signed parallelogram area', () => {
+  it('is the signed parallelogram area, flipping with order', () => {
     expect(cross({x: 2, y: 0}, {x: 0, y: 3})).toBeCloseTo(6);
     expect(cross({x: 0, y: 3}, {x: 2, y: 0})).toBeCloseTo(-6);
   });
 
-  it('is zero for parallel vectors', () => {
+  it('is zero for parallel and anti-parallel vectors', () => {
     expect(cross({x: 2, y: 4}, {x: 1, y: 2})).toBeCloseTo(0);
+    expect(cross({x: 2, y: 4}, {x: -1, y: -2})).toBeCloseTo(0);
   });
 });
 
@@ -66,46 +80,80 @@ describe('add / subtract / scale', () => {
     expect(add({x: 1, y: 2}, {x: 3, y: -1})).toEqual({x: 4, y: 1});
   });
 
-  it('subtracts to the vector between two points', () => {
+  it('subtracts to the vector from b to a', () => {
     expect(subtract({x: 4, y: 1}, {x: 1, y: 2})).toEqual({x: 3, y: -1});
   });
 
-  it('scales by a factor', () => {
+  it('scales by a factor, including reversal', () => {
     expect(scale({x: 3, y: -1}, 2)).toEqual({x: 6, y: -2});
+    expect(scale({x: 3, y: -1}, -2)).toEqual({x: -6, y: 2});
   });
 });
 
 describe('unitVector', () => {
-  it('builds a unit vector along a heading', () => {
-    const up = unitVector(Math.PI / 2);
-    expect(up.x).toBeCloseTo(0);
-    expect(up.y).toBeCloseTo(1);
-    expect(dot(up, up)).toBeCloseTo(1);
+  it('points along each cardinal direction', () => {
+    const east = unitVector(0);
+    expect(east.x).toBeCloseTo(1);
+    expect(east.y).toBeCloseTo(0);
+    const north = unitVector(Math.PI / 2);
+    expect(north.x).toBeCloseTo(0);
+    expect(north.y).toBeCloseTo(1);
+    const west = unitVector(Math.PI);
+    expect(west.x).toBeCloseTo(-1);
+    expect(west.y).toBeCloseTo(0);
+    const south = unitVector(-Math.PI / 2);
+    expect(south.x).toBeCloseTo(0);
+    expect(south.y).toBeCloseTo(-1);
+  });
+
+  it('is unit length on a diagonal', () => {
+    const ne = unitVector(Math.PI / 4);
+    expect(ne.x).toBeCloseTo(Math.SQRT1_2);
+    expect(ne.y).toBeCloseTo(Math.SQRT1_2);
+    expect(dot(ne, ne)).toBeCloseTo(1);
   });
 });
 
 describe('advance', () => {
-  it('moves along the heading', () => {
+  it('moves along each quadrant from a non-origin point', () => {
+    const east = advance({x: 1, y: 1}, 0, 4);
+    expect(east.x).toBeCloseTo(5);
+    expect(east.y).toBeCloseTo(1);
     const north = advance({x: 1, y: 1}, Math.PI / 2, 5);
     expect(north.x).toBeCloseTo(1);
     expect(north.y).toBeCloseTo(6);
+    // 225° at distance √2 steps one unit down and one unit left.
+    const southwest = advance({x: 2, y: 2}, (5 * Math.PI) / 4, Math.SQRT2);
+    expect(southwest.x).toBeCloseTo(1);
+    expect(southwest.y).toBeCloseTo(1);
   });
 });
 
 // ── Angles ──
 
 describe('degToRad / radToDeg', () => {
-  it('round-trips a right angle through both directions', () => {
-    expect(radToDeg(degToRad(90))).toBeCloseTo(90);
-    expect(degToRad(radToDeg(Math.PI / 2))).toBeCloseTo(Math.PI / 2);
+  it('converts known angles in both directions', () => {
+    expect(degToRad(180)).toBeCloseTo(Math.PI);
+    expect(degToRad(-90)).toBeCloseTo(-Math.PI / 2);
+    expect(radToDeg(Math.PI)).toBeCloseTo(180);
+  });
+
+  it('round-trips an off-grid angle', () => {
+    expect(radToDeg(degToRad(37))).toBeCloseTo(37);
   });
 });
 
 describe('normalizeAngle', () => {
-  it('wraps into [0, 2π)', () => {
-    expect(normalizeAngle(0)).toBeCloseTo(0);
+  it('wraps negatives and angles past a full turn', () => {
     expect(normalizeAngle(-Math.PI / 2)).toBeCloseTo((3 * Math.PI) / 2);
     expect(normalizeAngle(3 * Math.PI)).toBeCloseTo(Math.PI);
+    expect(normalizeAngle((5 * Math.PI) / 2)).toBeCloseTo(Math.PI / 2);
+  });
+
+  it('maps exact full turns to zero', () => {
+    expect(normalizeAngle(0)).toBeCloseTo(0);
+    expect(normalizeAngle(2 * Math.PI)).toBeCloseTo(0);
+    expect(normalizeAngle(-2 * Math.PI)).toBeCloseTo(0);
   });
 });
 
@@ -123,9 +171,17 @@ describe('posesCoincide', () => {
     expect(posesCoincide(origin, spun, 1e-6, 1e-6)).toBe(true);
   });
 
-  it('rejects poses beyond the position tolerance', () => {
-    const moved: Pose = {position: {x: 1, y: 0}, heading: 0};
-    expect(posesCoincide(origin, moved, 0.5, 1e-6)).toBe(false);
+  it('measures the heading gap across the 0 / 2π seam', () => {
+    const a: Pose = {position: {x: 0, y: 0}, heading: 0.05};
+    const b: Pose = {position: {x: 0, y: 0}, heading: 2 * Math.PI - 0.05};
+    expect(posesCoincide(a, b, 1e-6, 0.2)).toBe(true); // gap 0.1
+    expect(posesCoincide(a, b, 1e-6, 0.05)).toBe(false);
+  });
+
+  it('accepts a separation exactly at the position tolerance but not beyond', () => {
+    const moved: Pose = {position: {x: 0.5, y: 0}, heading: 0};
+    expect(posesCoincide(origin, moved, 0.5, 1e-6)).toBe(true);
+    expect(posesCoincide(origin, moved, 0.4, 1e-6)).toBe(false);
   });
 
   it('rejects poses beyond the heading tolerance', () => {
@@ -137,16 +193,33 @@ describe('posesCoincide', () => {
 // ── Lines ──
 
 describe('lineIntersection', () => {
-  it('finds where two crossing lines meet', () => {
-    const horizontal = {origin: {x: 0, y: 5}, direction: {x: 1, y: 0}};
-    const vertical = {origin: {x: 3, y: 0}, direction: {x: 0, y: 1}};
+  it('finds where a horizontal and a vertical line meet', () => {
+    const horizontal: Line = {origin: {x: 0, y: 5}, direction: {x: 1, y: 0}};
+    const vertical: Line = {origin: {x: 3, y: 0}, direction: {x: 0, y: 1}};
     expect(lineIntersection(horizontal, vertical)).toEqual({x: 3, y: 5});
   });
 
-  it('returns null for parallel lines', () => {
-    const a = {origin: {x: 0, y: 0}, direction: {x: 1, y: 1}};
-    const b = {origin: {x: 1, y: 0}, direction: {x: 1, y: 1}};
-    expect(lineIntersection(a, b)).toBeNull();
+  it('finds the crossing of two tilted lines', () => {
+    // y = x crosses y = -x + 4 at (2, 2).
+    const up: Line = {origin: {x: 0, y: 0}, direction: {x: 1, y: 1}};
+    const down: Line = {origin: {x: 0, y: 4}, direction: {x: 1, y: -1}};
+    const p = lineIntersection(up, down);
+    expect(p?.x).toBeCloseTo(2);
+    expect(p?.y).toBeCloseTo(2);
+  });
+
+  it('is unaffected by the sign of a direction', () => {
+    const horizontal: Line = {origin: {x: 0, y: 5}, direction: {x: -2, y: 0}};
+    const vertical: Line = {origin: {x: 3, y: 0}, direction: {x: 0, y: 1}};
+    expect(lineIntersection(horizontal, vertical)).toEqual({x: 3, y: 5});
+  });
+
+  it('returns null for parallel and for coincident lines', () => {
+    const a: Line = {origin: {x: 0, y: 0}, direction: {x: 1, y: 1}};
+    const parallel: Line = {origin: {x: 1, y: 0}, direction: {x: 1, y: 1}};
+    const coincident: Line = {origin: {x: 5, y: 5}, direction: {x: 2, y: 2}};
+    expect(lineIntersection(a, parallel)).toBeNull();
+    expect(lineIntersection(a, coincident)).toBeNull();
   });
 });
 
@@ -179,6 +252,15 @@ describe('projectOntoLine', () => {
     expect(foot.y).toBeCloseTo(2);
   });
 
+  it('returns a point already on the line unchanged', () => {
+    const foot = projectOntoLine(
+      {x: 4, y: 4},
+      {origin: {x: 1, y: 1}, direction: {x: 1, y: 1}}
+    );
+    expect(foot.x).toBeCloseTo(4);
+    expect(foot.y).toBeCloseTo(4);
+  });
+
   it('returns the origin for a degenerate line', () => {
     const foot = projectOntoLine(
       {x: 3, y: 4},
@@ -189,22 +271,22 @@ describe('projectOntoLine', () => {
 });
 
 describe('onLine', () => {
-  // The line y = 5 (horizontal through (0, 5)).
-  const line = {origin: {x: 0, y: 5}, direction: {x: 2, y: 0}};
+  const tilted: Line = {origin: {x: 1, y: 1}, direction: {x: 1, y: 1}};
 
-  it('accepts a point on the line', () => {
-    expect(onLine({x: 37, y: 5}, line)).toBe(true);
+  it('accepts points on the line, either side of the origin', () => {
+    expect(onLine({x: 5, y: 5}, tilted)).toBe(true);
+    expect(onLine({x: -3, y: -3}, tilted)).toBe(true);
   });
 
-  it('rejects a point off the line', () => {
-    expect(onLine({x: 37, y: 5.001}, line)).toBe(false);
+  it('rejects a point a hair off the line', () => {
+    expect(onLine({x: 5, y: 5.001}, tilted)).toBe(false);
   });
 });
 
 // ── Bounds ──
 
 describe('boundsOfPoints', () => {
-  it('bounds a set of points', () => {
+  it('bounds a set spanning all quadrants', () => {
     const b = boundsOfPoints([
       {x: 1, y: 2},
       {x: -3, y: 5},
@@ -213,16 +295,37 @@ describe('boundsOfPoints', () => {
     expect(b).toEqual({minX: -3, minY: -1, maxX: 4, maxY: 5});
   });
 
+  it('bounds a single point to a degenerate box', () => {
+    expect(boundsOfPoints([{x: 3, y: -2}])).toEqual({
+      minX: 3,
+      minY: -2,
+      maxX: 3,
+      maxY: -2,
+    });
+  });
+
   it('throws on an empty list', () => {
     expect(() => boundsOfPoints([])).toThrow(RangeError);
   });
 });
 
 describe('unionBounds', () => {
-  it('covers both boxes', () => {
+  it('covers two overlapping boxes', () => {
     const a = {minX: 0, minY: 0, maxX: 2, maxY: 2};
     const b = {minX: 1, minY: -1, maxX: 5, maxY: 1};
     expect(unionBounds(a, b)).toEqual({minX: 0, minY: -1, maxX: 5, maxY: 2});
+  });
+
+  it('covers disjoint boxes', () => {
+    const a = {minX: 0, minY: 0, maxX: 1, maxY: 1};
+    const b = {minX: 5, minY: 5, maxX: 6, maxY: 6};
+    expect(unionBounds(a, b)).toEqual({minX: 0, minY: 0, maxX: 6, maxY: 6});
+  });
+
+  it('returns the outer box when one contains the other', () => {
+    const outer = {minX: -1, minY: -1, maxX: 9, maxY: 9};
+    const inner = {minX: 2, minY: 2, maxX: 3, maxY: 3};
+    expect(unionBounds(outer, inner)).toEqual(outer);
   });
 });
 
@@ -238,8 +341,17 @@ describe('placed segment', () => {
   it('ends ahead along its heading, keeping the heading', () => {
     expect(segmentEnd(segment).x).toBeCloseTo(2);
     expect(segmentEnd(segment).y).toBeCloseTo(13);
-    const exit = segmentEndPose(segment);
-    expect(exit.heading).toBeCloseTo(Math.PI / 2);
+    expect(segmentEndPose(segment).heading).toBeCloseTo(Math.PI / 2);
+  });
+
+  it('runs into the negative quadrant for a westward segment', () => {
+    const west: PlacedSegment = {
+      kind: 'segment',
+      start: {position: {x: 0, y: 0}, heading: Math.PI},
+      length: 10,
+    };
+    expect(segmentEnd(west).x).toBeCloseTo(-10);
+    expect(segmentEnd(west).y).toBeCloseTo(0);
   });
 
   it('bounds its endpoints', () => {
@@ -266,19 +378,28 @@ describe('arc / arcLength', () => {
 });
 
 describe('unitArcChord', () => {
-  it('gives the start→end offset of a unit-radius arc', () => {
-    // A 90° left arc from east ends at (100, 100) for radius 100, so the unit
-    // chord is (1, 1).
-    const chord = unitArcChord(0, Math.PI / 2);
-    expect(chord.x).toBeCloseTo(1);
-    expect(chord.y).toBeCloseTo(1);
+  it('gives the start→end offset of a unit-radius quarter arc', () => {
+    // A 90° left arc from east ends at (1, 1); a right arc at (1, -1).
+    const left = unitArcChord(0, Math.PI / 2);
+    expect(left.x).toBeCloseTo(1);
+    expect(left.y).toBeCloseTo(1);
+    const right = unitArcChord(0, -Math.PI / 2);
+    expect(right.x).toBeCloseTo(1);
+    expect(right.y).toBeCloseTo(-1);
   });
 
-  it('points the other way for a clockwise sweep', () => {
-    // A 90° right arc from east ends at (100, -100) for radius 100 → (1, -1).
-    const chord = unitArcChord(0, -Math.PI / 2);
-    expect(chord.x).toBeCloseTo(1);
-    expect(chord.y).toBeCloseTo(-1);
+  it('spans a half turn', () => {
+    // 180° left from east lands abreast: chord (0, 2).
+    const chord = unitArcChord(0, Math.PI);
+    expect(chord.x).toBeCloseTo(0);
+    expect(chord.y).toBeCloseTo(2);
+  });
+
+  it('respects a non-zero entry heading', () => {
+    // 90° left from north ends a unit up and to the left: chord (-1, 1).
+    const chord = unitArcChord(Math.PI / 2, Math.PI / 2);
+    expect(chord.x).toBeCloseTo(-1);
+    expect(chord.y).toBeCloseTo(1);
   });
 });
 
@@ -291,8 +412,7 @@ describe('placed arc', () => {
     sweep: Math.PI / 2,
   };
 
-  it('ends a quarter-turn to the left, turning the heading with it', () => {
-    expect(arcStartPoint(left)).toEqual({x: 0, y: 0});
+  it('ends a quarter-turn to the left, through the midpoint, turning the heading', () => {
     expect(arcEndPoint(left).x).toBeCloseTo(100);
     expect(arcEndPoint(left).y).toBeCloseTo(100);
     expect(arcEndPose(left).heading).toBeCloseTo(Math.PI / 2);
@@ -353,7 +473,17 @@ describe('placed arc', () => {
     expect(arcEndPose(north).heading).toBeCloseTo(Math.PI);
   });
 
-  it('bounds an arc by its bulge, including swept compass points', () => {
+  it('bounds a quarter arc by its endpoints alone', () => {
+    // East→north quarter from the origin: it bulges through no compass extreme
+    // beyond its ends, so the box is just (0,0)–(100,100).
+    const b = arcBounds(left);
+    expect(b.minX).toBeCloseTo(0);
+    expect(b.maxX).toBeCloseTo(100);
+    expect(b.minY).toBeCloseTo(0);
+    expect(b.maxY).toBeCloseTo(100);
+  });
+
+  it('bounds a semicircle by its bulge, past the endpoints', () => {
     // A left 180° semicircle from the origin heading east: endpoints on x = 0,
     // bulging to +x = R and spanning y from 0 to 2R.
     const semicircle: PlacedArc = {...left, sweep: Math.PI};
