@@ -16,6 +16,7 @@ import {
   RouteSection,
   sectionForSnap,
   sectionLength,
+  sectionTo,
   Snap,
 } from '../domain/layout';
 import {Space} from '../domain/space';
@@ -64,18 +65,19 @@ export function startEditor(
     if (!pointer || !head) {
       return {section: null, snap: null};
     }
-    // Suspending snapping (Option/Alt) gives a raw `none` snap; otherwise the
-    // target snaps to the open ends, falling back to the angle snap. Either way
-    // sectionForSnap turns the snap into the section.
-    const snap: Snap = suspendSnap
-      ? {kind: 'none', point: pointer}
-      : resolveSnap(
-          head,
-          pointer,
-          openEnds(state.layout),
-          POINT_MAGNET_PX / view.scale,
-          LINE_MAGNET_PX / view.scale
-        );
+    // Suspending snapping (Option/Alt) lays the plain section to the pointer,
+    // with nothing to draw. Otherwise the target snaps to the open ends, falling
+    // back to the angle snap, and sectionForSnap turns that snap into the section.
+    if (suspendSnap) {
+      return {section: sectionTo(head, pointer), snap: null};
+    }
+    const snap: Snap = resolveSnap(
+      head,
+      pointer,
+      openEnds(state.layout),
+      POINT_MAGNET_PX / view.scale,
+      LINE_MAGNET_PX / view.scale
+    );
     return {
       section: sectionForSnap(head, snap, SNAP_INCREMENT, SNAP_THRESHOLD),
       snap,

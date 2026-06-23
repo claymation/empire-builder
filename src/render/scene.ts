@@ -24,6 +24,7 @@ import {
 import {Snap, sectionGeometry, PlacedSection} from '../domain/layout';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
+import {assertNever} from '../domain/validate';
 import {fitTransform, ViewTransform} from './transform';
 
 /** Pixels of breathing room left between the sheet and the canvas edge. */
@@ -78,8 +79,11 @@ export function renderOverlay(
   snap: Snap | null
 ): void {
   const toCanvas = onLayer('overlay', transform);
-  if (snap?.kind === 'line') {
-    drawGuide(snap.line, toCanvas, transform.scale);
+  // The guide sits under the ghost, the ring on top, so resolve both up front
+  // and draw them around the preview.
+  const {guide, ring} = snapFeedback(snap);
+  if (guide) {
+    drawGuide(guide, toCanvas, transform.scale);
   }
   if (preview) {
     drawSection(preview, toCanvas, PREVIEW_COLOR, true);
@@ -88,8 +92,31 @@ export function renderOverlay(
   if (railhead) {
     drawRailhead(railhead.position, toCanvas);
   }
-  if (snap?.kind === 'point') {
-    drawSnapRing(snap.point, toCanvas);
+  if (ring) {
+    drawSnapRing(ring, toCanvas);
+  }
+}
+
+/**
+ * The alignment feedback a snap calls for: a guide `line` to draw beneath the
+ * ghost, a `ring` point to draw on top, or neither.
+ */
+function snapFeedback(snap: Snap | null): {
+  guide: Line | null;
+  ring: Point | null;
+} {
+  if (!snap) {
+    return {guide: null, ring: null};
+  }
+  switch (snap.kind) {
+    case 'line':
+      return {guide: snap.line, ring: null};
+    case 'point':
+      return {guide: null, ring: snap.point};
+    case 'angle':
+      return {guide: null, ring: null};
+    default:
+      return assertNever(snap);
   }
 }
 
