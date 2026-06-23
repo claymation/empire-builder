@@ -1,23 +1,20 @@
 /**
- * Plane geometry primitives for the layout, in millimeters. The domain uses
- * standard math conventions: +x points right, +y points up, and angles are
- * measured in radians counter-clockwise from the +x axis. The rendering edge is
- * responsible for mapping this onto a y-down canvas.
- *
- * Grouped by topic: points, vectors, angles, poses, lines, bounds, then the two
- * placed shapes — segments and arcs.
+ * Plane geometry primitives. The domain uses standard math conventions: +x
+ * points right, +y points up, and angles are measured in radians
+ * counter-clockwise from the +x axis. The rendering edge is responsible for
+ * mapping this onto a y-down canvas.
  */
 
 import {requireFinite, requirePositive} from './validate';
 
 const TWO_PI = Math.PI * 2;
 const QUARTER_TURN = Math.PI / 2;
-// Lengths (mm) and squared lengths (mm²) below this are treated as zero.
+// Values below this are treated as zero.
 const EPSILON = 1e-9;
 
 // ── Points ──
 
-/** A point in the layout plane, in millimeters. */
+/** A point in the plane. */
 export interface Point {
   readonly x: number;
   readonly y: number;
@@ -101,11 +98,7 @@ export function normalizeAngle(radians: number): number {
 
 // ── Poses ──
 
-/**
- * A position together with the direction of travel through it. Two connected
- * track sections share a pose at their join, which is how the model enforces
- * tangency (US-5): there is no kink because there is only one heading.
- */
+/** A position together with the direction of travel through it. */
 export interface Pose {
   readonly position: Point;
   /** Direction of travel, in radians counter-clockwise from +x. */
@@ -114,8 +107,7 @@ export interface Pose {
 
 /**
  * Whether two poses coincide within the given tolerances: the same position,
- * and the same heading compared modulo a full turn. Used to tell whether a
- * route closes back on its anchor.
+ * and the same heading compared modulo a full turn.
  */
 export function posesCoincide(
   a: Pose,
@@ -135,9 +127,8 @@ export function posesCoincide(
 
 /**
  * An infinite, undirected line through `origin` along `direction`. `direction`
- * need not be a unit vector, and its sign carries no meaning — it sets the
- * line's slope, not an orientation; operations along or across the line
- * normalize it.
+ * need not be a unit vector, and its sign carries no meaning — both signs give
+ * the same line; operations along or across it normalize as needed.
  */
 export interface Line {
   readonly origin: Point;
@@ -146,8 +137,7 @@ export interface Line {
 
 /**
  * The point where two infinite lines cross, or null when they are parallel
- * (including coincident). The lines are infinite, so the caller decides whether
- * the crossing lies in a useful direction.
+ * (including coincident).
  */
 export function lineIntersection(a: Line, b: Line): Point | null {
   // Solve `a.origin + t·a.direction = b.origin + s·b.direction` for the
@@ -185,7 +175,7 @@ export function onLine(point: Point, line: Line): boolean {
 
 // ── Bounds ──
 
-/** An axis-aligned bounding box, in millimeters. */
+/** An axis-aligned bounding box. */
 export interface Bounds {
   readonly minX: number;
   readonly minY: number;
@@ -256,13 +246,9 @@ export function segmentBounds(segment: PlacedSegment): Bounds {
 /** Left bends counter-clockwise, right bends clockwise, about the travel direction. */
 export type Handedness = 'left' | 'right';
 
-/**
- * The shape of a circular arc: a radius and the (unsigned) angle it sweeps. This
- * is shape only — no position, orientation, or direction. A full circle is an
- * arc that sweeps 2π.
- */
+/** The shape of a circular arc: a radius and the (unsigned) angle it sweeps. */
 export interface Arc {
-  /** Radius of the arc, in millimeters. */
+  /** Radius of the arc. */
   readonly radius: number;
   /** Angle the arc subtends, in radians; always positive. */
   readonly sweep: number;
@@ -301,8 +287,7 @@ export function unitArcChord(heading: number, signedSweep: number): Vector {
 /**
  * An arc placed in the plane: anchored at a start pose (its entry point and
  * tangent), with a signed `sweep` — counter-clockwise (left) is positive,
- * clockwise (right) negative. The center is intentionally not stored; the
- * endpoints follow from the start pose by closed form (see {@link arcEnd}).
+ * clockwise (right) negative.
  */
 export interface PlacedArc {
   readonly kind: 'arc';
@@ -316,14 +301,14 @@ export function arcStart(placed: PlacedArc): Point {
   return placed.start.position;
 }
 
-/** Where a placed arc ends. */
-export function arcEnd(placed: PlacedArc): Point {
-  return arcPoint(placed, placed.sweep);
-}
-
 /** The point halfway along a placed arc. */
 export function arcMidpoint(placed: PlacedArc): Point {
   return arcPoint(placed, placed.sweep / 2);
+}
+
+/** Where a placed arc ends. */
+export function arcEnd(placed: PlacedArc): Point {
+  return arcPoint(placed, placed.sweep);
 }
 
 /** The exit pose of a placed arc: its end point, heading rotated by the sweep. */
@@ -336,8 +321,7 @@ export function arcEndPose(placed: PlacedArc): Pose {
 
 /**
  * The center of a placed arc's circle — one radius off the start, square to the
- * direction of travel, on the side the arc bends toward. Derived rather than
- * stored (see {@link PlacedArc}).
+ * direction of travel, on the side the arc bends toward.
  */
 export function arcCenter(placed: PlacedArc): Point {
   return advance(
@@ -366,8 +350,7 @@ export function arcBounds(placed: PlacedArc): Bounds {
   return boundsOfPoints(points);
 }
 
-// +1 where the sweep bends left (CCW), -1 where it bends right (CW); the arc's
-// closed-form offsets flip sign with it.
+// +1 where the sweep bends left (CCW), -1 where it bends right (CW).
 function bendSign(sweep: number): number {
   return sweep >= 0 ? 1 : -1;
 }
