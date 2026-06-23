@@ -12,6 +12,8 @@ import {Space} from '../domain/space';
 
 /** A two-way mapping between domain and canvas points. */
 export interface ViewTransform {
+  /** Canvas pixels per domain millimeter — the uniform scale of the fit. */
+  readonly scale: number;
   readonly toCanvas: (point: Point) => Point;
   readonly toDomain: (point: Point) => Point;
 }
@@ -33,6 +35,7 @@ export function fitTransform(
   const offsetX = (viewWidth - space.width * scale) / 2;
   const offsetY = (viewHeight - space.height * scale) / 2;
   return {
+    scale,
     toCanvas: point => ({
       x: offsetX + point.x * scale,
       // Flip: domain y grows upward, canvas y grows downward.

@@ -18,17 +18,23 @@ import {
   arcLength,
   Bounds,
   degToRad,
+  distance,
   dot,
   Handedness,
+  Line,
+  lineIntersection,
   normalizeAngle,
+  onLine,
   PlacedArc,
   PlacedSegment,
   Point,
   Pose,
+  projectOntoLine,
   radToDeg,
   segmentBounds,
   segmentEndPose,
   unionBounds,
+  unitArcChord,
   unitVector,
   Vector,
 } from './geometry';
@@ -87,9 +93,12 @@ function curve(
 }
 
 /**
- * The section that continues tangentially from `from` to `target` — the geometry
- * behind the lay-track tool's pointer-follow preview — or `null` when no such
- * section exists (the target is the start point, or lies straight behind it).
+ * The plain section from `from` to `target`: the unique straight or arc that
+ * leaves `from` tangent to its heading and passes through `target` — or `null`
+ * when none exists (the target is the start point, or lies straight behind it).
+ * This is the exact geometry, with no snapping; {@link snappedSectionTo} and
+ * {@link alignedSectionTo} are this same section with the angle or line snap
+ * layered on, and the cases that want neither (a point snap, or ⌥) use it raw.
  *
  * The arc is the circle tangent to `from`'s heading at its position and passing
  * through `target`: its center lies on the normal at `from`, equidistant from
@@ -98,10 +107,7 @@ function curve(
  * subtended at the center is the sweep. A target on the heading line has no such
  * circle — it is a straight, or, if behind, unreachable.
  */
-export function tangentSectionTo(
-  from: Pose,
-  target: Point
-): RouteSection | null {
+export function sectionTo(from: Pose, target: Point): RouteSection | null {
   const forward = unitVector(from.heading);
   const left = unitVector(from.heading + Math.PI / 2);
   const toTarget: Vector = {
@@ -159,7 +165,7 @@ export function snapToIncrement(
 }
 
 /**
- * Like {@link tangentSectionTo}, but with the curve's sweep snapped to a tidy
+ * Like {@link sectionTo}, but with the curve's sweep snapped to a tidy
  * angle (clean angles, arbitrary radii — the flex/handlaid promise). When the
  * sweep snaps, the radius is *fitted* so the snapped arc still ends as near the
  * pointer as it can, so the preview keeps tracking the pointer instead of
@@ -172,7 +178,7 @@ export function snappedSectionTo(
   increment: number,
   threshold: number
 ): RouteSection | null {
-  const raw = tangentSectionTo(from, target);
+  const raw = sectionTo(from, target);
   if (!raw || raw.kind === 'straight') {
     return raw;
   }
@@ -191,22 +197,222 @@ export function snappedSectionTo(
     return ahead > EPSILON ? straight(ahead) : raw;
   }
 
-  // The snapped arc's end is `from + radius·w` for a fixed direction `w`; the
-  // radius that puts it nearest the pointer is the pointer's projection onto
-  // that ray. Negative means the pointer is behind it, so leave the curve raw.
-  const turn = raw.handedness === 'left' ? 1 : -1;
-  const signed = turn * sweep;
-  const h = from.heading;
-  const w: Vector = {
-    x: turn * (Math.sin(h + signed) - Math.sin(h)),
-    y: turn * (Math.cos(h) - Math.cos(h + signed)),
-  };
-  const wLengthSquared = dot(w, w); // ~0 only for a full-circle sweep
+  // With the sweep fixed, the arc's end rides a ray out of `from`: it is
+  // `from + radius·chord`, where `chord` is the unit-radius arc's straight
+  // start→end (see {@link unitArcChord}). The radius whose end is nearest the
+  // pointer is the pointer's projection onto that ray; a negative projection
+  // means the pointer is behind `from`, so leave the curve raw.
+  //
+  //            · end       chord: the unit-radius arc's straight start→end.
+  //           /            The end rides the ray  from + radius·chord,
+  //   from ·──→ heading     sliding out as the radius grows.
+  const signed = (raw.handedness === 'left' ? 1 : -1) * sweep;
+  const chord = unitArcChord(from.heading, signed);
+  const chordLengthSquared = dot(chord, chord); // ~0 only for a full-circle sweep
   const radius =
-    wLengthSquared > EPSILON ? dot(toTarget, w) / wLengthSquared : 0;
+    chordLengthSquared > EPSILON
+      ? dot(toTarget, chord) / chordLengthSquared
+      : 0;
   return radius > 0
     ? {kind: 'curved', arc: arc(radius, sweep), handedness: raw.handedness}
     : raw;
+}
+
+/**
+ * What the pointer's target snapped to. Every kind carries the resolved `point`
+ * the section is then built toward; `point` and `line` also carry the open-end
+ * feature they latched onto, which the editor draws.
+ *
+ * - `point`: an open end's point (carries the `end`) — drawn as a ring.
+ * - `line`: one of an open end's lines (carries the `line`) — drawn as a guide.
+ * - `angle`: no open end in range, so the sweep will snap toward `point`. There
+ *   is no feature to carry: the snapped sweep is resolved later, with the arc.
+ * - `none`: snapping is suspended, so nothing snapped and the section is raw.
+ *   Only suspension yields `none` — a pointer near no end is `angle`, not `none`.
+ */
+export type Snap =
+  | {readonly kind: 'point'; readonly point: Point; readonly end: Pose}
+  | {readonly kind: 'line'; readonly point: Point; readonly line: Line}
+  | {readonly kind: 'angle'; readonly point: Point}
+  | {readonly kind: 'none'; readonly point: Point};
+
+// An open end's tangent line (along its heading) and normal line (square to it)
+// — the two lines a section can align to there.
+function tangentAndNormalLines(end: Pose): Line[] {
+  return [
+    {origin: end.position, direction: unitVector(end.heading)},
+    {origin: end.position, direction: unitVector(end.heading + Math.PI / 2)},
+  ];
+}
+
+/**
+ * Resolves how a section laid from `from` toward `target` snaps. It tries the
+ * open ends first — onto an end's point within `pointTolerance`, else its
+ * nearest line within `lineTolerance`; a point wins over a line, being where an
+ * end's two lines cross (aligning to the end itself, not merely a line through
+ * it). Failing that it returns the `angle` snap, leaving the sweep to snap
+ * toward `target`. Other snap sources (parallel track, the sheet edge) may join
+ * the open ends later.
+ *
+ * A line the railhead (`from`) already lies on is skipped: the section is
+ * trivially on it, so aligning to it would only draw a redundant guide — the
+ * case of a first straight laid out along the anchor's own heading line.
+ */
+export function resolveSnap(
+  from: Pose,
+  target: Point,
+  openEnds: readonly Pose[],
+  pointTolerance: number,
+  lineTolerance: number
+): Snap {
+  let nearestPoint: {end: Pose; gap: number} | null = null;
+  let nearestLine: {point: Point; line: Line; gap: number} | null = null;
+  for (const end of openEnds) {
+    const pointGap = distance(target, end.position);
+    if (
+      pointGap <= pointTolerance &&
+      (!nearestPoint || pointGap < nearestPoint.gap)
+    ) {
+      nearestPoint = {end, gap: pointGap};
+    }
+    for (const line of tangentAndNormalLines(end)) {
+      if (onLine(from.position, line)) {
+        continue;
+      }
+      const foot = projectOntoLine(target, line);
+      const lineGap = distance(target, foot);
+      if (
+        lineGap <= lineTolerance &&
+        (!nearestLine || lineGap < nearestLine.gap)
+      ) {
+        nearestLine = {point: foot, line, gap: lineGap};
+      }
+    }
+  }
+  if (nearestPoint) {
+    return {
+      kind: 'point',
+      point: nearestPoint.end.position,
+      end: nearestPoint.end,
+    };
+  }
+  if (nearestLine) {
+    return {kind: 'line', point: nearestLine.point, line: nearestLine.line};
+  }
+  return {kind: 'angle', point: target};
+}
+
+/**
+ * The section laid from `from` toward `target` once `target` has snapped onto
+ * `line`, composing the two snaps: the angle snap picks the shape, then
+ * alignment slides that shape's end onto the line. A straight slides its length
+ * to where its heading line crosses `line`; a curve keeps its snapped sweep and
+ * slides its radius to where its chord ray crosses `line` — each keeping its
+ * clean shape while meeting the line. When the crossing lies behind or is
+ * parallel, the angle-snapped section is kept. `increment`/`threshold` are
+ * radians.
+ */
+export function alignedSectionTo(
+  from: Pose,
+  target: Point,
+  line: Line,
+  increment: number,
+  threshold: number
+): RouteSection | null {
+  const shaped = snappedSectionTo(from, target, increment, threshold);
+  if (!shaped) {
+    return null;
+  }
+  const aligned =
+    shaped.kind === 'straight'
+      ? straightOntoLine(from, line)
+      : curveOntoLine(from, line, shaped.arc.sweep, shaped.handedness);
+  return aligned ?? shaped;
+}
+
+// A straight from `from` ending where its heading line crosses `line`, or null.
+function straightOntoLine(from: Pose, line: Line): RouteSection | null {
+  const headingLine: Line = {
+    origin: from.position,
+    direction: unitVector(from.heading),
+  };
+  const meeting = lineIntersection(headingLine, line);
+  if (!meeting) {
+    return null;
+  }
+  const reach = dot(unitVector(from.heading), {
+    x: meeting.x - from.position.x,
+    y: meeting.y - from.position.y,
+  });
+  return reach > EPSILON ? straight(reach) : null;
+}
+
+// A `sweep`/`handedness` curve from `from` whose end meets `line`, or null. The
+// end rides the ray `from + radius·chord`, so the radius that lands it on the
+// line is where that ray crosses the line.
+function curveOntoLine(
+  from: Pose,
+  line: Line,
+  sweep: number,
+  handedness: Handedness
+): RouteSection | null {
+  const signed = (handedness === 'left' ? 1 : -1) * sweep;
+  const chord = unitArcChord(from.heading, signed);
+  const meeting = lineIntersection(
+    {origin: from.position, direction: chord},
+    line
+  );
+  if (!meeting) {
+    return null;
+  }
+  const radius =
+    dot(
+      {x: meeting.x - from.position.x, y: meeting.y - from.position.y},
+      chord
+    ) / dot(chord, chord);
+  return radius > EPSILON
+    ? {kind: 'curved', arc: arc(radius, sweep), handedness}
+    : null;
+}
+
+/**
+ * The section laid from `from` for a given {@link Snap}. Angle-snapping shapes
+ * the section only where the snap leaves room for it:
+ *
+ * - `angle`: the end is free, so the sweep angle-snaps toward the target — the
+ *   ordinary drawing behavior, used whenever no end is in range.
+ * - `line`: the end must land on a line, which leaves one degree of freedom;
+ *   {@link alignedSectionTo} angle-snaps the shape, then spends that freedom
+ *   sliding the end onto the line.
+ * - `point` / `none`: no room to angle-snap, so the section just reaches its
+ *   target — a `point` pins the end to an open end, and `none` (only when
+ *   snapping is suspended) reaches the raw pointer.
+ *
+ * `increment`/`threshold` are radians.
+ */
+export function sectionForSnap(
+  from: Pose,
+  snap: Snap,
+  increment: number,
+  threshold: number
+): RouteSection | null {
+  switch (snap.kind) {
+    case 'angle':
+      return snappedSectionTo(from, snap.point, increment, threshold);
+    case 'line':
+      return alignedSectionTo(
+        from,
+        snap.point,
+        snap.line,
+        increment,
+        threshold
+      );
+    case 'point':
+    case 'none':
+      return sectionTo(from, snap.point);
+    default:
+      return assertNever(snap);
+  }
 }
 
 /** The running length of a section — the distance a train travels across it. */
@@ -334,6 +540,17 @@ export const EMPTY_LAYOUT: Layout = {anchor: null, sections: []};
  */
 export function railhead(layout: Layout): Pose | null {
   return layout.anchor ? placeRoute(layout.anchor, layout.sections).exit : null;
+}
+
+/**
+ * The open ends a new section can snap onto — every free track end except the
+ * railhead it extends from. Today a layout is a single chain, so this is its
+ * anchor once a section has been laid (before that, the anchor is itself the
+ * railhead). It returns a list, named for the general case, because turnouts and
+ * multiple runs will add open ends later.
+ */
+export function openEnds(layout: Layout): Pose[] {
+  return layout.anchor && layout.sections.length > 0 ? [layout.anchor] : [];
 }
 
 /** The layout's sections placed in the plane. */

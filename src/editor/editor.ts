@@ -8,13 +8,15 @@
 import paper from 'paper';
 import {degToRad, Point, Pose} from '../domain/geometry';
 import {
+  openEnds,
   placedSections,
   placeSection,
   railhead,
+  resolveSnap,
   RouteSection,
+  sectionForSnap,
   sectionLength,
-  snappedSectionTo,
-  tangentSectionTo,
+  Snap,
 } from '../domain/layout';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
@@ -27,6 +29,15 @@ const INITIAL_HEADING = 0;
 /** Curve sweeps snap to multiples of this when within SNAP_THRESHOLD of one. */
 const SNAP_INCREMENT = degToRad(15);
 const SNAP_THRESHOLD = degToRad(5);
+/** Pointer pull, in px, onto an open end's point and its tangent/normal lines. */
+const POINT_MAGNET_PX = 12;
+const LINE_MAGNET_PX = 8;
+
+/** What a release would lay right now: the section, and the snap that shaped it. */
+interface Pending {
+  readonly section: RouteSection | null;
+  readonly snap: Snap | null;
+}
 
 /** Wires the lay-track tool onto `canvas`, drawing within `space`. */
 export function startEditor(
@@ -44,15 +55,31 @@ export function startEditor(
   const transform = (): ViewTransform =>
     sceneTransform(space, paper.view.size.width, paper.view.size.height);
 
-  // The section the pointer would lay next, snapped to a tidy angle unless
-  // snapping is suspended. Computed once and used for both preview and commit.
-  function nextSection(head: Pose): RouteSection | null {
-    if (!pointer) {
-      return null;
+  /**
+   * The next section the pointer would lay, with how its target snapped —
+   * computed together so the snap shown in the preview is the one that gets
+   * laid. Nulls when there is nothing to lay (no pointer yet, or no railhead).
+   */
+  function draft(view: ViewTransform, head: Pose | null): Pending {
+    if (!pointer || !head) {
+      return {section: null, snap: null};
     }
-    return suspendSnap
-      ? tangentSectionTo(head, pointer)
-      : snappedSectionTo(head, pointer, SNAP_INCREMENT, SNAP_THRESHOLD);
+    // Suspending snapping (Option/Alt) gives a raw `none` snap; otherwise the
+    // target snaps to the open ends, falling back to the angle snap. Either way
+    // sectionForSnap turns the snap into the section.
+    const snap: Snap = suspendSnap
+      ? {kind: 'none', point: pointer}
+      : resolveSnap(
+          head,
+          pointer,
+          openEnds(state.layout),
+          POINT_MAGNET_PX / view.scale,
+          LINE_MAGNET_PX / view.scale
+        );
+    return {
+      section: sectionForSnap(head, snap, SNAP_INCREMENT, SNAP_THRESHOLD),
+      snap,
+    };
   }
 
   function refreshStatic(view: ViewTransform): void {
@@ -64,9 +91,9 @@ export function startEditor(
 
   function refreshOverlay(view: ViewTransform): void {
     const head = railhead(state.layout);
-    const section = head ? nextSection(head) : null;
+    const {section, snap} = draft(view, head);
     const preview = head && section ? placeSection(head, section) : null;
-    renderOverlay(view, preview, head);
+    renderOverlay(view, preview, head, snap);
     paper.view.update();
   }
 
@@ -91,7 +118,7 @@ export function startEditor(
     if (!head) {
       state = start(state, {position: pointer, heading: INITIAL_HEADING});
     } else {
-      const section = nextSection(head);
+      const {section} = draft(view, head);
       if (section) {
         state = append(state, section);
       }

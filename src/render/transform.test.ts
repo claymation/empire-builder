@@ -20,4 +20,9 @@ describe('fitTransform', () => {
     expect(back.x).toBeCloseTo(137);
     expect(back.y).toBeCloseTo(88);
   });
+
+  it('reports the limiting scale as pixels per millimeter', () => {
+    // Width fit is 400/200 = 2×; height fit is 200/100 = 2×; the min is 2.
+    expect(transform.scale).toBeCloseTo(2);
+  });
 });

@@ -11,6 +11,7 @@ import {
   curveRight,
   EMPTY_LAYOUT,
   exitPoses,
+  openEnds,
   placedSections,
   railhead,
   sectionBounds,
@@ -19,10 +20,13 @@ import {
   placeSection,
   placeRoute,
   routeBounds,
+  alignedSectionTo,
+  sectionForSnap,
   snappedSectionTo,
   snapToIncrement,
+  resolveSnap,
   straight,
-  tangentSectionTo,
+  sectionTo,
   type Layout,
   type RouteSection,
 } from './layout';
@@ -174,21 +178,21 @@ describe('placeRoute — the oval', () => {
 
 /** Asserts the tangent section from `from` actually ends at `target`. */
 function reaches(from: Pose, target: Point): void {
-  const section = tangentSectionTo(from, target);
+  const section = sectionTo(from, target);
   if (!section) throw new Error('expected a section');
   const [exit] = exitPoses(placeSection(from, section));
   expect(exit.position.x).toBeCloseTo(target.x);
   expect(exit.position.y).toBeCloseTo(target.y);
 }
 
-describe('tangentSectionTo', () => {
+describe('sectionTo', () => {
   it('returns a straight to a point dead ahead', () => {
-    expect(tangentSectionTo(ORIGIN, {x: 100, y: 0})?.kind).toBe('straight');
+    expect(sectionTo(ORIGIN, {x: 100, y: 0})?.kind).toBe('straight');
     reaches(ORIGIN, {x: 100, y: 0});
   });
 
   it('curves left toward a point off to the left', () => {
-    expect(tangentSectionTo(ORIGIN, {x: 100, y: 100})).toMatchObject({
+    expect(sectionTo(ORIGIN, {x: 100, y: 100})).toMatchObject({
       kind: 'curved',
       handedness: 'left',
     });
@@ -196,7 +200,7 @@ describe('tangentSectionTo', () => {
   });
 
   it('curves right toward a point off to the right', () => {
-    expect(tangentSectionTo(ORIGIN, {x: 100, y: -100})).toMatchObject({
+    expect(sectionTo(ORIGIN, {x: 100, y: -100})).toMatchObject({
       kind: 'curved',
       handedness: 'right',
     });
@@ -209,7 +213,7 @@ describe('tangentSectionTo', () => {
   });
 
   it('reaches targets across quadrants and start headings', () => {
-    // Headings deliberately include an off-grid 45° to catch axis-only bugs.
+    // Headings deliberately include an off-grid 45° to catch line-only bugs.
     const poses: Pose[] = [
       {position: {x: 0, y: 0}, heading: 0},
       {position: {x: 5, y: -3}, heading: Math.PI / 2},
@@ -230,8 +234,8 @@ describe('tangentSectionTo', () => {
   });
 
   it('returns null for a degenerate or unreachable target', () => {
-    expect(tangentSectionTo(ORIGIN, {x: 0, y: 0})).toBeNull();
-    expect(tangentSectionTo(ORIGIN, {x: -100, y: 0})).toBeNull();
+    expect(sectionTo(ORIGIN, {x: 0, y: 0})).toBeNull();
+    expect(sectionTo(ORIGIN, {x: -100, y: 0})).toBeNull();
   });
 });
 
@@ -258,7 +262,7 @@ describe('snappedSectionTo', () => {
   it('leaves an off-grid sweep (and its radius) alone', () => {
     const target = {x: 100, y: 90}; // ~84° — outside the snap threshold
     expect(snappedSectionTo(ORIGIN, target, increment, threshold)).toEqual(
-      tangentSectionTo(ORIGIN, target)
+      sectionTo(ORIGIN, target)
     );
   });
 
@@ -289,5 +293,239 @@ describe('snapToIncrement', () => {
   it('leaves values outside the threshold untouched', () => {
     expect(snapToIncrement(38, 15, 5)).toBe(38);
     expect(snapToIncrement(8, 15, 5)).toBe(8); // between 0 and 15, snaps to neither
+  });
+});
+
+describe('openEnds', () => {
+  it('has no open end before a section is laid', () => {
+    expect(openEnds(EMPTY_LAYOUT)).toEqual([]);
+    expect(openEnds({anchor: ORIGIN, sections: []})).toEqual([]);
+  });
+
+  it('exposes the anchor once a section extends from it', () => {
+    const layout: Layout = {anchor: ORIGIN, sections: [straight(feet(2))]};
+    expect(openEnds(layout)).toEqual([ORIGIN]);
+  });
+});
+
+describe('resolveSnap', () => {
+  // One open end at (100, 50) facing east: its heading line is the line y = 50,
+  // its normal line the line x = 100. The railhead is off both lines, so both
+  // are on offer.
+  const end: Pose = {position: {x: 100, y: 50}, heading: 0};
+  const ends = [end];
+  const from: Pose = {position: {x: 0, y: 0}, heading: 0};
+  const pointTolerance = 10;
+  const lineTolerance = 6;
+
+  it('latches onto the end when the target is within the point magnet', () => {
+    const snap = resolveSnap(
+      from,
+      {x: 104, y: 53},
+      ends,
+      pointTolerance,
+      lineTolerance
+    );
+    expect(snap.kind).toBe('point');
+    expect(snap.point).toEqual({x: 100, y: 50});
+  });
+
+  it('projects onto the heading line when running alongside it', () => {
+    const snap = resolveSnap(
+      from,
+      {x: 300, y: 53},
+      ends,
+      pointTolerance,
+      lineTolerance
+    );
+    expect(snap.kind).toBe('line');
+    expect(snap.point.x).toBeCloseTo(300);
+    expect(snap.point.y).toBeCloseTo(50);
+  });
+
+  it('projects onto the normal line when squared up across it', () => {
+    const snap = resolveSnap(
+      from,
+      {x: 103, y: 250},
+      ends,
+      pointTolerance,
+      lineTolerance
+    );
+    expect(snap.kind).toBe('line');
+    expect(snap.point.x).toBeCloseTo(100);
+    expect(snap.point.y).toBeCloseTo(250);
+  });
+
+  it('prefers the point over the lines that cross it', () => {
+    // Dead on the end: every line passes through it at zero distance, but the
+    // point snap must win.
+    const snap = resolveSnap(
+      from,
+      {x: 100, y: 50},
+      ends,
+      pointTolerance,
+      lineTolerance
+    );
+    expect(snap.kind).toBe('point');
+  });
+
+  it('leaves a target clear of every magnet unsnapped', () => {
+    const snap = resolveSnap(
+      from,
+      {x: 300, y: 250},
+      ends,
+      pointTolerance,
+      lineTolerance
+    );
+    expect(snap.kind).toBe('angle');
+    expect(snap.point).toEqual({x: 300, y: 250});
+  });
+
+  it('skips a line the railhead already lies on', () => {
+    // Railhead on the end's heading line (y = 50) — as after a first straight
+    // laid along the anchor's heading. A target running along that line no
+    // longer snaps to it, so no redundant guide appears.
+    const onHeadingLine: Pose = {position: {x: 0, y: 50}, heading: 0};
+    const snap = resolveSnap(
+      onHeadingLine,
+      {x: 300, y: 53},
+      ends,
+      pointTolerance,
+      lineTolerance
+    );
+    expect(snap.kind).toBe('angle');
+  });
+
+  it('still offers the other line when the railhead lies on one', () => {
+    // On the heading line, but the normal line (x = 100) is unaffected.
+    const onHeadingLine: Pose = {position: {x: 0, y: 50}, heading: 0};
+    const snap = resolveSnap(
+      onHeadingLine,
+      {x: 103, y: 250},
+      ends,
+      pointTolerance,
+      lineTolerance
+    );
+    expect(snap.kind).toBe('line');
+    expect(snap.point.x).toBeCloseTo(100);
+  });
+});
+
+describe('alignedSectionTo', () => {
+  const increment = degToRad(15);
+  const threshold = degToRad(5);
+  // The anchor's normal line: the vertical line x = 0.
+  const normalLine = {origin: {x: 0, y: 0}, direction: {x: 0, y: 1}};
+
+  it('lands a straight return leg on the line without bowing', () => {
+    // Railhead heading west, level above the anchor. A target a hair off the
+    // heading line still yields a perfectly straight section ending on the line.
+    const from: Pose = {position: {x: 200, y: 100}, heading: Math.PI};
+    const section = alignedSectionTo(
+      from,
+      {x: 0, y: 103},
+      normalLine,
+      increment,
+      threshold
+    );
+    if (section?.kind !== 'straight') throw new Error('expected a straight');
+    const [exit] = exitPoses(placeSection(from, section));
+    expect(exit.position.x).toBeCloseTo(0);
+    expect(exit.position.y).toBeCloseTo(100); // the heading line, not the target's y
+    expect(exit.heading).toBeCloseTo(Math.PI);
+  });
+
+  it('meets the line where an oblique heading line crosses it', () => {
+    // Heading up-left at 135°: a plain flatten would miss the line, but the
+    // crossing of the heading line with x = 0 is (0, 100).
+    const from: Pose = {position: {x: 100, y: 0}, heading: (3 * Math.PI) / 4};
+    const section = alignedSectionTo(
+      from,
+      {x: 0, y: 98},
+      normalLine,
+      increment,
+      threshold
+    );
+    if (section?.kind !== 'straight') throw new Error('expected a straight');
+    const [exit] = exitPoses(placeSection(from, section));
+    expect(exit.position.x).toBeCloseTo(0);
+    expect(exit.position.y).toBeCloseTo(100);
+  });
+
+  it('keeps a clean-angle curve, ending where its chord meets the line', () => {
+    // A 90° arc from the origin: its chord ray crosses x = 100 at (100, 100).
+    const from: Pose = {position: {x: 0, y: 0}, heading: 0};
+    const line = {origin: {x: 100, y: 0}, direction: {x: 0, y: 1}};
+    const section = alignedSectionTo(
+      from,
+      {x: 100, y: 100},
+      line,
+      increment,
+      threshold
+    );
+    if (section?.kind !== 'curved') throw new Error('expected a curve');
+    expect(radToDeg(section.arc.sweep)).toBeCloseTo(90);
+    const [exit] = exitPoses(placeSection(from, section));
+    expect(exit.position.x).toBeCloseTo(100);
+    expect(exit.position.y).toBeCloseTo(100);
+  });
+
+  it("snaps a curve's sweep and slides its radius onto the line", () => {
+    // A target at (100, 105) is a ~92.8° arc; the sweep snaps to 90° and the
+    // radius slides so the end lands on x = 100 — at (100, 100), not the target.
+    const from: Pose = {position: {x: 0, y: 0}, heading: 0};
+    const line = {origin: {x: 100, y: 0}, direction: {x: 0, y: 1}};
+    const section = alignedSectionTo(
+      from,
+      {x: 100, y: 105},
+      line,
+      increment,
+      threshold
+    );
+    if (section?.kind !== 'curved') throw new Error('expected a curve');
+    expect(radToDeg(section.arc.sweep)).toBeCloseTo(90);
+    const [exit] = exitPoses(placeSection(from, section));
+    expect(exit.position.x).toBeCloseTo(100);
+    expect(exit.position.y).toBeCloseTo(100);
+  });
+});
+
+describe('sectionForSnap', () => {
+  const increment = degToRad(15);
+  const threshold = degToRad(5);
+
+  it('angle-snaps toward the target when no end is in range', () => {
+    const snap = {kind: 'angle' as const, point: {x: 100, y: 95}};
+    expect(sectionForSnap(ORIGIN, snap, increment, threshold)).toEqual(
+      snappedSectionTo(ORIGIN, snap.point, increment, threshold)
+    );
+  });
+
+  it('reaches the raw target when snapping is suspended', () => {
+    // `none` is ⌥ held: no angle snap, just the plain tangent to the pointer.
+    const snap = {kind: 'none' as const, point: {x: 100, y: 95}};
+    expect(sectionForSnap(ORIGIN, snap, increment, threshold)).toEqual(
+      sectionTo(ORIGIN, snap.point)
+    );
+  });
+
+  it('aims straight at a snapped open-end point', () => {
+    const end: Pose = {position: {x: 100, y: 40}, heading: Math.PI};
+    const snap = {kind: 'point' as const, point: end.position, end};
+    expect(sectionForSnap(ORIGIN, snap, increment, threshold)).toEqual(
+      sectionTo(ORIGIN, end.position)
+    );
+  });
+
+  it('aligns to a snapped line', () => {
+    const from: Pose = {position: {x: 200, y: 100}, heading: Math.PI};
+    const snap = {
+      kind: 'line' as const,
+      point: {x: 0, y: 103},
+      line: {origin: {x: 0, y: 0}, direction: {x: 0, y: 1}},
+    };
+    expect(sectionForSnap(from, snap, increment, threshold)?.kind).toBe(
+      'straight'
+    );
   });
 });

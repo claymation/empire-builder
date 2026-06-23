@@ -14,13 +14,14 @@ import {
   arcCenter,
   arcEndPoint,
   arcMidpoint,
+  Line,
   PlacedArc,
   Point,
   Pose,
   radToDeg,
   segmentEnd,
 } from '../domain/geometry';
-import {sectionGeometry, PlacedSection} from '../domain/layout';
+import {Snap, sectionGeometry, PlacedSection} from '../domain/layout';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
 import {fitTransform, ViewTransform} from './transform';
@@ -35,6 +36,10 @@ const PREVIEW_COLOR = '#3b82f6';
 const RAIL_WIDTH_PX = 3;
 const RAILHEAD_RADIUS_PX = 5;
 const LABEL_OFFSET_PX = 18;
+/** Accent for alignment feedback: the guide line and the open-end snap ring. */
+const GUIDE_COLOR = '#ec4899';
+const GUIDE_DASH = [4, 4];
+const SNAP_RING_RADIUS_PX = 9;
 
 /** Maps a domain point (mm, y-up) to a canvas point (px, y-down). */
 type ToCanvas = (point: Point) => paper.Point;
@@ -61,13 +66,21 @@ export function renderStatic(
   }
 }
 
-/** Renders the pointer-follow preview and railhead marker. Redraw on every move. */
+/**
+ * Renders the pointer-follow preview, railhead marker, and any alignment
+ * feedback. The guide sits beneath the ghost; a snap ring rides on top, marking
+ * the open end the target has latched onto. Redraw on every move.
+ */
 export function renderOverlay(
   transform: ViewTransform,
   preview: PlacedSection | null,
-  railhead: Pose | null
+  railhead: Pose | null,
+  snap: Snap | null
 ): void {
   const toCanvas = onLayer('overlay', transform);
+  if (snap?.kind === 'line') {
+    drawGuide(snap.line, toCanvas, transform.scale);
+  }
   if (preview) {
     drawSection(preview, toCanvas, PREVIEW_COLOR, true);
     drawAngleLabel(preview, toCanvas);
@@ -75,6 +88,40 @@ export function renderOverlay(
   if (railhead) {
     drawRailhead(railhead.position, toCanvas);
   }
+  if (snap?.kind === 'point') {
+    drawSnapRing(snap.point, toCanvas);
+  }
+}
+
+/**
+ * Draws an alignment guide along `line`, extended past the canvas in both
+ * directions so it reads as a full-bleed line. The reach is the canvas spread
+ * converted to domain units, which always overshoots the visible area.
+ */
+function drawGuide(line: Line, toCanvas: ToCanvas, scale: number): void {
+  const length = Math.hypot(line.direction.x, line.direction.y);
+  if (length === 0) {
+    return;
+  }
+  const reach = (paper.view.size.width + paper.view.size.height) / scale;
+  const step = {
+    x: (line.direction.x / length) * reach,
+    y: (line.direction.y / length) * reach,
+  };
+  const guide = new paper.Path.Line(
+    toCanvas({x: line.origin.x - step.x, y: line.origin.y - step.y}),
+    toCanvas({x: line.origin.x + step.x, y: line.origin.y + step.y})
+  );
+  guide.strokeColor = new paper.Color(GUIDE_COLOR);
+  guide.strokeWidth = 1;
+  guide.dashArray = GUIDE_DASH;
+}
+
+/** Rings the open end a target has latched onto. */
+function drawSnapRing(point: Point, toCanvas: ToCanvas): void {
+  const ring = new paper.Path.Circle(toCanvas(point), SNAP_RING_RADIUS_PX);
+  ring.strokeColor = new paper.Color(GUIDE_COLOR);
+  ring.strokeWidth = 2;
 }
 
 /**
