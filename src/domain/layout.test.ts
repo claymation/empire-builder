@@ -24,6 +24,7 @@ import {
   sectionForSnap,
   snappedSectionTo,
   snapToIncrement,
+  realizedSnap,
   resolveSnap,
   straight,
   sectionTo,
@@ -413,10 +414,10 @@ describe('resolveSnap', () => {
     expect(snap.point.x).toBeCloseTo(100);
   });
 
-  it('keeps a line the railhead lies on but heads across', () => {
-    // The railhead sits on the normal line (x = 100) but faces east, across it —
-    // as it does after a 180° curve returns to the anchor's normal. A section
-    // from here departs the line, so the guide must stay on offer.
+  it('keeps a line the railhead crosses as a candidate', () => {
+    // The railhead sits on the normal line (x = 100) facing east, across it. A
+    // section can still curve back onto it (a 180° arc), so resolveSnap offers
+    // the candidate; realizedSnap later decides whether its guide is drawn.
     const acrossNormal: Pose = {position: {x: 100, y: 0}, heading: 0};
     const snap = resolveSnap(
       acrossNormal,
@@ -485,6 +486,21 @@ describe('resolveSnap', () => {
     expect(
       resolveSnap(from, justOutside, ends, pointTolerance, lineTolerance).kind
     ).toBe('angle');
+  });
+
+  it('skips the zero-length point on an end at the railhead', () => {
+    // Drawing from the anchor itself: a target within the point magnet but off
+    // its lines must not latch the end (that section would be zero-length); it
+    // falls through to the angle snap.
+    const onlyEnd: Pose = {position: {x: 0, y: 0}, heading: 0};
+    const snap = resolveSnap(
+      onlyEnd,
+      {x: 8, y: 2}, // 8.2 from the point (inside the magnet), 8 off the normal
+      [onlyEnd],
+      pointTolerance,
+      lineTolerance
+    );
+    expect(snap.kind).toBe('angle');
   });
 });
 
@@ -641,5 +657,34 @@ describe('sectionForSnap', () => {
     expect(section).toEqual(
       sectionOntoLine(from, snap.point, line, increment, threshold)
     );
+  });
+});
+
+describe('realizedSnap', () => {
+  const line = {origin: {x: 0, y: 0}, direction: {x: 0, y: 1}}; // x = 0
+  const lineSnap = {kind: 'line' as const, point: {x: 0, y: 100}, line};
+
+  it('keeps a line guide the section ends on', () => {
+    // A 180° curve from the origin ends on the start's normal (x = 0).
+    const half = curveLeft(50, 180);
+    expect(realizedSnap(ORIGIN, lineSnap, half)).toEqual(lineSnap);
+  });
+
+  it('drops a line guide the section does not end on', () => {
+    // A 90° curve ends at (100, 100), off x = 0 — the guide would be idle.
+    const quarter = curveLeft(100, 90);
+    expect(realizedSnap(ORIGIN, lineSnap, quarter)).toBeNull();
+  });
+
+  it('passes point and angle snaps through', () => {
+    const end: Pose = {position: {x: 100, y: 40}, heading: Math.PI};
+    const point = {kind: 'point' as const, point: end.position, end};
+    const angle = {kind: 'angle' as const, point: {x: 100, y: 95}};
+    expect(realizedSnap(ORIGIN, point, straight(10))).toEqual(point);
+    expect(realizedSnap(ORIGIN, angle, straight(10))).toEqual(angle);
+  });
+
+  it('shows nothing when there is no section', () => {
+    expect(realizedSnap(ORIGIN, lineSnap, null)).toBeNull();
   });
 });

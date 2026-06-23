@@ -12,6 +12,7 @@ import {
   placedSections,
   placeSection,
   railhead,
+  realizedSnap,
   resolveSnap,
   RouteSection,
   sectionForSnap,
@@ -78,10 +79,9 @@ export function startEditor(
       POINT_MAGNET_PX / view.scale,
       LINE_MAGNET_PX / view.scale
     );
-    return {
-      section: sectionForSnap(head, snap, SNAP_INCREMENT, SNAP_THRESHOLD),
-      snap,
-    };
+    const section = sectionForSnap(head, snap, SNAP_INCREMENT, SNAP_THRESHOLD);
+    // Draw only the snap the section earns: a guide whose line the end lands on.
+    return {section, snap: realizedSnap(head, snap, section)};
   }
 
   function refreshStatic(view: ViewTransform): void {
