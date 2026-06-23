@@ -12,9 +12,8 @@
 import paper from 'paper';
 import {
   arcCenter,
-  arcEnd,
+  arcEndPoint,
   arcMidpoint,
-  arcStart,
   PlacedArc,
   Point,
   Pose,
@@ -89,7 +88,7 @@ function drawAngleLabel(section: PlacedSection, toCanvas: ToCanvas): void {
   if (geometry.kind === 'arc') {
     const degrees = Math.abs(radToDeg(geometry.sweep));
     const radius = toInches(geometry.radius);
-    const end = toCanvas(arcEnd(geometry));
+    const end = toCanvas(arcEndPoint(geometry));
     const outward = end.subtract(toCanvas(arcCenter(geometry))).normalize();
     placeLabel(
       `${degrees.toFixed(1)}° · r ${radius.toFixed(1)}″`,
@@ -211,8 +210,8 @@ function drawRailhead(position: Point, toCanvas: ToCanvas): void {
  */
 function arcPath(placedArc: PlacedArc, toCanvas: ToCanvas): paper.Path {
   return new paper.Path.Arc(
-    toCanvas(arcStart(placedArc)),
+    toCanvas(placedArc.start.position),
     toCanvas(arcMidpoint(placedArc)),
-    toCanvas(arcEnd(placedArc))
+    toCanvas(arcEndPoint(placedArc))
   );
 }

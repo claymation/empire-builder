@@ -16,7 +16,7 @@ Working code is not enough. The goal is code that is correct, clear, and that th
 - Model the domain explicitly (tracks, segments, connections, layouts) rather than passing around loose primitives.
 - Handle the unhappy path. Validate inputs, surface errors, don't swallow them.
 - No dead code, no commented-out blocks, no `any` as a shortcut. Delete instead of disabling.
-- Write comments for the long term, following John Ousterhout's *A Philosophy of Software Design*: capture what the code cannot say for itself — intent, rationale, units, invariants — at the right level of abstraction. No point-in-time breadcrumbs ("for now", "newly added", "this will change when…", "temporary", "provisional"). Describe what the code *is* and *why*, not what it used to be or what may come.
+- Write comments for the long term, following John Ousterhout's *A Philosophy of Software Design*: capture what the code cannot say for itself — intent, rationale, units, invariants — at the right level of abstraction. No point-in-time breadcrumbs ("for now", "newly added", "this will change when…", "temporary", "provisional"). Describe what the code *is* and *why* — not what it used to be, what may come, or what it *isn't*. Don't contrast with alternatives the code doesn't implement (no "not a ray", "unlike a tree", "we don't use X here").
 - Leave the code better than you found it, but keep refactors separate from feature changes.
 - If a requirement is ambiguous or a design choice has real trade-offs, stop and ask rather than guessing.
 
