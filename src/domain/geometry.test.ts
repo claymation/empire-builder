@@ -10,6 +10,7 @@ import {
   arcLength,
   arcMidpoint,
   boundsOfPoints,
+  colinear,
   cross,
   degToRad,
   distance,
@@ -296,6 +297,27 @@ describe('onLine', () => {
 
   it('rejects a point a hair off the line', () => {
     expect(onLine({x: 5, y: 5.001}, tilted)).toBe(false);
+  });
+});
+
+describe('colinear', () => {
+  const xAxis: Line = {origin: {x: 0, y: 0}, direction: {x: 1, y: 0}};
+
+  it('holds when the pose lies on the line and heads along it (either way)', () => {
+    expect(colinear({position: {x: 5, y: 0}, heading: 0}, xAxis)).toBe(true);
+    expect(colinear({position: {x: 5, y: 0}, heading: Math.PI}, xAxis)).toBe(
+      true
+    );
+  });
+
+  it('fails when the pose is on the line but heads across it', () => {
+    expect(
+      colinear({position: {x: 5, y: 0}, heading: Math.PI / 2}, xAxis)
+    ).toBe(false);
+  });
+
+  it('fails when the pose heads along the line but sits off it', () => {
+    expect(colinear({position: {x: 5, y: 3}, heading: 0}, xAxis)).toBe(false);
   });
 });
 

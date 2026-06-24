@@ -4,7 +4,7 @@ Guidance for Claude when working in this repository. Keep it concise and factual
 
 ## Project
 
-**empire-builder** — a web app for designing model railroad layouts. Users draw and arrange track, plan their layout, and build their "empire" on an HTML5 canvas.
+**Empire Builder** — a web app for designing model railroad layouts. Users draw and edit track plans (build their "empire") on an HTML5 canvas.
 
 ## Prime directive: write good code
 
@@ -62,8 +62,8 @@ We follow the [Google TypeScript Style Guide](https://google.github.io/styleguid
 - **Work iteratively.** Build thin vertical slices end-to-end; get one solid before widening. Avoid big-bang changes.
 - **Test alongside features.** Geometry and domain logic should have unit tests; a passing suite is what makes iterative changes safe. Leave no module untested.
 - **Write tests that can fail for the right reason.** Use non-trivial, non-zero inputs (so a defaulted or hard-coded value can't pass), cover several cases (e.g. all quadrants for geometry), and pin boundaries exactly (the value that just fits vs. the one that just doesn't) rather than only gross failures. Express inputs in domain units (`feet(2)`, not `100`).
-- **Commits are the user's job.** Do not commit unless explicitly asked. Leave changes staged-or-unstaged for review.
 - **Run the checks** (lint, test, build) before reporting work as complete.
+- **Respond to all code review conversations.** Allow the reviewer to resolve the conversation.
 
 ## Structure
 

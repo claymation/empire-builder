@@ -21,7 +21,7 @@ import {
   arcEndPose,
   arcLength,
   Bounds,
-  cross,
+  colinear,
   degToRad,
   distance,
   dot,
@@ -538,15 +538,6 @@ export function sectionOntoLine(
       ? straightOntoLine(from, line)
       : curveOntoLine(from, line, shaped.arc.sweep, shaped.handedness);
   return aligned ?? shaped;
-}
-
-// Whether `from` is colinear with `line`: its position lies on the line and its
-// heading runs along it, so a section leaving `from` stays on the line.
-function colinear(from: Pose, line: Line): boolean {
-  return (
-    onLine(from.position, line) &&
-    Math.abs(cross(unitVector(from.heading), line.direction)) < EPSILON
-  );
 }
 
 /**

@@ -190,6 +190,17 @@ export function onLine(point: Point, line: Line): boolean {
   return distance(point, projectOntoLine(point, line)) < EPSILON;
 }
 
+/**
+ * Whether `pose` is colinear with `line`: its position lies on the line and its
+ * heading runs along it (either direction).
+ */
+export function colinear(pose: Pose, line: Line): boolean {
+  return (
+    onLine(pose.position, line) &&
+    Math.abs(cross(unitVector(pose.heading), line.direction)) < EPSILON
+  );
+}
+
 // ── Bounds ──
 
 /** An axis-aligned bounding box. */
