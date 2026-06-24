@@ -48,7 +48,8 @@ drifting away from them.
 ## Status — built so far (2026-06-24)
 
 A first interactive slice is in place: you can lay a connected run of track on a
-fixed sheet, with snapping and undo. Everything else below is not yet started.
+fixed sheet — with snapping, tangent connections onto open ends, and undo.
+Everything else below is not yet started.
 
 **Built**
 
@@ -59,12 +60,16 @@ fixed sheet, with snapping and undo. Everything else below is not yet started.
   the radius is fitted so the snapped arc still tracks the pointer. Holding
   Option/Alt suspends snapping. Sections chain with tangency enforced by
   construction, so a run can never kink.
-- **US-5 (partial) — Alignment snapping to open ends.** While drawing, the
-  target snaps onto an open end's point (shown as a ring) or onto its tangent /
-  normal lines (shown as a guide), which is what lines a return leg up with the
-  start. Tangency at joins holds by construction within a run. *Not* built:
-  snapping a final piece exactly shut to close a loop — the planned "slice A2"
-  was set aside as not directionally right, to be reconsidered.
+- **US-5 — Connect sections at their endpoints.** While drawing, the target
+  snaps onto an open end's point (shown as a ring) or onto its tangent / normal
+  lines (shown as a guide), which lines a return leg up with the start. Within a
+  run, tangency at every join holds by construction. Laying a section back onto
+  an open end is tangency-gated — the point snap is offered only when that
+  section arrives tangent — so a connection, closing a loop included, joins
+  without a kink; once the tail rejoins the anchor the run has no free end and
+  drawing stops. First-class loop-closing is deliberately out of scope: most
+  layouts have open ends, and snapping a tangent section onto the start covers
+  the closed case.
 - **US-9 — Undo and redo** (⌘Z / ⇧⌘Z), built alongside the drawing tool.
 - **US-16 (partial) — Running total.** The status line shows the section count
   and total run in inches. Per-section lengths and a flex-track total are not

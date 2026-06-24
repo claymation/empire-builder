@@ -122,13 +122,19 @@ export function startEditor(
   tool.onMouseUp = (event: paper.ToolEvent) => {
     const view = transform();
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
-    const railhead = railheadOf(state.layout);
-    if (!railhead) {
+    if (!state.layout.anchor) {
       state = start(state, {position: pointer, heading: INITIAL_HEADING});
     } else {
-      const {section} = draft(view, railhead);
-      if (section) {
-        state = append(state, section);
+      // A railhead is the free tail to extend; a tangent point snap lays the
+      // section straight onto an open end and, with the tail then meeting the
+      // start, leaves no railhead — drawing simply stops. A run that has already
+      // rejoined its anchor has no railhead and ignores the click.
+      const railhead = railheadOf(state.layout);
+      if (railhead) {
+        const {section} = draft(view, railhead);
+        if (section) {
+          state = append(state, section);
+        }
       }
     }
     refreshStatic(view);

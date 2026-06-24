@@ -35,6 +35,7 @@ import {
   PlacedSegment,
   Point,
   Pose,
+  posesCoincide,
   projectOntoLine,
   radToDeg,
   segmentBounds,
@@ -50,6 +51,17 @@ import {assertNever, requirePositive} from './validate';
 
 // Distances (mm) and dot products (mm²) below this are treated as zero.
 const EPSILON = 1e-9;
+
+/**
+ * The largest heading mismatch (radians) at which a section is taken to meet an
+ * open end tangentially. A connecting section is built to reach the end's
+ * position exactly, but a single arc generally arrives only *near* the end's
+ * heading; within this threshold the join reads as smooth. It is the one
+ * definition of "joined": it gates whether a point snap is offered and whether
+ * {@link railheadOf} sees the tail as having rejoined the start. Wider tolerates
+ * a slight kink at the join; tighter demands a more exact approach.
+ */
+const CONNECTION_HEADING_TOLERANCE = degToRad(2);
 
 // ── Section shapes ──
 
@@ -239,11 +251,29 @@ export function placedRoute(layout: Layout): PlacedRoute | null {
 }
 
 /**
- * The open end the next section would extend from, or null before the start has
- * been placed.
+ * The railhead — the run's free tail, where the next section would extend from —
+ * or null when there is none: before the start is placed, or once a section has
+ * been laid tangent back onto the anchor. In that second case the tail meets the
+ * start (within {@link CONNECTION_HEADING_TOLERANCE}), leaving no free end to
+ * grow, so drawing has nowhere to go.
  */
 export function railheadOf(layout: Layout): Pose | null {
-  return placedRoute(layout)?.exit ?? null;
+  const route = placedRoute(layout);
+  if (!route || !layout.anchor) {
+    return null;
+  }
+  if (
+    layout.sections.length > 0 &&
+    posesCoincide(
+      route.exit,
+      layout.anchor,
+      EPSILON,
+      CONNECTION_HEADING_TOLERANCE
+    )
+  ) {
+    return null;
+  }
+  return route.exit;
 }
 
 /**
@@ -282,6 +312,12 @@ export type Snap =
  * within `lineTolerance`, a point winning over a line. Failing both it returns
  * the `angle` snap, leaving the sweep to snap toward `target`.
  *
+ * A point snap lands the section's end on the open end itself, so it is offered
+ * only when the section reaching that end meets it tangentially (within
+ * {@link CONNECTION_HEADING_TOLERANCE}) — a connection never kinks. A near miss
+ * declines the point and falls through to the line and angle snaps, which help
+ * align the heading until the approach is tangent.
+ *
  * Two cases offer no alignment and are skipped:
  * - An end at `from`: a section to it would be zero-length.
  * - A line `from` runs along (on it and parallel): a section there is trivially
@@ -307,7 +343,19 @@ export function resolveSnap(
       continue;
     }
     const gap = distance(target, end.position);
-    if (gap <= pointTolerance && (!nearestPoint || gap < nearestPoint.gap)) {
+    if (gap > pointTolerance || (nearestPoint && gap >= nearestPoint.gap)) {
+      continue;
+    }
+    // A point snap lays a section straight onto the end, so only offer it when
+    // that section meets the end tangentially — otherwise the join would kink,
+    // which a run never permits. The connecting section reaches the end's
+    // position; it qualifies when its exit pose coincides with the end.
+    const connector = sectionTo(from, end.position);
+    if (!connector) {
+      continue;
+    }
+    const [exit] = exitPoses(placeSection(from, connector));
+    if (posesCoincide(exit, end, EPSILON, CONNECTION_HEADING_TOLERANCE)) {
       nearestPoint = {end, gap};
     }
   }
