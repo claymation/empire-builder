@@ -36,7 +36,7 @@ const POINT_MAGNET_PX = 12;
 const LINE_MAGNET_PX = 8;
 
 /** What a release would lay right now: the section, and the snap that shaped it. */
-interface Pending {
+interface PendingSection {
   readonly section: RouteSection | null;
   readonly snap: Snap | null;
 }
@@ -62,7 +62,7 @@ export function startEditor(
    * computed together so the snap shown in the preview is the one that gets
    * laid. Nulls when there is nothing to lay (no pointer yet, or no railhead).
    */
-  function draft(view: ViewTransform, head: Pose | null): Pending {
+  function draft(view: ViewTransform, head: Pose | null): PendingSection {
     if (!pointer || !head) {
       return {section: null, snap: null};
     }

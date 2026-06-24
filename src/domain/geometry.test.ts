@@ -14,6 +14,7 @@ import {
   degToRad,
   distance,
   dot,
+  handednessSign,
   lineIntersection,
   normalizeAngle,
   onLine,
@@ -25,6 +26,7 @@ import {
   segmentEnd,
   segmentEndPose,
   subtract,
+  tangentAndNormalLines,
   unionBounds,
   unitArcChord,
   unitVector,
@@ -280,6 +282,32 @@ describe('onLine', () => {
 
   it('rejects a point a hair off the line', () => {
     expect(onLine({x: 5, y: 5.001}, tilted)).toBe(false);
+  });
+});
+
+describe('tangentAndNormalLines', () => {
+  it('returns the heading line and the line square to it, through the pose', () => {
+    // Facing 30° off +x at (2, 3): the tangent runs along 30°, the normal at 120°.
+    const pose: Pose = {position: {x: 2, y: 3}, heading: degToRad(30)};
+    const [tangent, normal] = tangentAndNormalLines(pose);
+
+    expect(tangent.origin).toEqual({x: 2, y: 3});
+    expect(normal.origin).toEqual({x: 2, y: 3});
+    // Directions are unit and orthogonal.
+    expect(Math.hypot(tangent.direction.x, tangent.direction.y)).toBeCloseTo(1);
+    expect(dot(tangent.direction, normal.direction)).toBeCloseTo(0);
+    // The tangent points along the heading; the normal a quarter-turn past it.
+    expect(tangent.direction.x).toBeCloseTo(Math.cos(degToRad(30)));
+    expect(tangent.direction.y).toBeCloseTo(Math.sin(degToRad(30)));
+    expect(normal.direction.x).toBeCloseTo(Math.cos(degToRad(120)));
+    expect(normal.direction.y).toBeCloseTo(Math.sin(degToRad(120)));
+  });
+});
+
+describe('handednessSign', () => {
+  it('is +1 for left (counter-clockwise) and -1 for right', () => {
+    expect(handednessSign('left')).toBe(1);
+    expect(handednessSign('right')).toBe(-1);
   });
 });
 

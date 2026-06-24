@@ -8,7 +8,7 @@
  *
  * {@link placeRoute} follows a single path, threading each section's exit into the
  * next. {@link sectionForSnap} turns a pointer gesture into the next section to
- * lay, snapping it to tidy angles and to the layout's open ends.
+ * lay, optionally snapping it to tidy angles and to the layout's open ends.
  *
  * Each section below leads with its public surface and ends with the private
  * helpers behind it.
@@ -26,6 +26,7 @@ import {
   distance,
   dot,
   Handedness,
+  handednessSign,
   Line,
   lineIntersection,
   normalizeAngle,
@@ -39,6 +40,7 @@ import {
   segmentBounds,
   segmentEndPose,
   subtract,
+  tangentAndNormalLines,
   unionBounds,
   unitArcChord,
   unitVector,
@@ -136,7 +138,7 @@ export function sectionGeometry(placed: PlacedSection): SectionGeometry {
     case 'straight':
       return {kind: 'segment', start: placed.entry, length: placed.length};
     case 'curved': {
-      const sweep = (placed.handedness === 'left' ? 1 : -1) * placed.arc.sweep;
+      const sweep = handednessSign(placed.handedness) * placed.arc.sweep;
       return {
         kind: 'arc',
         start: placed.entry,
@@ -260,7 +262,8 @@ export function placedSections(layout: Layout): readonly PlacedSection[] {
  * feature they latched onto, which the editor draws.
  *
  * - `point`: an open end's point (carries the `end`) — drawn as a ring.
- * - `line`: one of an open end's lines (carries the `line`) — drawn as a guide.
+ * - `line`: one of an open end's normal or tangent lines (carries the `line`) —
+ *   drawn as a guide.
  * - `angle`: no open end in range; the sweep angle-snaps toward `point`. There is
  *   no feature to carry — the snapped sweep is fixed when the arc is built.
  */
@@ -440,9 +443,9 @@ export function sectionTo(from: Pose, target: Point): RouteSection | null {
 
 /**
  * Snaps `value` to the nearest multiple of `increment` if it lands within
- * `threshold` of one, otherwise leaves it untouched. The gentle threshold is
- * what lets a deliberate off-grid value stand while still clicking onto tidy
- * ones — a 38° curve stays 38°, but one dragged near 180° snaps to it.
+ * `threshold` of one, otherwise leaves it untouched — so a value set
+ * deliberately off-grid stands, while one nudged close to a multiple clicks
+ * onto it.
  */
 export function snapToIncrement(
   value: number,
@@ -458,8 +461,9 @@ export function snapToIncrement(
  * angle (clean angles, arbitrary radii — the flex/handlaid promise). When the
  * sweep snaps, the radius is *fitted* so the snapped arc still ends as near the
  * pointer as it can, so the preview keeps tracking the pointer instead of
- * jumping. A sweep that snaps to zero flattens into a straight; an unsnapped or
- * already-straight section passes through. `increment`/`threshold` are radians.
+ * jumping. A sweep that snaps to zero flattens into a straight; a curve whose
+ * sweep lands on no tidy multiple, and a section already straight, pass through
+ * unchanged. `increment`/`threshold` are radians.
  */
 export function snappedSectionTo(
   from: Pose,
@@ -484,13 +488,11 @@ export function snappedSectionTo(
   }
 
   // With the sweep fixed, the arc's end rides a ray out of `from`: it is
-  // `from + radius·chord` (see {@link arcChord}). The radius whose end is
-  // nearest the pointer is the pointer's projection onto that ray; a negative
-  // projection means the pointer is behind `from`, so leave the curve raw.
-  //
-  //            · end       chord: the unit-radius arc's straight start→end.
-  //           /            The end rides the ray  from + radius·chord,
-  //   from ·──→ heading     sliding out as the radius grows.
+  // `from + radius·chord`, where `chord` is the unit-radius arc's straight
+  // start→end (see {@link arcChord}). The end slides out along that ray as the
+  // radius grows, so the radius whose end is nearest the pointer is the
+  // pointer's projection onto the ray; a negative projection means the pointer
+  // is behind `from`, so leave the curve raw.
   const chord = arcChord(from, sweep, raw.handedness);
   const chordLengthSquared = dot(chord, chord); // ~0 only for a full-circle sweep
   const radius =
@@ -530,18 +532,8 @@ export function sectionOntoLine(
   return aligned ?? shaped;
 }
 
-// An open end's tangent line (along its heading) and normal line (square to it)
-// — the two lines a section can align to there.
-function tangentAndNormalLines(end: Pose): Line[] {
-  return [
-    {origin: end.position, direction: unitVector(end.heading)},
-    {origin: end.position, direction: unitVector(end.heading + Math.PI / 2)},
-  ];
-}
-
 // Whether a section leaving `from` would merely run along `line`: `from` lies on
 // it and heads parallel to it (either direction), so the section never departs.
-// A line `from` crosses is not running along — it leaves it at once.
 function runsAlong(from: Pose, line: Line): boolean {
   return (
     onLine(from.position, line) &&
@@ -555,7 +547,7 @@ function runsAlong(from: Pose, line: Line): boolean {
  * Vanishes (length ~0) only for a full-circle sweep.
  */
 function arcChord(from: Pose, sweep: number, handedness: Handedness): Vector {
-  return unitArcChord(from.heading, (handedness === 'left' ? 1 : -1) * sweep);
+  return unitArcChord(from.heading, handednessSign(handedness) * sweep);
 }
 
 // A straight from `from` ending where its heading line crosses `line`, or null.
