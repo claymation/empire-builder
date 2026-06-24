@@ -11,15 +11,19 @@
 
 import paper from 'paper';
 import {
+  add,
   arcCenter,
   arcEndPoint,
   arcMidpoint,
   Line,
+  normalize,
   PlacedArc,
   Point,
   Pose,
   radToDeg,
+  scale,
   segmentEnd,
+  subtract,
 } from '../domain/geometry';
 import {Snap, sectionGeometry, PlacedSection} from '../domain/layout';
 import {Space} from '../domain/space';
@@ -69,8 +73,8 @@ export function renderStatic(
 
 /**
  * Renders the pointer-follow preview, railhead marker, and any alignment
- * feedback. The guide sits beneath the ghost; a snap ring rides on top, marking
- * the open end the target has latched onto. Redraw on every move.
+ * feedback. The guide sits beneath the preview; a snap ring rides on top,
+ * marking the open end the target has latched onto. Redraw on every move.
  */
 export function renderOverlay(
   transform: ViewTransform,
@@ -79,8 +83,8 @@ export function renderOverlay(
   snap: Snap | null
 ): void {
   const toCanvas = onLayer('overlay', transform);
-  // The guide sits under the ghost, the ring on top, so resolve both up front
-  // and draw them around the preview.
+  // The guide sits under the preview, the ring on top, so resolve both up front
+  // and draw them around it.
   const {guide, ring} = snapFeedback(snap);
   if (guide) {
     drawGuide(guide, toCanvas, transform.scale);
@@ -99,7 +103,7 @@ export function renderOverlay(
 
 /**
  * The alignment feedback a snap calls for: a guide `line` to draw beneath the
- * ghost, a `ring` point to draw on top, or neither.
+ * preview, a `ring` point to draw on top, or neither.
  */
 function snapFeedback(snap: Snap | null): {
   guide: Line | null;
@@ -125,19 +129,12 @@ function snapFeedback(snap: Snap | null): {
  * directions so it reads as a full-bleed line. The reach is the canvas spread
  * converted to domain units, which always overshoots the visible area.
  */
-function drawGuide(line: Line, toCanvas: ToCanvas, scale: number): void {
-  const length = Math.hypot(line.direction.x, line.direction.y);
-  if (length === 0) {
-    return;
-  }
-  const reach = (paper.view.size.width + paper.view.size.height) / scale;
-  const step = {
-    x: (line.direction.x / length) * reach,
-    y: (line.direction.y / length) * reach,
-  };
+function drawGuide(line: Line, toCanvas: ToCanvas, pxPerMm: number): void {
+  const reach = (paper.view.size.width + paper.view.size.height) / pxPerMm;
+  const step = scale(normalize(line.direction), reach);
   const guide = new paper.Path.Line(
-    toCanvas({x: line.origin.x - step.x, y: line.origin.y - step.y}),
-    toCanvas({x: line.origin.x + step.x, y: line.origin.y + step.y})
+    toCanvas(subtract(line.origin, step)),
+    toCanvas(add(line.origin, step))
   );
   guide.strokeColor = new paper.Color(GUIDE_COLOR);
   guide.strokeWidth = 1;
@@ -153,9 +150,9 @@ function drawSnapRing(point: Point, toCanvas: ToCanvas): void {
 
 /**
  * Labels the preview with its sweep (and, for a curve, radius). The label sits
- * by the ghost's leading end — near the pointer, where the eye is — pushed clear
- * of the track: radially out from the arc's center for a curve, just above the
- * end for a straight. A straight reads 0.0°.
+ * by the preview's leading end — near the pointer, where the eye is — pushed
+ * clear of the track: radially out from the arc's center for a curve, just above
+ * the end for a straight. A straight reads 0.0°.
  */
 function drawAngleLabel(section: PlacedSection, toCanvas: ToCanvas): void {
   const geometry = sectionGeometry(section);
@@ -254,7 +251,7 @@ function drawSection(
   section: PlacedSection,
   toCanvas: ToCanvas,
   color: string,
-  ghost: boolean
+  preview: boolean
 ): void {
   const geometry = sectionGeometry(section);
   const path =
@@ -267,7 +264,7 @@ function drawSection(
   path.strokeColor = new paper.Color(color);
   path.strokeWidth = RAIL_WIDTH_PX;
   path.strokeCap = 'round';
-  if (ghost) {
+  if (preview) {
     path.dashArray = [8, 6];
   }
 }

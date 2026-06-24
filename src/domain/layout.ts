@@ -1,5 +1,5 @@
 /**
- * Placing track in the plane (US-3, US-4, US-5).
+ * Placing track in the layout (US-3, US-4, US-5).
  *
  * The atomic operation is {@link placeSection}: it locates a section at an entry
  * pose, and {@link exitPoses} reports the poses at which a train can leave it.
@@ -55,8 +55,8 @@ const EPSILON = 1e-9;
 
 /**
  * A section as authored into a route: a straight of a given length, or a curve of
- * a given arc, laid to bend left or right. A curve section is symmetric — its
- * handedness is chosen when laying it, so it lives here rather than on the arc.
+ * a given arc, laid to bend left or right. Handedness is a property of laying the
+ * curve, so it rides on the section while the arc holds only radius and sweep.
  */
 export type RouteSection =
   | {readonly kind: 'straight'; readonly length: number}
@@ -117,9 +117,9 @@ function curve(
 // ── Placing sections ──
 
 /**
- * Locates a section at `entry`. A PlacedSection stays a plain, serializable value,
- * so its geometry is computed from it by {@link sectionGeometry} rather than
- * stored — nothing to keep in sync as sections move.
+ * Locates a section at `entry`, pairing the authored section with its entry pose.
+ * The placed value stays plain data: its swept geometry is derived on demand by
+ * {@link sectionGeometry}, so the only located state is the entry pose itself.
  */
 export function placeSection(
   entry: Pose,
@@ -197,11 +197,11 @@ export function routeBounds(sections: readonly PlacedSection[]): Bounds {
  */
 export function placeRoute(
   anchor: Pose,
-  route: readonly RouteSection[]
+  sections: readonly RouteSection[]
 ): PlacedRoute {
   const placed: PlacedSection[] = [];
   let pose = anchor;
-  for (const section of route) {
+  for (const section of sections) {
     const placedSection = placeSection(pose, section);
     placed.push(placedSection);
     const exits = exitPoses(placedSection);
@@ -216,6 +216,10 @@ export function placeRoute(
 /**
  * A track plan: where it starts, and the sections laid from there. A null anchor
  * is an empty plan, before the start has been placed.
+ *
+ * The authored sections are the serializable source of truth; placed geometry
+ * (poses, bounds) is derived from them on demand by {@link placedSections} and
+ * {@link railhead}, never stored here.
  */
 export interface Layout {
   readonly anchor: Pose | null;
@@ -239,7 +243,7 @@ export function railhead(layout: Layout): Pose | null {
  * because a layout may expose several open ends.
  *
  * The railhead is not filtered out here; {@link resolveSnap} and
- * {@link realizedSnap} decline the snaps that would do nothing from it. An open
+ * {@link shownSnap} decline the snaps that would do nothing from it. An open
  * end at the railhead still guides what it can — the anchor's normal aligns a
  * 180° curve drawn from it, even before any section is laid.
  */
@@ -254,7 +258,7 @@ export function placedSections(layout: Layout): readonly PlacedSection[] {
     : [];
 }
 
-// ── Drawing the next section ──
+// ── Snapping ──
 
 /**
  * What the pointer's target snapped to. Every kind carries the resolved `point`
@@ -273,23 +277,19 @@ export type Snap =
   | {readonly kind: 'angle'; readonly point: Point};
 
 /**
- * Resolves how a section laid from `from` toward `target` snaps. It tries the
- * open ends first — onto an end's point within `pointTolerance`, else its
- * nearest line within `lineTolerance`; a point wins over a line, being where an
- * end's two lines cross (aligning to the end itself, not merely a line through
- * it). Failing that it returns the `angle` snap, leaving the sweep to snap
- * toward `target`.
+ * Resolves how a section laid from `from` toward `target` snaps: onto an open
+ * end's point within `pointTolerance`, else its nearest tangent/normal line
+ * within `lineTolerance`, a point winning over a line. Failing both it returns
+ * the `angle` snap, leaving the sweep to snap toward `target`.
  *
  * Two cases offer no alignment and are skipped:
- * - An end at `from`: a section to its point would be zero-length.
- * - A line `from` runs along (lies on and heads parallel to): a section there is
- *   trivially on it, so its guide would be redundant — the first straight laid
- *   along the anchor's own heading line.
+ * - An end at `from`: a section to it would be zero-length.
+ * - A line `from` runs along (on it and parallel): a section there is trivially
+ *   on it, so its guide would be redundant.
  *
- * A line `from` merely crosses is kept as a candidate even though `from` lies on
- * it, because the section can still end back on it — a 180° arc onto the start's
- * normal. Whether that candidate's guide is actually drawn is left to
- * {@link realizedSnap}, which checks the built section's end against the line.
+ * A line `from` merely crosses stays a candidate: the section can still end back
+ * on it (a 180° arc onto the start's normal). {@link shownSnap} decides whether
+ * that guide is drawn, from the built section's end.
  */
 export function resolveSnap(
   from: Pose,
@@ -301,13 +301,16 @@ export function resolveSnap(
   let nearestPoint: {end: Pose; gap: number} | null = null;
   let nearestLine: {point: Point; line: Line; gap: number} | null = null;
   for (const end of openEnds) {
-    const pointGap = distance(target, end.position);
-    if (
-      distance(from.position, end.position) > EPSILON &&
-      pointGap <= pointTolerance &&
-      (!nearestPoint || pointGap < nearestPoint.gap)
-    ) {
-      nearestPoint = {end, gap: pointGap};
+    // A point snap onto an end at the railhead would be a zero-length section;
+    // skip it, though the end's lines may still align.
+    if (distance(end.position, from.position) > EPSILON) {
+      const pointGap = distance(target, end.position);
+      if (
+        pointGap <= pointTolerance &&
+        (!nearestPoint || pointGap < nearestPoint.gap)
+      ) {
+        nearestPoint = {end, gap: pointGap};
+      }
     }
     for (const line of tangentAndNormalLines(end)) {
       if (runsAlong(from, line)) {
@@ -337,7 +340,10 @@ export function resolveSnap(
 }
 
 /**
- * The section laid from `from` for a given {@link Snap}. Angle-snapping shapes
+ * Builds the section a {@link Snap} calls for. The snap decides *what* to aim at
+ * from pointer proximity alone; turning that into a section — which needs the
+ * angle `increment` and `threshold` (radians) — lives here, so {@link resolveSnap}
+ * stays a pure proximity test, free of section geometry. Angle-snapping shapes
  * the section only where the snap leaves room for it:
  *
  * - `angle`: the end is free, so the sweep angle-snaps toward the target — the
@@ -346,8 +352,6 @@ export function resolveSnap(
  *   {@link sectionOntoLine} angle-snaps the shape, then spends that freedom
  *   sliding the end onto the line.
  * - `point`: the end is pinned to an open end, so the section just reaches it.
- *
- * `increment`/`threshold` are radians.
  */
 export function sectionForSnap(
   from: Pose,
@@ -368,39 +372,43 @@ export function sectionForSnap(
 }
 
 /**
- * The snap whose feedback `section` actually earns, or null when it earns none.
- * A line guide is drawn only where the section's end lands on the line: an active
- * alignment always lands there, and a line the railhead lies on realizes only
- * when the section curves back onto it — a 180° arc onto the start's normal —
- * never for the idle case of merely starting on it. Point and angle snaps pass
- * through; a {@link sectionForSnap} that returned null leaves nothing to draw.
+ * The snap whose feedback should be drawn for `section`, or null when there is
+ * none. A line's guide is shown only where the section's end actually lands on
+ * the line: an active alignment always lands there, while a line the railhead
+ * lies on lands only when the section curves back onto it (a 180° arc onto the
+ * start's normal). A point's ring and the featureless `angle` snap carry through
+ * unchanged; a null section (nothing to lay) shows nothing.
  */
-export function realizedSnap(
+export function shownSnap(
   from: Pose,
   snap: Snap,
   section: RouteSection | null
 ): Snap | null {
-  if (!section || snap.kind !== 'line') {
-    return section ? snap : null;
+  if (!section) {
+    return null;
   }
+  if (snap.kind !== 'line') {
+    return snap;
+  }
+  // A section has a single through exit; its end is where the guide must land.
   const [end] = exitPoses(placeSection(from, section));
   return onLine(end.position, snap.line) ? snap : null;
 }
 
 /**
- * The plain section from `from` to `target`: the unique straight or arc that
- * leaves `from` tangent to its heading and passes through `target` — or `null`
- * when none exists (the target is the start point, or lies straight behind it).
+ * The section from `from` to `target`: the unique straight or arc that leaves
+ * `from` tangent to its heading and ends at `target` — or `null` when none
+ * exists (the target is `from`'s own position, or lies straight behind it).
  * This is the exact geometry, with no snapping; {@link snappedSectionTo} and
  * {@link sectionOntoLine} layer the angle and line snaps onto it, and a point
  * snap, which already names an exact target, uses it as is.
  *
- * The arc is the circle tangent to `from`'s heading at its position and passing
- * through `target`: its center lies on the normal at `from`, equidistant from
- * the two points. The signed perpendicular offset of `target` from the heading
- * therefore fixes the radius, its sign fixes the bend direction, and the angle
- * subtended at the center is the sweep. A target on the heading line has no such
- * circle — it is a straight, or, if behind, unreachable.
+ * The arc lies on the circle tangent to `from`'s heading at its position and
+ * passing through `target`: that circle's center is on the normal at `from`,
+ * equidistant from the two points. The signed perpendicular offset of `target`
+ * from the heading therefore fixes the radius, its sign fixes the bend
+ * direction, and the angle subtended at the center is the sweep. A target on the
+ * heading line has no such circle — it is a straight, or, if behind, unreachable.
  */
 export function sectionTo(from: Pose, target: Point): RouteSection | null {
   const forward = unitVector(from.heading);
@@ -409,15 +417,16 @@ export function sectionTo(from: Pose, target: Point): RouteSection | null {
 
   const distanceSquared = dot(toTarget, toTarget);
   if (distanceSquared < EPSILON) {
-    return null; // target coincides with the start
+    return null; // target coincides with `from`
   }
 
   const ahead = dot(forward, toTarget);
   const sideways = dot(left, toTarget);
 
   // A target with no perpendicular offset lies on the heading line: a straight,
-  // which reaches only a point ahead. This test is exact — a target just off the
-  // line yields a valid (large-radius) arc, and any snap-to-straight tolerance
+  // whose length is the target's forward distance `ahead`, reachable only when
+  // the target is in front. This test is exact — a target just off the line
+  // yields a valid (large-radius) arc, and any snap-to-straight tolerance
   // belongs to the UI, not here.
   if (Math.abs(sideways) < EPSILON) {
     return ahead > 0 ? straight(ahead) : null;
@@ -532,8 +541,8 @@ export function sectionOntoLine(
   return aligned ?? shaped;
 }
 
-// Whether a section leaving `from` would merely run along `line`: `from` lies on
-// it and heads parallel to it (either direction), so the section never departs.
+// Whether a section leaving `from` runs along `line`: `from` lies on it and its
+// heading is colinear with the line, so the section stays on it throughout.
 function runsAlong(from: Pose, line: Line): boolean {
   return (
     onLine(from.position, line) &&

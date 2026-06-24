@@ -16,6 +16,7 @@ import {
   dot,
   handednessSign,
   lineIntersection,
+  normalize,
   normalizeAngle,
   onLine,
   posesCoincide,
@@ -113,6 +114,19 @@ describe('unitVector', () => {
     expect(ne.x).toBeCloseTo(Math.SQRT1_2);
     expect(ne.y).toBeCloseTo(Math.SQRT1_2);
     expect(dot(ne, ne)).toBeCloseTo(1);
+  });
+});
+
+describe('normalize', () => {
+  it('rescales a vector to unit length, keeping its direction', () => {
+    const unit = normalize({x: 3, y: 4}); // 3-4-5
+    expect(unit.x).toBeCloseTo(0.6);
+    expect(unit.y).toBeCloseTo(0.8);
+    expect(Math.hypot(unit.x, unit.y)).toBeCloseTo(1);
+  });
+
+  it('returns the zero vector for a degenerate input', () => {
+    expect(normalize({x: 0, y: 0})).toEqual({x: 0, y: 0});
   });
 });
 

@@ -69,6 +69,12 @@ export function unitVector(heading: number): Vector {
   return {x: Math.cos(heading), y: Math.sin(heading)};
 }
 
+/** `v` rescaled to unit length, or the zero vector when `v` is degenerate. */
+export function normalize(v: Vector): Vector {
+  const length = Math.hypot(v.x, v.y);
+  return length < EPSILON ? {x: 0, y: 0} : scale(v, 1 / length);
+}
+
 /** The point reached by travelling `distance` from `origin` along `heading`. */
 export function advance(
   origin: Point,

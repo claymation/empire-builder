@@ -24,7 +24,7 @@ import {
   sectionForSnap,
   snappedSectionTo,
   snapToIncrement,
-  realizedSnap,
+  shownSnap,
   resolveSnap,
   straight,
   sectionTo,
@@ -417,7 +417,7 @@ describe('resolveSnap', () => {
   it('keeps a line the railhead crosses as a candidate', () => {
     // The railhead sits on the normal line (x = 100) facing east, across it. A
     // section can still curve back onto it (a 180° arc), so resolveSnap offers
-    // the candidate; realizedSnap later decides whether its guide is drawn.
+    // the candidate; shownSnap later decides whether its guide is drawn.
     const acrossNormal: Pose = {position: {x: 100, y: 0}, heading: 0};
     const snap = resolveSnap(
       acrossNormal,
@@ -660,31 +660,31 @@ describe('sectionForSnap', () => {
   });
 });
 
-describe('realizedSnap', () => {
+describe('shownSnap', () => {
   const line = {origin: {x: 0, y: 0}, direction: {x: 0, y: 1}}; // x = 0
   const lineSnap = {kind: 'line' as const, point: {x: 0, y: 100}, line};
 
   it('keeps a line guide the section ends on', () => {
     // A 180° curve from the origin ends on the start's normal (x = 0).
     const half = curveLeft(50, 180);
-    expect(realizedSnap(ORIGIN, lineSnap, half)).toEqual(lineSnap);
+    expect(shownSnap(ORIGIN, lineSnap, half)).toEqual(lineSnap);
   });
 
   it('drops a line guide the section does not end on', () => {
     // A 90° curve ends at (100, 100), off x = 0 — the guide would be idle.
     const quarter = curveLeft(100, 90);
-    expect(realizedSnap(ORIGIN, lineSnap, quarter)).toBeNull();
+    expect(shownSnap(ORIGIN, lineSnap, quarter)).toBeNull();
   });
 
   it('passes point and angle snaps through', () => {
     const end: Pose = {position: {x: 100, y: 40}, heading: Math.PI};
     const point = {kind: 'point' as const, point: end.position, end};
     const angle = {kind: 'angle' as const, point: {x: 100, y: 95}};
-    expect(realizedSnap(ORIGIN, point, straight(10))).toEqual(point);
-    expect(realizedSnap(ORIGIN, angle, straight(10))).toEqual(angle);
+    expect(shownSnap(ORIGIN, point, straight(10))).toEqual(point);
+    expect(shownSnap(ORIGIN, angle, straight(10))).toEqual(angle);
   });
 
   it('shows nothing when there is no section', () => {
-    expect(realizedSnap(ORIGIN, lineSnap, null)).toBeNull();
+    expect(shownSnap(ORIGIN, lineSnap, null)).toBeNull();
   });
 });
