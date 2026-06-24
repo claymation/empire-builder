@@ -53,6 +53,16 @@ describe('Layout', () => {
     expect(placedRoute(layout)?.sections).toHaveLength(1);
     expect(railheadOf(layout)?.position.x).toBeCloseTo(100);
   });
+
+  it('has no railhead once a run rejoins its anchor', () => {
+    // The oval's last curve lands back on the anchor tangentially, so the tail
+    // meets the start: there is no free end to extend, and no railhead.
+    const looped: Layout = {
+      anchor: ORIGIN,
+      sections: oval(inches(48), inches(18)),
+    };
+    expect(railheadOf(looped)).toBeNull();
+  });
 });
 
 describe('sectionLength', () => {
@@ -321,16 +331,35 @@ describe('resolveSnap', () => {
   const pointTolerance = 10;
   const lineTolerance = 6;
 
-  it('latches onto the end when the target is within the point magnet', () => {
+  // An end a left quarter-turn reaches: from the east-facing railhead, the arc
+  // to (100, 100) arrives heading north, tangent to this end, so its point is on
+  // offer. Its heading line is x = 100, its normal line y = 100.
+  const tangentEnd: Pose = {position: {x: 100, y: 100}, heading: Math.PI / 2};
+
+  it('latches onto an end the section can reach tangentially', () => {
     const snap = resolveSnap(
       from,
-      {x: 104, y: 53},
-      ends,
+      {x: 104, y: 103},
+      [tangentEnd],
       pointTolerance,
       lineTolerance
     );
     expect(snap.kind).toBe('point');
-    expect(snap.point).toEqual({x: 100, y: 50});
+    expect(snap.point).toEqual({x: 100, y: 100});
+  });
+
+  it('declines a point the section cannot reach tangentially', () => {
+    // `end` faces east at (100, 50); the single arc from the railhead arrives
+    // there banking, not tangent, so the point is refused — the join would
+    // kink. The target falls through to the end's lines instead.
+    const snap = resolveSnap(
+      from,
+      {x: 100, y: 53},
+      ends,
+      pointTolerance,
+      lineTolerance
+    );
+    expect(snap.kind).toBe('line');
   });
 
   it('projects onto the heading line when running alongside it', () => {
@@ -360,17 +389,18 @@ describe('resolveSnap', () => {
   });
 
   it('prefers the point even when a line is strictly nearer', () => {
-    // (100, 58): sits exactly on the normal line (gap 0) yet 8 from the end's
-    // point. The line is the closer feature, but latching the end itself wins.
+    // (108, 100): sits exactly on the tangent end's normal line (gap 0) yet 8
+    // from its point. The line is the closer feature, but latching the end
+    // itself wins.
     const snap = resolveSnap(
       from,
-      {x: 100, y: 58},
-      ends,
+      {x: 108, y: 100},
+      [tangentEnd],
       pointTolerance,
       lineTolerance
     );
     expect(snap.kind).toBe('point');
-    expect(snap.point).toEqual({x: 100, y: 50});
+    expect(snap.point).toEqual({x: 100, y: 100});
   });
 
   it('leaves a target clear of every magnet unsnapped', () => {
@@ -430,14 +460,14 @@ describe('resolveSnap', () => {
     expect(snap.point.x).toBeCloseTo(100);
   });
 
-  it('latches onto the nearer of two ends within the point magnet', () => {
-    // The nearer end is listed second, so a first-wins bug would pick the wrong
-    // one. Both sit within the magnet (gaps 4 and 2).
-    const nearer: Pose = {position: {x: 100, y: 100}, heading: 0};
-    const farther: Pose = {position: {x: 106, y: 100}, heading: 0};
+  it('latches onto the nearer of two reachable ends within the point magnet', () => {
+    // Two quarter-turn exits, both tangent-reachable; the nearer is listed
+    // second, so a first-wins bug would pick the wrong one.
+    const nearer: Pose = {position: {x: 100, y: 100}, heading: Math.PI / 2};
+    const farther: Pose = {position: {x: 97, y: 97}, heading: Math.PI / 2};
     const snap = resolveSnap(
       from,
-      {x: 102, y: 100},
+      {x: 101, y: 101},
       [farther, nearer],
       pointTolerance,
       lineTolerance
@@ -463,15 +493,23 @@ describe('resolveSnap', () => {
   });
 
   it('snaps a point gap exactly at the magnet edge, not one past it', () => {
-    // A 6-8-10 offset lands the target exactly pointTolerance (10) from the end;
-    // pin the `<=` boundary. (The point wins over the normal line it grazes.)
-    const justInside = {x: 106, y: 58}; // distance 10
-    const justOutside = {x: 106.06, y: 58.08}; // distance 10.1, clear of both lines
+    // A 6-8-10 offset lands the target exactly pointTolerance (10) from the
+    // tangent end; pin the `<=` boundary. (The point wins over the normal line
+    // it grazes.)
+    const justInside = {x: 106, y: 108}; // distance 10
+    const justOutside = {x: 106.06, y: 108.08}; // distance 10.1, clear of both lines
     expect(
-      resolveSnap(from, justInside, ends, pointTolerance, lineTolerance).kind
+      resolveSnap(from, justInside, [tangentEnd], pointTolerance, lineTolerance)
+        .kind
     ).toBe('point');
     expect(
-      resolveSnap(from, justOutside, ends, pointTolerance, lineTolerance).kind
+      resolveSnap(
+        from,
+        justOutside,
+        [tangentEnd],
+        pointTolerance,
+        lineTolerance
+      ).kind
     ).toBe('angle');
   });
 
