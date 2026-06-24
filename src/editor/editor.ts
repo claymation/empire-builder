@@ -128,8 +128,7 @@ export function startEditor(
       // A railhead is the free tail to extend; a tangent point snap lays the
       // section straight onto an open end and, with the tail then meeting the
       // start, leaves no railhead — drawing simply stops. A run that has already
-      // rejoined its anchor has no railhead and ignores the click; resuming a
-      // closed run waits on open-end picking (a later slice).
+      // rejoined its anchor has no railhead and ignores the click.
       const railhead = railheadOf(state.layout);
       if (railhead) {
         const {section} = draft(view, railhead);
