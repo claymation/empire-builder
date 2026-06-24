@@ -240,7 +240,7 @@ export function placedRoute(layout: Layout): PlacedRoute | null {
 
 /**
  * The open end the next section would extend from, or null before the start has
- * been placed. Named `…Of` so callers keep `railhead` for the value itself.
+ * been placed.
  */
 export function railheadOf(layout: Layout): Pose | null {
   return placedRoute(layout)?.exit ?? null;
@@ -252,9 +252,7 @@ export function railheadOf(layout: Layout): Pose | null {
  * because a layout may expose several open ends.
  *
  * The railhead is not filtered out here; {@link resolveSnap} and
- * {@link shownSnap} decline the snaps that would do nothing from it. An open
- * end at the railhead still guides what it can — the anchor's normal aligns a
- * 180° curve drawn from it, even before any section is laid.
+ * {@link shownSnap} decline the snaps that would do nothing from it.
  */
 export function openEnds(layout: Layout): Pose[] {
   return layout.anchor ? [layout.anchor] : [];
@@ -304,7 +302,7 @@ export function resolveSnap(
   // skip the line search entirely when one is in range.
   let nearestPoint: {end: Pose; gap: number} | null = null;
   for (const end of openEnds) {
-    // Skip an end at the railhead: a section to its point would be zero-length.
+    // The railhead can't snap to itself: a section to its own start is empty.
     if (distance(end.position, from.position) <= EPSILON) {
       continue;
     }
@@ -324,7 +322,7 @@ export function resolveSnap(
   let nearestLine: {point: Point; line: Line; gap: number} | null = null;
   for (const end of openEnds) {
     for (const line of tangentAndNormalLines(end)) {
-      if (runsAlong(from, line)) {
+      if (colinear(from, line)) {
         continue;
       }
       const foot = projectOntoLine(target, line);
@@ -542,9 +540,9 @@ export function sectionOntoLine(
   return aligned ?? shaped;
 }
 
-// Whether a section leaving `from` runs along `line`: `from` lies on it and its
-// heading is colinear with the line, so the section stays on it throughout.
-function runsAlong(from: Pose, line: Line): boolean {
+// Whether `from` is colinear with `line`: its position lies on the line and its
+// heading runs along it, so a section leaving `from` stays on the line.
+function colinear(from: Pose, line: Line): boolean {
   return (
     onLine(from.position, line) &&
     Math.abs(cross(unitVector(from.heading), line.direction)) < EPSILON
