@@ -12,7 +12,7 @@ import {
   EMPTY_LAYOUT,
   exitPoses,
   openEnds,
-  placedSections,
+  placedRoute,
   railhead,
   sectionBounds,
   sectionGeometry,
@@ -38,9 +38,9 @@ import {feet, inches} from './units';
 const ORIGIN: Pose = {position: {x: 0, y: 0}, heading: 0};
 
 describe('Layout', () => {
-  it('an empty layout has no railhead and no placed sections', () => {
+  it('an empty layout has no placed route', () => {
+    expect(placedRoute(EMPTY_LAYOUT)).toBeNull();
     expect(railhead(EMPTY_LAYOUT)).toBeNull();
-    expect(placedSections(EMPTY_LAYOUT)).toHaveLength(0);
   });
 
   it('the railhead of an anchor-only layout is the anchor', () => {
@@ -50,7 +50,7 @@ describe('Layout', () => {
 
   it('places its sections and advances the railhead', () => {
     const layout: Layout = {anchor: ORIGIN, sections: [straight(100)]};
-    expect(placedSections(layout)).toHaveLength(1);
+    expect(placedRoute(layout)?.sections).toHaveLength(1);
     expect(railhead(layout)?.position.x).toBeCloseTo(100);
   });
 });

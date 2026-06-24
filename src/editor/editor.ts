@@ -9,7 +9,7 @@ import paper from 'paper';
 import {degToRad, Point, Pose} from '../domain/geometry';
 import {
   openEnds,
-  placedSections,
+  placedRoute,
   placeSection,
   railhead,
   resolveSnap,
@@ -90,7 +90,7 @@ export function startEditor(
   }
 
   function refreshStatic(view: ViewTransform): void {
-    renderStatic(view, space, placedSections(state.layout));
+    renderStatic(view, space, placedRoute(state.layout)?.sections ?? []);
     if (status) {
       status.textContent = describe(state);
     }

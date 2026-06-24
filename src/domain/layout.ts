@@ -218,8 +218,8 @@ export function placeRoute(
  * is an empty plan, before the start has been placed.
  *
  * The authored sections are the serializable source of truth; placed geometry
- * (poses, bounds) is derived from them on demand by {@link placedSections} and
- * {@link railhead}, never stored here.
+ * (poses, bounds) is derived from them on demand by {@link placedRoute}, never
+ * stored here.
  */
 export interface Layout {
   readonly anchor: Pose | null;
@@ -230,11 +230,20 @@ export interface Layout {
 export const EMPTY_LAYOUT: Layout = {anchor: null, sections: []};
 
 /**
+ * The layout's run placed in the plane — its sections and the pose they lead to
+ * — or null before the start has been placed. The single derivation the railhead
+ * and the rendered track read from; the one place to cache, should it ever pay.
+ */
+export function placedRoute(layout: Layout): PlacedRoute | null {
+  return layout.anchor ? placeRoute(layout.anchor, layout.sections) : null;
+}
+
+/**
  * The open end the next section would extend from, or null before the start has
  * been placed.
  */
 export function railhead(layout: Layout): Pose | null {
-  return layout.anchor ? placeRoute(layout.anchor, layout.sections).exit : null;
+  return placedRoute(layout)?.exit ?? null;
 }
 
 /**
@@ -249,13 +258,6 @@ export function railhead(layout: Layout): Pose | null {
  */
 export function openEnds(layout: Layout): Pose[] {
   return layout.anchor ? [layout.anchor] : [];
-}
-
-/** The layout's sections placed in the plane. */
-export function placedSections(layout: Layout): readonly PlacedSection[] {
-  return layout.anchor
-    ? placeRoute(layout.anchor, layout.sections).sections
-    : [];
 }
 
 // ── Snapping ──

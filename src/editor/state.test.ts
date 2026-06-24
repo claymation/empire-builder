@@ -1,6 +1,6 @@
 import {describe, it, expect} from 'vitest';
 import {type Pose} from '../domain/geometry';
-import {placedSections, railhead, straight} from '../domain/layout';
+import {railhead, straight} from '../domain/layout';
 import {append, EMPTY, redo, start, undo} from './state';
 
 const ANCHOR: Pose = {position: {x: 0, y: 0}, heading: 0};
@@ -8,27 +8,27 @@ const ANCHOR: Pose = {position: {x: 0, y: 0}, heading: 0};
 describe('editor state', () => {
   it('starts empty, with nothing to draw from', () => {
     expect(railhead(EMPTY.layout)).toBeNull();
-    expect(placedSections(EMPTY.layout)).toHaveLength(0);
+    expect(EMPTY.layout.sections).toHaveLength(0);
   });
 
   it('places the anchor with start', () => {
     const state = start(EMPTY, {position: {x: 100, y: 50}, heading: 0});
     expect(railhead(state.layout)?.position).toEqual({x: 100, y: 50});
-    expect(placedSections(state.layout)).toHaveLength(0);
+    expect(state.layout.sections).toHaveLength(0);
   });
 
   it('commits a section with append', () => {
     const drawn = append(start(EMPTY, ANCHOR), straight(300));
-    expect(placedSections(drawn.layout)).toHaveLength(1);
+    expect(drawn.layout.sections).toHaveLength(1);
     expect(railhead(drawn.layout)?.position.x).toBeCloseTo(300);
   });
 
   it('undoes and redoes a committed section', () => {
     const drawn = append(start(EMPTY, ANCHOR), straight(300));
     const undone = undo(drawn);
-    expect(placedSections(undone.layout)).toHaveLength(0);
+    expect(undone.layout.sections).toHaveLength(0);
     expect(railhead(undone.layout)).not.toBeNull(); // anchor still placed
-    expect(placedSections(redo(undone).layout)).toHaveLength(1);
+    expect(redo(undone).layout.sections).toHaveLength(1);
   });
 
   it('undoes the anchor back to empty', () => {
