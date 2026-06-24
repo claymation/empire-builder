@@ -11,18 +11,24 @@
 
 import paper from 'paper';
 import {
+  add,
   arcCenter,
   arcEndPoint,
   arcMidpoint,
+  Line,
+  normalize,
   PlacedArc,
   Point,
   Pose,
   radToDeg,
+  scale,
   segmentEnd,
+  subtract,
 } from '../domain/geometry';
-import {sectionGeometry, PlacedSection} from '../domain/layout';
+import {Snap, sectionGeometry, PlacedSection} from '../domain/layout';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
+import {assertNever} from '../domain/validate';
 import {fitTransform, ViewTransform} from './transform';
 
 /** Pixels of breathing room left between the sheet and the canvas edge. */
@@ -35,6 +41,10 @@ const PREVIEW_COLOR = '#3b82f6';
 const RAIL_WIDTH_PX = 3;
 const RAILHEAD_RADIUS_PX = 5;
 const LABEL_OFFSET_PX = 18;
+/** Accent for alignment feedback: the guide line and the open-end snap ring. */
+const GUIDE_COLOR = '#ec4899';
+const GUIDE_DASH = [4, 4];
+const SNAP_RING_RADIUS_PX = 9;
 
 /** Maps a domain point (mm, y-up) to a canvas point (px, y-down). */
 type ToCanvas = (point: Point) => paper.Point;
@@ -61,13 +71,24 @@ export function renderStatic(
   }
 }
 
-/** Renders the pointer-follow preview and railhead marker. Redraw on every move. */
+/**
+ * Renders the pointer-follow preview, railhead marker, and any alignment
+ * feedback. The guide sits beneath the preview; a snap ring rides on top,
+ * marking the open end the target has latched onto. Redraw on every move.
+ */
 export function renderOverlay(
   transform: ViewTransform,
   preview: PlacedSection | null,
-  railhead: Pose | null
+  railhead: Pose | null,
+  snap: Snap | null
 ): void {
   const toCanvas = onLayer('overlay', transform);
+  // The guide sits under the preview, the ring on top, so resolve both up front
+  // and draw them around it.
+  const {guide, ring} = snapFeedback(snap);
+  if (guide) {
+    drawGuide(guide, toCanvas, transform.scale);
+  }
   if (preview) {
     drawSection(preview, toCanvas, PREVIEW_COLOR, true);
     drawAngleLabel(preview, toCanvas);
@@ -75,13 +96,63 @@ export function renderOverlay(
   if (railhead) {
     drawRailhead(railhead.position, toCanvas);
   }
+  if (ring) {
+    drawSnapRing(ring, toCanvas);
+  }
+}
+
+/**
+ * The alignment feedback a snap calls for: a guide `line` to draw beneath the
+ * preview, a `ring` point to draw on top, or neither.
+ */
+function snapFeedback(snap: Snap | null): {
+  guide: Line | null;
+  ring: Point | null;
+} {
+  if (!snap) {
+    return {guide: null, ring: null};
+  }
+  switch (snap.kind) {
+    case 'line':
+      return {guide: snap.line, ring: null};
+    case 'point':
+      return {guide: null, ring: snap.point};
+    case 'angle':
+      return {guide: null, ring: null};
+    default:
+      return assertNever(snap);
+  }
+}
+
+/**
+ * Draws an alignment guide along `line`, extended past the canvas in both
+ * directions so it reads as a full-bleed line. The reach is the canvas spread
+ * converted to domain units, which always overshoots the visible area.
+ */
+function drawGuide(line: Line, toCanvas: ToCanvas, viewScale: number): void {
+  const reach = (paper.view.size.width + paper.view.size.height) / viewScale;
+  const step = scale(normalize(line.direction), reach);
+  const guide = new paper.Path.Line(
+    toCanvas(subtract(line.origin, step)),
+    toCanvas(add(line.origin, step))
+  );
+  guide.strokeColor = new paper.Color(GUIDE_COLOR);
+  guide.strokeWidth = 1;
+  guide.dashArray = GUIDE_DASH;
+}
+
+/** Rings the open end a target has latched onto. */
+function drawSnapRing(point: Point, toCanvas: ToCanvas): void {
+  const ring = new paper.Path.Circle(toCanvas(point), SNAP_RING_RADIUS_PX);
+  ring.strokeColor = new paper.Color(GUIDE_COLOR);
+  ring.strokeWidth = 2;
 }
 
 /**
  * Labels the preview with its sweep (and, for a curve, radius). The label sits
- * by the ghost's leading end — near the pointer, where the eye is — pushed clear
- * of the track: radially out from the arc's center for a curve, just above the
- * end for a straight. A straight reads 0.0°.
+ * by the preview's leading end — near the pointer, where the eye is — pushed
+ * clear of the track: radially out from the arc's center for a curve, just above
+ * the end for a straight. A straight reads 0.0°.
  */
 function drawAngleLabel(section: PlacedSection, toCanvas: ToCanvas): void {
   const geometry = sectionGeometry(section);
@@ -180,7 +251,7 @@ function drawSection(
   section: PlacedSection,
   toCanvas: ToCanvas,
   color: string,
-  ghost: boolean
+  preview: boolean
 ): void {
   const geometry = sectionGeometry(section);
   const path =
@@ -193,7 +264,7 @@ function drawSection(
   path.strokeColor = new paper.Color(color);
   path.strokeWidth = RAIL_WIDTH_PX;
   path.strokeCap = 'round';
-  if (ghost) {
+  if (preview) {
     path.dashArray = [8, 6];
   }
 }

@@ -69,6 +69,12 @@ export function unitVector(heading: number): Vector {
   return {x: Math.cos(heading), y: Math.sin(heading)};
 }
 
+/** `v` rescaled to unit length, or the zero vector when `v` is degenerate. */
+export function normalize(v: Vector): Vector {
+  const length = Math.hypot(v.x, v.y);
+  return length < EPSILON ? {x: 0, y: 0} : scale(v, 1 / length);
+}
+
 /** The point reached by travelling `distance` from `origin` along `heading`. */
 export function advance(
   origin: Point,
@@ -123,6 +129,17 @@ export function posesCoincide(
   return gap <= headingTolerance;
 }
 
+/**
+ * A pose's two characteristic lines: the tangent line along its heading and the
+ * normal line square to it, both through its position.
+ */
+export function tangentAndNormalLines(pose: Pose): [Line, Line] {
+  return [
+    {origin: pose.position, direction: unitVector(pose.heading)},
+    {origin: pose.position, direction: unitVector(pose.heading + QUARTER_TURN)},
+  ];
+}
+
 // ── Lines ──
 
 /**
@@ -171,6 +188,17 @@ export function projectOntoLine(point: Point, line: Line): Point {
 /** Whether `point` lies on `line` (to within floating-point slack). */
 export function onLine(point: Point, line: Line): boolean {
   return distance(point, projectOntoLine(point, line)) < EPSILON;
+}
+
+/**
+ * Whether `pose` is colinear with `line`: its position lies on the line and its
+ * heading runs along it (either direction).
+ */
+export function colinear(pose: Pose, line: Line): boolean {
+  return (
+    onLine(pose.position, line) &&
+    Math.abs(cross(unitVector(pose.heading), line.direction)) < EPSILON
+  );
 }
 
 // ── Bounds ──
@@ -245,6 +273,11 @@ export function segmentBounds(segment: PlacedSegment): Bounds {
 
 /** Left bends counter-clockwise, right bends clockwise, about the travel direction. */
 export type Handedness = 'left' | 'right';
+
+/** The sign a handedness lends a sweep: left counter-clockwise (+), right (−). */
+export function handednessSign(handedness: Handedness): number {
+  return handedness === 'left' ? 1 : -1;
+}
 
 /** The shape of a circular arc: a radius and the (unsigned) angle it sweeps. */
 export interface Arc {

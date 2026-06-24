@@ -8,13 +8,17 @@
 import paper from 'paper';
 import {degToRad, Point, Pose} from '../domain/geometry';
 import {
-  placedSections,
+  openEnds,
+  placedRoute,
   placeSection,
-  railhead,
+  railheadOf,
+  resolveSnap,
   RouteSection,
+  sectionForSnap,
   sectionLength,
-  snappedSectionTo,
-  tangentSectionTo,
+  sectionTo,
+  shownSnap,
+  Snap,
 } from '../domain/layout';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
@@ -27,6 +31,15 @@ const INITIAL_HEADING = 0;
 /** Curve sweeps snap to multiples of this when within SNAP_THRESHOLD of one. */
 const SNAP_INCREMENT = degToRad(15);
 const SNAP_THRESHOLD = degToRad(5);
+/** Pointer pull, in px, onto an open end's point and its tangent/normal lines. */
+const POINT_MAGNET_PX = 12;
+const LINE_MAGNET_PX = 8;
+
+/** What a release would lay right now: the section, and the snap that shaped it. */
+interface PendingSection {
+  readonly section: RouteSection | null;
+  readonly snap: Snap | null;
+}
 
 /** Wires the lay-track tool onto `canvas`, drawing within `space`. */
 export function startEditor(
@@ -44,29 +57,51 @@ export function startEditor(
   const transform = (): ViewTransform =>
     sceneTransform(space, paper.view.size.width, paper.view.size.height);
 
-  // The section the pointer would lay next, snapped to a tidy angle unless
-  // snapping is suspended. Computed once and used for both preview and commit.
-  function nextSection(head: Pose): RouteSection | null {
-    if (!pointer) {
-      return null;
+  /**
+   * The next section the pointer would lay, with how its target snapped —
+   * computed together so the snap shown in the preview is the one that gets
+   * laid. Nulls when there is nothing to lay (no pointer yet, or no railhead).
+   */
+  function draft(view: ViewTransform, railhead: Pose | null): PendingSection {
+    if (!pointer || !railhead) {
+      return {section: null, snap: null};
     }
-    return suspendSnap
-      ? tangentSectionTo(head, pointer)
-      : snappedSectionTo(head, pointer, SNAP_INCREMENT, SNAP_THRESHOLD);
+    // Suspending snapping (Option/Alt) lays the plain section to the pointer with
+    // no snap guides — only the preview. Otherwise the target snaps to the open
+    // ends, falling back to the angle snap, and sectionForSnap builds the section.
+    if (suspendSnap) {
+      return {section: sectionTo(railhead, pointer), snap: null};
+    }
+    const snap = resolveSnap(
+      railhead,
+      pointer,
+      openEnds(state.layout),
+      POINT_MAGNET_PX / view.scale,
+      LINE_MAGNET_PX / view.scale
+    );
+    const section = sectionForSnap(
+      railhead,
+      snap,
+      SNAP_INCREMENT,
+      SNAP_THRESHOLD
+    );
+    // Show only the snap the section earns — a guide whose line the end lands on.
+    return {section, snap: shownSnap(railhead, snap, section)};
   }
 
   function refreshStatic(view: ViewTransform): void {
-    renderStatic(view, space, placedSections(state.layout));
+    renderStatic(view, space, placedRoute(state.layout)?.sections ?? []);
     if (status) {
       status.textContent = describe(state);
     }
   }
 
   function refreshOverlay(view: ViewTransform): void {
-    const head = railhead(state.layout);
-    const section = head ? nextSection(head) : null;
-    const preview = head && section ? placeSection(head, section) : null;
-    renderOverlay(view, preview, head);
+    const railhead = railheadOf(state.layout);
+    const {section, snap} = draft(view, railhead);
+    const preview =
+      railhead && section ? placeSection(railhead, section) : null;
+    renderOverlay(view, preview, railhead, snap);
     paper.view.update();
   }
 
@@ -87,11 +122,11 @@ export function startEditor(
   tool.onMouseUp = (event: paper.ToolEvent) => {
     const view = transform();
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
-    const head = railhead(state.layout);
-    if (!head) {
+    const railhead = railheadOf(state.layout);
+    if (!railhead) {
       state = start(state, {position: pointer, heading: INITIAL_HEADING});
     } else {
-      const section = nextSection(head);
+      const {section} = draft(view, railhead);
       if (section) {
         state = append(state, section);
       }

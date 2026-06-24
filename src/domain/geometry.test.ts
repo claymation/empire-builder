@@ -10,11 +10,14 @@ import {
   arcLength,
   arcMidpoint,
   boundsOfPoints,
+  colinear,
   cross,
   degToRad,
   distance,
   dot,
+  handednessSign,
   lineIntersection,
+  normalize,
   normalizeAngle,
   onLine,
   posesCoincide,
@@ -25,6 +28,7 @@ import {
   segmentEnd,
   segmentEndPose,
   subtract,
+  tangentAndNormalLines,
   unionBounds,
   unitArcChord,
   unitVector,
@@ -111,6 +115,19 @@ describe('unitVector', () => {
     expect(ne.x).toBeCloseTo(Math.SQRT1_2);
     expect(ne.y).toBeCloseTo(Math.SQRT1_2);
     expect(dot(ne, ne)).toBeCloseTo(1);
+  });
+});
+
+describe('normalize', () => {
+  it('rescales a vector to unit length, keeping its direction', () => {
+    const unit = normalize({x: 3, y: 4}); // 3-4-5
+    expect(unit.x).toBeCloseTo(0.6);
+    expect(unit.y).toBeCloseTo(0.8);
+    expect(Math.hypot(unit.x, unit.y)).toBeCloseTo(1);
+  });
+
+  it('returns the zero vector for a degenerate input', () => {
+    expect(normalize({x: 0, y: 0})).toEqual({x: 0, y: 0});
   });
 });
 
@@ -280,6 +297,54 @@ describe('onLine', () => {
 
   it('rejects a point a hair off the line', () => {
     expect(onLine({x: 5, y: 5.001}, tilted)).toBe(false);
+  });
+});
+
+describe('colinear', () => {
+  const xAxis: Line = {origin: {x: 0, y: 0}, direction: {x: 1, y: 0}};
+
+  it('holds when the pose lies on the line and heads along it (either way)', () => {
+    expect(colinear({position: {x: 5, y: 0}, heading: 0}, xAxis)).toBe(true);
+    expect(colinear({position: {x: 5, y: 0}, heading: Math.PI}, xAxis)).toBe(
+      true
+    );
+  });
+
+  it('fails when the pose is on the line but heads across it', () => {
+    expect(
+      colinear({position: {x: 5, y: 0}, heading: Math.PI / 2}, xAxis)
+    ).toBe(false);
+  });
+
+  it('fails when the pose heads along the line but sits off it', () => {
+    expect(colinear({position: {x: 5, y: 3}, heading: 0}, xAxis)).toBe(false);
+  });
+});
+
+describe('tangentAndNormalLines', () => {
+  it('returns the heading line and the line square to it, through the pose', () => {
+    // Facing 30° off +x at (2, 3): the tangent runs along 30°, the normal at 120°.
+    const pose: Pose = {position: {x: 2, y: 3}, heading: degToRad(30)};
+    const [tangent, normal] = tangentAndNormalLines(pose);
+
+    expect(tangent.origin).toEqual({x: 2, y: 3});
+    expect(normal.origin).toEqual({x: 2, y: 3});
+    // Directions are unit and orthogonal.
+    expect(Math.hypot(tangent.direction.x, tangent.direction.y)).toBeCloseTo(1);
+    expect(Math.hypot(normal.direction.x, normal.direction.y)).toBeCloseTo(1);
+    expect(dot(tangent.direction, normal.direction)).toBeCloseTo(0);
+    // The tangent points along the heading; the normal a quarter-turn past it.
+    expect(tangent.direction.x).toBeCloseTo(Math.cos(degToRad(30)));
+    expect(tangent.direction.y).toBeCloseTo(Math.sin(degToRad(30)));
+    expect(normal.direction.x).toBeCloseTo(Math.cos(degToRad(120)));
+    expect(normal.direction.y).toBeCloseTo(Math.sin(degToRad(120)));
+  });
+});
+
+describe('handednessSign', () => {
+  it('is +1 for left (counter-clockwise) and -1 for right', () => {
+    expect(handednessSign('left')).toBe(1);
+    expect(handednessSign('right')).toBe(-1);
   });
 });
 

@@ -4,7 +4,7 @@ Guidance for Claude when working in this repository. Keep it concise and factual
 
 ## Project
 
-**empire-builder** — a web app for designing model railroad layouts. Users draw and arrange track, plan their layout, and build their "empire" on an HTML5 canvas.
+**Empire Builder** — a web app for designing model railroad layouts. Users draw and edit track plans (build their "empire") on an HTML5 canvas.
 
 ## Prime directive: write good code
 
@@ -16,7 +16,8 @@ Working code is not enough. The goal is code that is correct, clear, and that th
 - Model the domain explicitly (tracks, segments, connections, layouts) rather than passing around loose primitives.
 - Handle the unhappy path. Validate inputs, surface errors, don't swallow them.
 - No dead code, no commented-out blocks, no `any` as a shortcut. Delete instead of disabling.
-- Write comments for the long term, following John Ousterhout's *A Philosophy of Software Design*: capture what the code cannot say for itself — intent, rationale, units, invariants — at the right level of abstraction. No point-in-time breadcrumbs ("for now", "newly added", "this will change when…", "temporary", "provisional"). Describe what the code *is* and *why* — not what it used to be, what may come, or what it *isn't*. Don't contrast with alternatives the code doesn't implement (no "not a ray", "unlike a tree", "we don't use X here").
+- Write comments for the long term, following John Ousterhout's *A Philosophy of Software Design*: capture what the code cannot say for itself — intent, rationale, units, invariants — at the right level of abstraction. No point-in-time breadcrumbs ("for now", "newly added", "this will change when…", "temporary", "provisional").
+- **A comment states what the code *is* and *why*, never what it *is not*, *was*, or *might become*.** This is a recurring mistake, so check for it deliberately: before keeping any comment, scan it for a negation of identity ("not a ray", "isn't a tree"), a contrast with something unbuilt ("we don't use X here", "unlike a list"), or a future tense ("will later", "eventually") — and delete that clause. "An infinite line, not a ray" → "an infinite line". The only allowed contrast is the rationale for a choice the code actually made between real options, with its reason ("stored on the section rather than the arc, so it stays serializable"); a bare contrast carrying no "why" is not.
 - Leave the code better than you found it, but keep refactors separate from feature changes.
 - If a requirement is ambiguous or a design choice has real trade-offs, stop and ask rather than guessing.
 
@@ -61,8 +62,8 @@ We follow the [Google TypeScript Style Guide](https://google.github.io/styleguid
 - **Work iteratively.** Build thin vertical slices end-to-end; get one solid before widening. Avoid big-bang changes.
 - **Test alongside features.** Geometry and domain logic should have unit tests; a passing suite is what makes iterative changes safe. Leave no module untested.
 - **Write tests that can fail for the right reason.** Use non-trivial, non-zero inputs (so a defaulted or hard-coded value can't pass), cover several cases (e.g. all quadrants for geometry), and pin boundaries exactly (the value that just fits vs. the one that just doesn't) rather than only gross failures. Express inputs in domain units (`feet(2)`, not `100`).
-- **Commits are the user's job.** Do not commit unless explicitly asked. Leave changes staged-or-unstaged for review.
 - **Run the checks** (lint, test, build) before reporting work as complete.
+- **Respond to all code review conversations.** Allow the reviewer to resolve the conversation.
 
 ## Structure
 
