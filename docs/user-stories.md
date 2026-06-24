@@ -45,6 +45,44 @@ drifting away from them.
   treat sections as independent pieces, with snapping and rigid (tangency-
   preserving) connectivity layered on afterward.
 
+## Status — built so far (2026-06-24)
+
+A first interactive slice is in place: you can lay a connected run of track on a
+fixed sheet, with snapping and undo. Everything else below is not yet started.
+
+**Built**
+
+- **US-3 / US-4 — Lay straight and curved track.** The single "lay track"
+  gesture extends the railhead: a preview follows the pointer — a straight when
+  aimed ahead, the tangent arc reaching toward the pointer when off to one side
+  — and a click commits it. Curve sweeps snap to 15° increments (within ~5°);
+  the radius is fitted so the snapped arc still tracks the pointer. Holding
+  Option/Alt suspends snapping. Sections chain with tangency enforced by
+  construction, so a run can never kink.
+- **US-5 (partial) — Alignment snapping to open ends.** While drawing, the
+  target snaps onto an open end's point (shown as a ring) or onto its tangent /
+  normal lines (shown as a guide), which is what lines a return leg up with the
+  start. Tangency at joins holds by construction within a run. *Not* built:
+  snapping a final piece exactly shut to close a loop — the planned "slice A2"
+  was set aside as not directionally right, to be reconsidered.
+- **US-9 — Undo and redo** (⌘Z / ⇧⌘Z), built alongside the drawing tool.
+- **US-16 (partial) — Running total.** The status line shows the section count
+  and total run in inches. Per-section lengths and a flex-track total are not
+  yet shown.
+
+**Scaffolding present, not user-facing yet**
+
+- **US-1 (partial).** The available space exists as a constraint region and is
+  drawn — a default 8′×4′ sheet — but it is not user-definable and has no
+  keep-out zones.
+- **Units.** Geometry is real-world millimeters with inch/foot helpers;
+  measurements display in inches. No model **scale** (US-12) is selected yet.
+
+**Not started:** US-2 (pan/zoom), US-6 (turnouts), US-7 (move/rotate/resize —
+the "massaging" feature), US-8 (delete), US-10/US-11 (roles, labels),
+US-12–US-15 (scale, clearance, minimum radius, violations), US-17–US-20
+(export, import, auto-save, print).
+
 ---
 
 ## Canvas & space
