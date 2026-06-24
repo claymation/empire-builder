@@ -129,8 +129,8 @@ function snapFeedback(snap: Snap | null): {
  * directions so it reads as a full-bleed line. The reach is the canvas spread
  * converted to domain units, which always overshoots the visible area.
  */
-function drawGuide(line: Line, toCanvas: ToCanvas, pxPerMm: number): void {
-  const reach = (paper.view.size.width + paper.view.size.height) / pxPerMm;
+function drawGuide(line: Line, toCanvas: ToCanvas, viewScale: number): void {
+  const reach = (paper.view.size.width + paper.view.size.height) / viewScale;
   const step = scale(normalize(line.direction), reach);
   const guide = new paper.Path.Line(
     toCanvas(subtract(line.origin, step)),

@@ -129,6 +129,17 @@ export function posesCoincide(
   return gap <= headingTolerance;
 }
 
+/**
+ * A pose's two characteristic lines: the tangent line along its heading and the
+ * normal line square to it, both through its position.
+ */
+export function tangentAndNormalLines(pose: Pose): [Line, Line] {
+  return [
+    {origin: pose.position, direction: unitVector(pose.heading)},
+    {origin: pose.position, direction: unitVector(pose.heading + QUARTER_TURN)},
+  ];
+}
+
 // ── Lines ──
 
 /**
@@ -177,17 +188,6 @@ export function projectOntoLine(point: Point, line: Line): Point {
 /** Whether `point` lies on `line` (to within floating-point slack). */
 export function onLine(point: Point, line: Line): boolean {
   return distance(point, projectOntoLine(point, line)) < EPSILON;
-}
-
-/**
- * A pose's two characteristic lines: the tangent line along its heading and the
- * normal line square to it, both through its position.
- */
-export function tangentAndNormalLines(pose: Pose): [Line, Line] {
-  return [
-    {origin: pose.position, direction: unitVector(pose.heading)},
-    {origin: pose.position, direction: unitVector(pose.heading + QUARTER_TURN)},
-  ];
 }
 
 // ── Bounds ──

@@ -11,7 +11,7 @@ import {
   openEnds,
   placedRoute,
   placeSection,
-  railhead,
+  railheadOf,
   resolveSnap,
   RouteSection,
   sectionForSnap,
@@ -62,31 +62,31 @@ export function startEditor(
    * computed together so the snap shown in the preview is the one that gets
    * laid. Nulls when there is nothing to lay (no pointer yet, or no railhead).
    */
-  function draft(view: ViewTransform, railEnd: Pose | null): PendingSection {
-    if (!pointer || !railEnd) {
+  function draft(view: ViewTransform, railhead: Pose | null): PendingSection {
+    if (!pointer || !railhead) {
       return {section: null, snap: null};
     }
-    // Suspending snapping (Option/Alt) lays the plain section to the pointer and
-    // shows no feedback. Otherwise the target snaps to the open ends, falling
-    // back to the angle snap, and sectionForSnap turns that snap into the section.
+    // Suspending snapping (Option/Alt) lays the plain section to the pointer with
+    // no snap guides — only the preview. Otherwise the target snaps to the open
+    // ends, falling back to the angle snap, and sectionForSnap builds the section.
     if (suspendSnap) {
-      return {section: sectionTo(railEnd, pointer), snap: null};
+      return {section: sectionTo(railhead, pointer), snap: null};
     }
     const snap = resolveSnap(
-      railEnd,
+      railhead,
       pointer,
       openEnds(state.layout),
       POINT_MAGNET_PX / view.scale,
       LINE_MAGNET_PX / view.scale
     );
     const section = sectionForSnap(
-      railEnd,
+      railhead,
       snap,
       SNAP_INCREMENT,
       SNAP_THRESHOLD
     );
     // Show only the snap the section earns — a guide whose line the end lands on.
-    return {section, snap: shownSnap(railEnd, snap, section)};
+    return {section, snap: shownSnap(railhead, snap, section)};
   }
 
   function refreshStatic(view: ViewTransform): void {
@@ -97,10 +97,11 @@ export function startEditor(
   }
 
   function refreshOverlay(view: ViewTransform): void {
-    const railEnd = railhead(state.layout);
-    const {section, snap} = draft(view, railEnd);
-    const preview = railEnd && section ? placeSection(railEnd, section) : null;
-    renderOverlay(view, preview, railEnd, snap);
+    const railhead = railheadOf(state.layout);
+    const {section, snap} = draft(view, railhead);
+    const preview =
+      railhead && section ? placeSection(railhead, section) : null;
+    renderOverlay(view, preview, railhead, snap);
     paper.view.update();
   }
 
@@ -121,11 +122,11 @@ export function startEditor(
   tool.onMouseUp = (event: paper.ToolEvent) => {
     const view = transform();
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
-    const railEnd = railhead(state.layout);
-    if (!railEnd) {
+    const railhead = railheadOf(state.layout);
+    if (!railhead) {
       state = start(state, {position: pointer, heading: INITIAL_HEADING});
     } else {
-      const {section} = draft(view, railEnd);
+      const {section} = draft(view, railhead);
       if (section) {
         state = append(state, section);
       }

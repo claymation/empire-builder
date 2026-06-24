@@ -240,9 +240,9 @@ export function placedRoute(layout: Layout): PlacedRoute | null {
 
 /**
  * The open end the next section would extend from, or null before the start has
- * been placed.
+ * been placed. Named `…Of` so callers keep `railhead` for the value itself.
  */
-export function railhead(layout: Layout): Pose | null {
+export function railheadOf(layout: Layout): Pose | null {
   return placedRoute(layout)?.exit ?? null;
 }
 
@@ -300,32 +300,17 @@ export function resolveSnap(
   pointTolerance: number,
   lineTolerance: number
 ): Snap {
+  // A point wins over any line, so look for the nearest open-end point first and
+  // skip the line search entirely when one is in range.
   let nearestPoint: {end: Pose; gap: number} | null = null;
-  let nearestLine: {point: Point; line: Line; gap: number} | null = null;
   for (const end of openEnds) {
-    // A point snap onto an end at the railhead would be a zero-length section;
-    // skip it, though the end's lines may still align.
-    if (distance(end.position, from.position) > EPSILON) {
-      const pointGap = distance(target, end.position);
-      if (
-        pointGap <= pointTolerance &&
-        (!nearestPoint || pointGap < nearestPoint.gap)
-      ) {
-        nearestPoint = {end, gap: pointGap};
-      }
+    // Skip an end at the railhead: a section to its point would be zero-length.
+    if (distance(end.position, from.position) <= EPSILON) {
+      continue;
     }
-    for (const line of tangentAndNormalLines(end)) {
-      if (runsAlong(from, line)) {
-        continue;
-      }
-      const foot = projectOntoLine(target, line);
-      const lineGap = distance(target, foot);
-      if (
-        lineGap <= lineTolerance &&
-        (!nearestLine || lineGap < nearestLine.gap)
-      ) {
-        nearestLine = {point: foot, line, gap: lineGap};
-      }
+    const gap = distance(target, end.position);
+    if (gap <= pointTolerance && (!nearestPoint || gap < nearestPoint.gap)) {
+      nearestPoint = {end, gap};
     }
   }
   if (nearestPoint) {
@@ -334,6 +319,20 @@ export function resolveSnap(
       point: nearestPoint.end.position,
       end: nearestPoint.end,
     };
+  }
+
+  let nearestLine: {point: Point; line: Line; gap: number} | null = null;
+  for (const end of openEnds) {
+    for (const line of tangentAndNormalLines(end)) {
+      if (runsAlong(from, line)) {
+        continue;
+      }
+      const foot = projectOntoLine(target, line);
+      const gap = distance(target, foot);
+      if (gap <= lineTolerance && (!nearestLine || gap < nearestLine.gap)) {
+        nearestLine = {point: foot, line, gap};
+      }
+    }
   }
   if (nearestLine) {
     return {kind: 'line', point: nearestLine.point, line: nearestLine.line};
@@ -392,7 +391,7 @@ export function shownSnap(
   if (snap.kind !== 'line') {
     return snap;
   }
-  // A section has a single through exit; its end is where the guide must land.
+  // The through route leaves by the first exit; its end is where the guide lands.
   const [end] = exitPoses(placeSection(from, section));
   return onLine(end.position, snap.line) ? snap : null;
 }
@@ -455,7 +454,7 @@ export function sectionTo(from: Pose, target: Point): RouteSection | null {
 /**
  * Snaps `value` to the nearest multiple of `increment` if it lands within
  * `threshold` of one, otherwise leaves it untouched — so a value set
- * deliberately off-grid stands, while one nudged close to a multiple clicks
+ * deliberately off-grid stands, while one nudged close to a multiple snaps
  * onto it.
  */
 export function snapToIncrement(

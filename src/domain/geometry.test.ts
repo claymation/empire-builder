@@ -309,6 +309,7 @@ describe('tangentAndNormalLines', () => {
     expect(normal.origin).toEqual({x: 2, y: 3});
     // Directions are unit and orthogonal.
     expect(Math.hypot(tangent.direction.x, tangent.direction.y)).toBeCloseTo(1);
+    expect(Math.hypot(normal.direction.x, normal.direction.y)).toBeCloseTo(1);
     expect(dot(tangent.direction, normal.direction)).toBeCloseTo(0);
     // The tangent points along the heading; the normal a quarter-turn past it.
     expect(tangent.direction.x).toBeCloseTo(Math.cos(degToRad(30)));

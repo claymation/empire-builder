@@ -13,7 +13,7 @@ import {
   exitPoses,
   openEnds,
   placedRoute,
-  railhead,
+  railheadOf,
   sectionBounds,
   sectionGeometry,
   sectionLength,
@@ -40,18 +40,18 @@ const ORIGIN: Pose = {position: {x: 0, y: 0}, heading: 0};
 describe('Layout', () => {
   it('an empty layout has no placed route', () => {
     expect(placedRoute(EMPTY_LAYOUT)).toBeNull();
-    expect(railhead(EMPTY_LAYOUT)).toBeNull();
+    expect(railheadOf(EMPTY_LAYOUT)).toBeNull();
   });
 
   it('the railhead of an anchor-only layout is the anchor', () => {
     const layout: Layout = {anchor: ORIGIN, sections: []};
-    expect(railhead(layout)).toEqual(ORIGIN);
+    expect(railheadOf(layout)).toEqual(ORIGIN);
   });
 
   it('places its sections and advances the railhead', () => {
     const layout: Layout = {anchor: ORIGIN, sections: [straight(100)]};
     expect(placedRoute(layout)?.sections).toHaveLength(1);
-    expect(railhead(layout)?.position.x).toBeCloseTo(100);
+    expect(railheadOf(layout)?.position.x).toBeCloseTo(100);
   });
 });
 
