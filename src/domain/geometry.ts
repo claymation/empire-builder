@@ -112,10 +112,11 @@ export interface Pose {
 }
 
 /**
- * Whether two poses coincide within the given tolerances: the same position,
- * and the same heading compared modulo a full turn.
+ * Whether two poses are equal within the given tolerances: the same position,
+ * and the same heading compared modulo a full turn (so two poses facing the
+ * same way match, two facing opposite ways do not).
  */
-export function posesCoincide(
+export function posesEqual(
   a: Pose,
   b: Pose,
   positionTolerance: number,
@@ -127,6 +128,29 @@ export function posesCoincide(
   const headingDelta = normalizeAngle(a.heading - b.heading);
   const gap = Math.min(headingDelta, TWO_PI - headingDelta);
   return gap <= headingTolerance;
+}
+
+/** The same position facing the opposite way: heading turned a half-turn. */
+export function reversePose(pose: Pose): Pose {
+  return {position: pose.position, heading: pose.heading + Math.PI};
+}
+
+/**
+ * Whether two poses align within the given tolerances: the same position, with
+ * headings parallel — pointing the same way or exactly opposite. Two section
+ * ends meeting at a join align when they sit at one place on one line, whichever
+ * way each was reached by threading.
+ */
+export function posesAlign(
+  a: Pose,
+  b: Pose,
+  positionTolerance: number,
+  headingTolerance: number
+): boolean {
+  return (
+    posesEqual(a, b, positionTolerance, headingTolerance) ||
+    posesEqual(a, reversePose(b), positionTolerance, headingTolerance)
+  );
 }
 
 /**

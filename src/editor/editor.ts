@@ -9,22 +9,30 @@ import paper from 'paper';
 import {degToRad, Point, Pose} from '../domain/geometry';
 import {
   openEnds,
-  placedRoute,
+  partner,
+  placeLayout,
+  PlacedLayout,
+  SectionEnd,
+} from '../domain/layout';
+import {
+  endPose,
   placeSection,
-  railheadOf,
-  resolveSnap,
-  RouteSection,
-  sectionForSnap,
+  Section,
+  SectionShape,
   sectionLength,
+} from '../domain/section';
+import {
+  resolveSnap,
+  sectionForSnap,
   sectionTo,
   shownSnap,
   Snap,
-} from '../domain/layout';
+} from '../domain/snapping';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
 import {renderOverlay, renderStatic, sceneTransform} from '../render/scene';
 import {ViewTransform} from '../render/transform';
-import {append, EditorState, EMPTY, redo, start, undo} from './state';
+import {commit, EditorState, EMPTY, redo, start, undo} from './state';
 
 /** Direction the first section leaves the start point until drag-to-aim exists. */
 const INITIAL_HEADING = 0;
@@ -35,11 +43,17 @@ const SNAP_THRESHOLD = degToRad(5);
 const POINT_MAGNET_PX = 12;
 const LINE_MAGNET_PX = 8;
 
-/** What a release would lay right now: the section, and the snap that shaped it. */
-interface PendingSection {
-  readonly section: RouteSection | null;
+/**
+ * What a release would lay right now: the section's shape, the snap that shaped
+ * it, and the open end the section closes onto (a tangent point snap) or null.
+ */
+interface Draft {
+  readonly shape: SectionShape | null;
   readonly snap: Snap | null;
+  readonly closeOnto: SectionEnd | null;
 }
+
+const NOTHING: Draft = {shape: null, snap: null, closeOnto: null};
 
 /** Wires the lay-track tool onto `canvas`, drawing within `space`. */
 export function startEditor(
@@ -51,6 +65,10 @@ export function startEditor(
   let state = EMPTY;
   let pointer: Point | null = null;
   let suspendSnap = false;
+  // Section ids come from a monotonic counter held outside the state, so undo
+  // and redo never reuse or collide ids.
+  let nextSectionId = 0;
+  const allocateId = (): string => `s${++nextSectionId}`;
 
   // Rebuilt per use so it always reflects the current view size, which changes
   // on resize; building it is cheap arithmetic, so there is nothing to cache.
@@ -58,50 +76,87 @@ export function startEditor(
     sceneTransform(space, paper.view.size.width, paper.view.size.height);
 
   /**
-   * The next section the pointer would lay, with how its target snapped —
-   * computed together so the snap shown in the preview is the one that gets
-   * laid. Nulls when there is nothing to lay (no pointer yet, or no railhead).
+   * The railhead — the free tail to extend from — or null when there is none.
+   * Before any section it is the pending start; otherwise it is the
+   * most-recently-added section's exit, the growing tail, unless that exit has
+   * been joined (a closed loop), which leaves no railhead and stops drawing. A
+   * function of the layout, so undo/redo restore it for free.
    */
-  function draft(view: ViewTransform, railhead: Pose | null): PendingSection {
-    if (!pointer || !railhead) {
-      return {section: null, snap: null};
+  function railhead(placed: PlacedLayout): Pose | null {
+    if (state.pendingStart) {
+      return state.pendingStart;
+    }
+    const last = state.layout.sections.at(-1);
+    if (!last) {
+      return null;
+    }
+    if (partner(state.layout, {section: last.id, end: 'exit'})) {
+      return null;
+    }
+    return poseOf(placed, {section: last.id, end: 'exit'});
+  }
+
+  /**
+   * The next section the pointer would lay, with how its target snapped and
+   * whether it closes onto an open end — computed together so the preview and the
+   * commit agree. Nothing to lay (no pointer, or no railhead) yields a null
+   * draft.
+   */
+  function draft(
+    view: ViewTransform,
+    railheadPose: Pose | null,
+    placed: PlacedLayout
+  ): Draft {
+    if (!pointer || !railheadPose) {
+      return NOTHING;
     }
     // Suspending snapping (Option/Alt) lays the plain section to the pointer with
-    // no snap guides — only the preview. Otherwise the target snaps to the open
-    // ends, falling back to the angle snap, and sectionForSnap builds the section.
+    // no snap guides — only the preview.
     if (suspendSnap) {
-      return {section: sectionTo(railhead, pointer), snap: null};
+      return {
+        shape: sectionTo(railheadPose, pointer),
+        snap: null,
+        closeOnto: null,
+      };
     }
+    // Snap the target onto the open ends, resolving each to its world pose; the
+    // pose objects round-trip through the snap, so the point snap's end can be
+    // matched back to the open end it latched onto.
+    const ends = openEnds(state.layout);
+    const poses = ends.map(end => poseOf(placed, end));
     const snap = resolveSnap(
-      railhead,
+      railheadPose,
       pointer,
-      openEnds(state.layout),
+      poses,
       POINT_MAGNET_PX / view.scale,
       LINE_MAGNET_PX / view.scale
     );
-    const section = sectionForSnap(
-      railhead,
+    const shape = sectionForSnap(
+      railheadPose,
       snap,
       SNAP_INCREMENT,
       SNAP_THRESHOLD
     );
+    const closeOnto =
+      shape && snap.kind === 'point' ? ends[poses.indexOf(snap.end)] : null;
     // Show only the snap the section earns — a guide whose line the end lands on.
-    return {section, snap: shownSnap(railhead, snap, section)};
+    return {shape, snap: shownSnap(railheadPose, snap, shape), closeOnto};
   }
 
   function refreshStatic(view: ViewTransform): void {
-    renderStatic(view, space, placedRoute(state.layout)?.sections ?? []);
+    renderStatic(view, space, placeLayout(state.layout));
     if (status) {
       status.textContent = describe(state);
     }
   }
 
   function refreshOverlay(view: ViewTransform): void {
-    const railhead = railheadOf(state.layout);
-    const {section, snap} = draft(view, railhead);
+    const placed = placeLayout(state.layout);
+    const railheadPose = railhead(placed);
+    const {shape, snap} = draft(view, railheadPose, placed);
     const preview =
-      railhead && section ? placeSection(railhead, section) : null;
-    renderOverlay(view, preview, railhead, snap);
+      railheadPose && shape ? placeSection(shape, railheadPose) : null;
+    renderOverlay(view, preview, railheadPose, snap);
     paper.view.update();
   }
 
@@ -122,18 +177,21 @@ export function startEditor(
   tool.onMouseUp = (event: paper.ToolEvent) => {
     const view = transform();
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
-    if (!state.layout.anchor) {
+    if (!state.pendingStart && state.layout.sections.length === 0) {
+      // An empty canvas: plant the origin the first section grows from.
       state = start(state, {position: pointer, heading: INITIAL_HEADING});
     } else {
-      // A railhead is the free tail to extend; a tangent point snap lays the
-      // section straight onto an open end and, with the tail then meeting the
-      // start, leaves no railhead — drawing simply stops. A run that has already
-      // rejoined its anchor has no railhead and ignores the click.
-      const railhead = railheadOf(state.layout);
-      if (railhead) {
-        const {section} = draft(view, railhead);
-        if (section) {
-          state = append(state, section);
+      // A railhead is the free tail to extend; a tangent point snap closes the
+      // section's exit onto an open end, recording the join. Closing the only
+      // open end leaves no railhead — drawing simply stops. A run already closed
+      // has no railhead and ignores the click.
+      const placed = placeLayout(state.layout);
+      const railheadPose = railhead(placed);
+      if (railheadPose) {
+        const {shape, closeOnto} = draft(view, railheadPose, placed);
+        if (shape) {
+          const at = state.pendingStart ? null : railheadEnd();
+          state = commit(state, at, withId(shape), closeOnto);
         }
       }
     }
@@ -161,6 +219,29 @@ export function startEditor(
   window.addEventListener('keyup', event => setSuspend(event.altKey));
 
   refreshAll();
+
+  /** The open end to join onto: the most-recently-added section's exit. */
+  function railheadEnd(): SectionEnd {
+    const last = state.layout.sections.at(-1);
+    if (!last) {
+      throw new Error('no section to extend from');
+    }
+    return {section: last.id, end: 'exit'};
+  }
+
+  /** Gives `shape` a fresh id, ready to commit into the layout. */
+  function withId(shape: SectionShape): Section {
+    return {...shape, id: allocateId()};
+  }
+}
+
+/** The world pose of `end` within a placed layout. */
+function poseOf(placed: PlacedLayout, end: SectionEnd): Pose {
+  const section = placed.sectionsById.get(end.section);
+  if (!section) {
+    throw new Error(`open end references unplaced section ${end.section}`);
+  }
+  return endPose(section, end.end);
 }
 
 // Modifier keys read by their platform names: ⌥/⌘ on macOS, Alt/Ctrl elsewhere.
@@ -172,7 +253,7 @@ const UNDO_KEYS = isMac ? '⌘Z' : 'Ctrl+Z';
 function describe(state: EditorState): string {
   const sections = state.layout.sections;
   if (sections.length === 0) {
-    return state.layout.anchor
+    return state.pendingStart
       ? `Move and click to lay track. Hold ${FREE_DRAW_KEY} to draw freely. ${UNDO_KEYS} to undo.`
       : 'Click on the sheet to start laying track.';
   }

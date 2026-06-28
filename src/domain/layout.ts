@@ -1,636 +1,255 @@
 /**
- * Placing track in the layout (US-3, US-4, US-5).
+ * The track plan as a graph (US-3, US-4, US-5): sections are nodes, joins are the
+ * edges between their ends, and anchors place each network in the plane.
  *
- * The atomic operation is {@link placeSection}: it locates a section at an entry
- * pose, and {@link exitPoses} reports the poses at which a train can leave it.
- * Because connected sections share a pose at their join, tangency (US-5) holds by
- * construction — there is no way to express a kink.
- *
- * {@link placeRoute} follows a single path, threading each section's exit into the
- * next. {@link sectionForSnap} turns a pointer gesture into the next section to
- * lay, optionally snapping it to tidy angles and to the layout's open ends.
- *
- * Each section below leads with its public surface and ends with the private
- * helpers behind it.
+ * {@link placeLayout} locates every section by threading each network from its
+ * anchor, walking the joins to carry a pose from one section's end to the next.
+ * Because joined ends share a pose, tangency holds by construction — there is no
+ * way to express a kink between connected sections. {@link openEnds} reports the
+ * ends carrying no join, the places a new section can grow from; {@link
+ * anchorSection}/{@link joinSection} grow the graph.
  */
 
+import {degToRad, posesAlign, Pose} from './geometry';
 import {
-  arc,
-  Arc,
-  arcBounds,
-  arcEndPose,
-  arcLength,
-  Bounds,
-  colinear,
-  degToRad,
-  distance,
-  dot,
-  Handedness,
-  handednessSign,
-  Line,
-  lineIntersection,
-  normalizeAngle,
-  onLine,
-  PlacedArc,
-  PlacedSegment,
-  Point,
-  Pose,
-  posesCoincide,
-  projectOntoLine,
-  radToDeg,
-  segmentBounds,
-  segmentEndPose,
-  subtract,
-  tangentAndNormalLines,
-  unionBounds,
-  unitArcChord,
-  unitVector,
-  Vector,
-} from './geometry';
-import {assertNever, requirePositive} from './validate';
+  endPose,
+  EndName,
+  placeSection,
+  PlacedSection,
+  Section,
+  SectionId,
+} from './section';
 
-// Distances (mm) and dot products (mm²) below this are treated as zero.
+// Distances (mm) below this are treated as zero.
 const EPSILON = 1e-9;
 
 /**
- * The largest heading mismatch (radians) at which a section is taken to meet an
- * open end tangentially. A connecting section is built to reach the end's
- * position exactly, but a single arc generally arrives only *near* the end's
- * heading; within this threshold the join reads as smooth. It is the one
- * definition of "joined": it gates whether a point snap is offered and whether
- * {@link railheadOf} sees the tail as having rejoined the start. Wider tolerates
- * a slight kink at the join; tighter demands a more exact approach.
+ * The largest heading mismatch (radians) at which two section ends count as
+ * meeting tangentially — the single tolerance that defines an aligned join. It
+ * gates whether the snap offers a point onto an open end (../domain/snapping)
+ * and whether {@link placeLayout} accepts a closing join. Wider tolerates a
+ * slight kink at a join; tighter demands a more exact approach.
  */
-const CONNECTION_HEADING_TOLERANCE = degToRad(2);
+export const CONNECTION_HEADING_TOLERANCE = degToRad(2);
 
-// ── Section shapes ──
-
-/**
- * A section as authored into a route: a straight of a given length, or a curve of
- * a given arc, laid to bend left or right. Handedness is a property of laying the
- * curve, so it rides on the section while the arc holds only radius and sweep.
- */
-export type RouteSection =
-  | {readonly kind: 'straight'; readonly length: number}
-  | {
-      readonly kind: 'curved';
-      readonly arc: Arc;
-      readonly handedness: Handedness;
-    };
-
-/** A route section located in the plane: it gains an entry pose, and nothing else. */
-export type PlacedSection = RouteSection & {readonly entry: Pose};
-
-/** The placed geometry of a section: a segment for straights, an arc for curves. */
-export type SectionGeometry = PlacedSegment | PlacedArc;
-
-/** The result of placing a whole route: the placed sections and where they end. */
-export interface PlacedRoute {
-  readonly sections: readonly PlacedSection[];
-  /** The pose a train would have on leaving the final section. */
-  readonly exit: Pose;
-}
-
-/** Builds a straight route section of the given length. */
-export function straight(length: number): RouteSection {
-  return {kind: 'straight', length: requirePositive(length, 'length')};
-}
-
-/** Builds a curve of the given radius (mm) bending left through `sweepDegrees`. */
-export function curveLeft(radius: number, sweepDegrees: number): RouteSection {
-  return curve(radius, sweepDegrees, 'left');
-}
-
-/** Builds a curve of the given radius (mm) bending right through `sweepDegrees`. */
-export function curveRight(radius: number, sweepDegrees: number): RouteSection {
-  return curve(radius, sweepDegrees, 'right');
-}
-
-/** The running length of a section — the distance a train travels across it. */
-export function sectionLength(section: RouteSection): number {
-  switch (section.kind) {
-    case 'straight':
-      return requirePositive(section.length, 'length');
-    case 'curved':
-      return arcLength(section.arc);
-    default:
-      return assertNever(section);
-  }
-}
-
-function curve(
-  radius: number,
-  sweepDegrees: number,
-  handedness: Handedness
-): RouteSection {
-  return {kind: 'curved', arc: arc(radius, degToRad(sweepDegrees)), handedness};
-}
-
-// ── Placing sections ──
-
-/**
- * Locates a section at `entry`, pairing the authored section with its entry pose.
- * The placed value stays plain data: its swept geometry is derived on demand by
- * {@link sectionGeometry}, so the only located state is the entry pose itself.
- */
-export function placeSection(
-  entry: Pose,
-  section: RouteSection
-): PlacedSection {
-  return {...section, entry};
+/** A reference to one end of a section: which section, which end. */
+export interface SectionEnd {
+  readonly section: SectionId;
+  readonly end: EndName;
 }
 
 /**
- * The placed geometry of a section, derived from its entry pose. A curve's
- * handedness becomes the sign of the arc's sweep — left counter-clockwise,
- * right clockwise.
+ * A join fixes two section ends to the same place: equal position and parallel
+ * heading (the same line, either direction), within tolerance. Unordered and
+ * directionless; threading discovers a route's direction from an anchor. Each
+ * end takes part in at most one join.
  */
-export function sectionGeometry(placed: PlacedSection): SectionGeometry {
-  switch (placed.kind) {
-    case 'straight':
-      return {kind: 'segment', start: placed.entry, length: placed.length};
-    case 'curved': {
-      const sweep = handednessSign(placed.handedness) * placed.arc.sweep;
-      return {
-        kind: 'arc',
-        start: placed.entry,
-        radius: placed.arc.radius,
-        sweep,
-      };
-    }
-    default:
-      return assertNever(placed);
-  }
+export interface Join {
+  readonly ends: readonly [SectionEnd, SectionEnd];
 }
 
 /**
- * The poses at which a train can leave the section. The result is a list because a
- * section may have more than one exit; a straight or curve has exactly one.
+ * Anchors a network to the plane: its `sectionEnd` sits at world pose `pose`,
+ * and every other pose in its network derives by threading. One anchor per
+ * network fixes that network's absolute placement.
  */
-export function exitPoses(placed: PlacedSection): Pose[] {
-  const geometry = sectionGeometry(placed);
-  switch (geometry.kind) {
-    case 'segment':
-      return [segmentEndPose(geometry)];
-    case 'arc':
-      return [arcEndPose(geometry)];
-    default:
-      return assertNever(geometry);
-  }
-}
-
-/** The bounding box of a placed section. Arcs account for their bulge. */
-export function sectionBounds(placed: PlacedSection): Bounds {
-  const geometry = sectionGeometry(placed);
-  switch (geometry.kind) {
-    case 'segment':
-      return segmentBounds(geometry);
-    case 'arc':
-      return arcBounds(geometry);
-    default:
-      return assertNever(geometry);
-  }
+export interface Anchor {
+  readonly sectionEnd: SectionEnd;
+  readonly pose: Pose;
 }
 
 /**
- * The bounding box covering every placed section. Throws on an empty route, which
- * has no extent to bound.
- */
-export function routeBounds(sections: readonly PlacedSection[]): Bounds {
-  if (sections.length === 0) {
-    throw new RangeError('routeBounds requires at least one section');
-  }
-  return sections.map(sectionBounds).reduce(unionBounds);
-}
-
-/**
- * Places an ordered run of sections starting from `anchor`, threading each section's
- * exit into the next.
- */
-export function placeRoute(
-  anchor: Pose,
-  sections: readonly RouteSection[]
-): PlacedRoute {
-  const placed: PlacedSection[] = [];
-  let pose = anchor;
-  for (const section of sections) {
-    const placedSection = placeSection(pose, section);
-    placed.push(placedSection);
-    const exits = exitPoses(placedSection);
-    // Follow the through route: a section's first exit continues the path.
-    pose = exits[0];
-  }
-  return {sections: placed, exit: pose};
-}
-
-// ── The layout ──
-
-/**
- * A track plan: where it starts, and the sections laid from there. A null anchor
- * is an empty plan, before the start has been placed.
- *
- * The authored sections are the serializable source of truth; placed geometry
- * (poses, bounds) is derived from them on demand by {@link placedRoute}, never
- * stored here.
+ * The track plan as a graph: the sections, the joins between their ends, and the
+ * anchors that place each network. Plain, serializable data; placed geometry is
+ * derived on demand by {@link placeLayout}, never stored here.
  */
 export interface Layout {
-  readonly anchor: Pose | null;
-  readonly sections: readonly RouteSection[];
+  readonly sections: readonly Section[];
+  readonly joins: readonly Join[];
+  readonly anchors: readonly Anchor[];
 }
 
-/** The empty plan: no start placed, no sections. */
-export const EMPTY_LAYOUT: Layout = {anchor: null, sections: []};
+/** The empty plan: no sections, joins, or anchors. */
+export const EMPTY_LAYOUT: Layout = {sections: [], joins: [], anchors: []};
 
 /**
- * The layout's run placed in the plane — its sections and the pose they lead to
- * — or null before the start has been placed. The single derivation the railhead
- * and the rendered track read from; the one place to cache, should it ever pay.
+ * Every section located, keyed by id. Iterate `sectionsById.values()` to draw
+ * them all; look one up by id to read an end's world pose.
  */
-export function placedRoute(layout: Layout): PlacedRoute | null {
-  return layout.anchor ? placeRoute(layout.anchor, layout.sections) : null;
-}
-
-/**
- * The railhead — the run's free tail, where the next section would extend from —
- * or null when there is none: before the start is placed, or once a section has
- * been laid tangent back onto the anchor. In that second case the tail meets the
- * start (within {@link CONNECTION_HEADING_TOLERANCE}), leaving no free end to
- * grow, so drawing has nowhere to go.
- */
-export function railheadOf(layout: Layout): Pose | null {
-  const route = placedRoute(layout);
-  if (!route || !layout.anchor) {
-    return null;
-  }
-  if (
-    layout.sections.length > 0 &&
-    posesCoincide(
-      route.exit,
-      layout.anchor,
-      EPSILON,
-      CONNECTION_HEADING_TOLERANCE
-    )
-  ) {
-    return null;
-  }
-  return route.exit;
+export interface PlacedLayout {
+  readonly sectionsById: ReadonlyMap<SectionId, PlacedSection>;
 }
 
 /**
- * The open ends a new section can snap onto. Today a layout is a single chain, so
- * this is its anchor, the fixed start the chain grows from. The result is a list
- * because a layout may expose several open ends.
- *
- * The railhead is not filtered out here; {@link resolveSnap} and
- * {@link shownSnap} decline the snaps that would do nothing from it.
+ * Locates every section by threading each network from its anchor: place the
+ * anchored section by its `entry`, then walk each section's exit join to place
+ * the neighbor's `entry` at the pose carried across the shared join (exit→entry).
+ * On reaching an already-placed section — the join that closes a cycle, e.g. the
+ * oval's last join — it does not re-place: it checks the join is aligned
+ * ({@link posesAlign}) and stops. An unaligned revisit throws {@link RangeError};
+ * the geometry is unsatisfiable without the deferred US-7 solver. Threading is
+ * forward-only — every section is reached downstream of an anchor's `entry`.
  */
-export function openEnds(layout: Layout): Pose[] {
-  return layout.anchor ? [layout.anchor] : [];
+export function placeLayout(layout: Layout): PlacedLayout {
+  const byId = new Map(layout.sections.map(section => [section.id, section]));
+  const placed = new Map<SectionId, PlacedSection>();
+  for (const anchor of layout.anchors) {
+    threadNetwork(layout, byId, anchor, placed);
+  }
+  return {sectionsById: placed};
 }
 
-// ── Snapping ──
-
 /**
- * What the pointer's target snapped to. Every kind carries the resolved `point`
- * the section is then built toward; `point` and `line` also carry the open-end
- * feature they latched onto, which the editor draws.
- *
- * - `point`: an open end's point (carries the `end`) — drawn as a ring.
- * - `line`: one of an open end's normal or tangent lines (carries the `line`) —
- *   drawn as a guide.
- * - `angle`: no open end in range; the sweep angle-snaps toward `point`. There is
- *   no feature to carry — the snapped sweep is fixed when the arc is built.
+ * Every section end carrying no join — the places a new section can grow from.
+ * Pure topology: openness is the absence of a join, so this needs only the
+ * `Layout`, not a placement. An anchored end is open until something joins it; a
+ * loop closes by joining onto it, after which the network exposes no open end and
+ * drawing has nowhere to go. Ordering is deterministic: sections in order, entry
+ * before exit. A caller wanting an end's world pose derives it from a
+ * {@link PlacedLayout}.
  */
-export type Snap =
-  | {readonly kind: 'point'; readonly point: Point; readonly end: Pose}
-  | {readonly kind: 'line'; readonly point: Point; readonly line: Line}
-  | {readonly kind: 'angle'; readonly point: Point};
-
-/**
- * Resolves how a section laid from `from` toward `target` snaps: onto an open
- * end's point within `pointTolerance`, else its nearest tangent/normal line
- * within `lineTolerance`, a point winning over a line. Failing both it returns
- * the `angle` snap, leaving the sweep to snap toward `target`.
- *
- * A point snap lands the section's end on the open end itself, so it is offered
- * only when the section reaching that end meets it tangentially (within
- * {@link CONNECTION_HEADING_TOLERANCE}) — a connection never kinks. A near miss
- * declines the point and falls through to the line and angle snaps, which help
- * align the heading until the approach is tangent.
- *
- * Two cases offer no alignment and are skipped:
- * - An end at `from`: a section to it would be zero-length.
- * - A line `from` runs along (on it and parallel): a section there is trivially
- *   on it, so its guide would be redundant.
- *
- * A line `from` merely crosses stays a candidate: the section can still end back
- * on it (a 180° arc onto the start's normal). {@link shownSnap} decides whether
- * that guide is drawn, from the built section's end.
- */
-export function resolveSnap(
-  from: Pose,
-  target: Point,
-  openEnds: readonly Pose[],
-  pointTolerance: number,
-  lineTolerance: number
-): Snap {
-  // A point wins over any line, so look for the nearest open-end point first and
-  // skip the line search entirely when one is in range.
-  let nearestPoint: {end: Pose; gap: number} | null = null;
-  for (const end of openEnds) {
-    // The railhead can't snap to itself: a section to its own start is empty.
-    if (distance(end.position, from.position) <= EPSILON) {
-      continue;
-    }
-    const gap = distance(target, end.position);
-    if (gap > pointTolerance || (nearestPoint && gap >= nearestPoint.gap)) {
-      continue;
-    }
-    // A point snap lays a section straight onto the end, so only offer it when
-    // that section meets the end tangentially — otherwise the join would kink,
-    // which a run never permits. The connecting section reaches the end's
-    // position; it qualifies when its exit pose coincides with the end.
-    const connector = sectionTo(from, end.position);
-    if (!connector) {
-      continue;
-    }
-    const [exit] = exitPoses(placeSection(from, connector));
-    if (posesCoincide(exit, end, EPSILON, CONNECTION_HEADING_TOLERANCE)) {
-      nearestPoint = {end, gap};
+export function openEnds(layout: Layout): readonly SectionEnd[] {
+  const joined = new Set<string>();
+  for (const join of layout.joins) {
+    for (const end of join.ends) {
+      joined.add(endKey(end));
     }
   }
-  if (nearestPoint) {
-    return {
-      kind: 'point',
-      point: nearestPoint.end.position,
-      end: nearestPoint.end,
-    };
-  }
-
-  let nearestLine: {point: Point; line: Line; gap: number} | null = null;
-  for (const end of openEnds) {
-    for (const line of tangentAndNormalLines(end)) {
-      if (colinear(from, line)) {
-        continue;
-      }
-      const foot = projectOntoLine(target, line);
-      const gap = distance(target, foot);
-      if (gap <= lineTolerance && (!nearestLine || gap < nearestLine.gap)) {
-        nearestLine = {point: foot, line, gap};
+  const open: SectionEnd[] = [];
+  for (const section of layout.sections) {
+    for (const end of ['entry', 'exit'] as const) {
+      const sectionEnd: SectionEnd = {section: section.id, end};
+      if (!joined.has(endKey(sectionEnd))) {
+        open.push(sectionEnd);
       }
     }
   }
-  if (nearestLine) {
-    return {kind: 'line', point: nearestLine.point, line: nearestLine.line};
-  }
-  return {kind: 'angle', point: target};
+  return open;
 }
 
-/**
- * Builds the section a {@link Snap} calls for. The snap decides *what* to aim at
- * from pointer proximity alone; turning that into a section — which needs the
- * angle `increment` and `threshold` (radians) — lives here, so {@link resolveSnap}
- * stays a pure proximity test, free of section geometry. Angle-snapping shapes
- * the section only where the snap leaves room for it:
- *
- * - `angle`: the end is free, so the sweep angle-snaps toward the target — the
- *   ordinary drawing behavior, used whenever no end is in range.
- * - `line`: the end must land on a line, which leaves one degree of freedom;
- *   {@link sectionOntoLine} angle-snaps the shape, then spends that freedom
- *   sliding the end onto the line.
- * - `point`: the end is pinned to an open end, so the section just reaches it.
- */
-export function sectionForSnap(
-  from: Pose,
-  snap: Snap,
-  increment: number,
-  threshold: number
-): RouteSection | null {
-  switch (snap.kind) {
-    case 'angle':
-      return snappedSectionTo(from, snap.point, increment, threshold);
-    case 'line':
-      return sectionOntoLine(from, snap.point, snap.line, increment, threshold);
-    case 'point':
-      return sectionTo(from, snap.point);
-    default:
-      return assertNever(snap);
+/** The end joined to `at`, or null if `at` is open. Symmetric. */
+export function partner(layout: Layout, at: SectionEnd): SectionEnd | null {
+  for (const join of layout.joins) {
+    const [a, b] = join.ends;
+    if (sameEnd(a, at)) {
+      return b;
+    }
+    if (sameEnd(b, at)) {
+      return a;
+    }
   }
+  return null;
 }
 
-/**
- * The snap whose feedback should be drawn for `section`, or null when there is
- * none. A line's guide is shown only where the section's end actually lands on
- * the line: an active alignment always lands there, while a line the railhead
- * lies on lands only when the section curves back onto it (a 180° arc onto the
- * start's normal). A point's ring and the featureless `angle` snap carry through
- * unchanged; a null section (nothing to lay) shows nothing.
- */
-export function shownSnap(
-  from: Pose,
-  snap: Snap,
-  section: RouteSection | null
-): Snap | null {
-  if (!section) {
-    return null;
-  }
-  if (snap.kind !== 'line') {
-    return snap;
-  }
-  // The through route leaves by the first exit; its end is where the guide lands.
-  const [end] = exitPoses(placeSection(from, section));
-  return onLine(end.position, snap.line) ? snap : null;
-}
-
-/**
- * The section from `from` to `target`: the unique straight or arc that leaves
- * `from` tangent to its heading and ends at `target` — or `null` when none
- * exists (the target is `from`'s own position, or lies straight behind it).
- * This is the exact geometry, with no snapping; {@link snappedSectionTo} and
- * {@link sectionOntoLine} layer the angle and line snaps onto it, and a point
- * snap, which already names an exact target, uses it as is.
- *
- * The arc lies on the circle tangent to `from`'s heading at its position and
- * passing through `target`: that circle's center is on the normal at `from`,
- * equidistant from the two points. The signed perpendicular offset of `target`
- * from the heading therefore fixes the radius, its sign fixes the bend
- * direction, and the angle subtended at the center is the sweep. A target on the
- * heading line has no such circle — it is a straight, or, if behind, unreachable.
- */
-export function sectionTo(from: Pose, target: Point): RouteSection | null {
-  const forward = unitVector(from.heading);
-  const left = unitVector(from.heading + Math.PI / 2);
-  const toTarget = subtract(target, from.position);
-
-  const distanceSquared = dot(toTarget, toTarget);
-  if (distanceSquared < EPSILON) {
-    return null; // target coincides with `from`
-  }
-
-  const ahead = dot(forward, toTarget);
-  const sideways = dot(left, toTarget);
-
-  // A target with no perpendicular offset lies on the heading line: a straight,
-  // whose length is the target's forward distance `ahead`, reachable only when
-  // the target is in front. This test is exact — a target just off the line
-  // yields a valid (large-radius) arc, and any snap-to-straight tolerance
-  // belongs to the UI, not here.
-  if (Math.abs(sideways) < EPSILON) {
-    return ahead > 0 ? straight(ahead) : null;
-  }
-
-  const offset = distanceSquared / (2 * sideways);
-  const radius = Math.abs(offset);
-  const center: Point = {
-    x: from.position.x + offset * left.x,
-    y: from.position.y + offset * left.y,
+/** Start a new network: add `section`, anchored by its `entry` at `pose`. */
+export function anchorSection(
+  layout: Layout,
+  section: Section,
+  pose: Pose
+): Layout {
+  return {
+    sections: [...layout.sections, section],
+    joins: layout.joins,
+    anchors: [
+      ...layout.anchors,
+      {sectionEnd: {section: section.id, end: 'entry'}, pose},
+    ],
   };
-  const startAngle = Math.atan2(
-    from.position.y - center.y,
-    from.position.x - center.x
-  );
-  const endAngle = Math.atan2(target.y - center.y, target.x - center.x);
-
-  // A center to the left of travel bends the track left (counter-clockwise).
-  return offset > 0
-    ? curveLeft(radius, radToDeg(normalizeAngle(endAngle - startAngle)))
-    : curveRight(radius, radToDeg(normalizeAngle(startAngle - endAngle)));
 }
 
 /**
- * Snaps `value` to the nearest multiple of `increment` if it lands within
- * `threshold` of one, otherwise leaves it untouched — so a value set
- * deliberately off-grid stands, while one nudged close to a multiple snaps
- * onto it.
+ * Join `section` onto open end `at`, recording a join between `at` and the new
+ * section's `entry`. When the new `exit` lands on an existing open end
+ * `closeOnto`, record that join too — the loop close. A `closeOnto` whose pose
+ * does not align with the new exit leaves the layout unplaceable; this throws
+ * {@link RangeError} rather than return it.
  */
-export function snapToIncrement(
-  value: number,
-  increment: number,
-  threshold: number
-): number {
-  const nearest = Math.round(value / increment) * increment;
-  return Math.abs(value - nearest) <= threshold ? nearest : value;
+export function joinSection(
+  layout: Layout,
+  at: SectionEnd,
+  section: Section,
+  closeOnto?: SectionEnd
+): Layout {
+  const entry: SectionEnd = {section: section.id, end: 'entry'};
+  const joins: Join[] = [...layout.joins, {ends: [at, entry]}];
+  if (closeOnto) {
+    const exit: SectionEnd = {section: section.id, end: 'exit'};
+    joins.push({ends: [exit, closeOnto]});
+  }
+  const joined: Layout = {
+    sections: [...layout.sections, section],
+    joins,
+    anchors: layout.anchors,
+  };
+  // A closing join introduces a revisit; place the layout so its alignment is
+  // checked now, surfacing an unaligned close as a throw rather than later.
+  if (closeOnto) {
+    placeLayout(joined);
+  }
+  return joined;
 }
 
 /**
- * Like {@link sectionTo}, but with the curve's sweep snapped to a tidy
- * angle (clean angles, arbitrary radii — the flex/handlaid promise). When the
- * sweep snaps, the radius is *fitted* so the snapped arc still ends as near the
- * pointer as it can, so the preview keeps tracking the pointer instead of
- * jumping. A sweep that snaps to zero flattens into a straight; a curve whose
- * sweep lands on no tidy multiple, and a section already straight, pass through
- * unchanged. `increment`/`threshold` are radians.
+ * Threads one network: places the anchored section by its `entry`, then follows
+ * each placed section's exit join forward, placing each neighbor's `entry` and
+ * checking the join where it closes back onto an already-placed section.
  */
-export function snappedSectionTo(
-  from: Pose,
-  target: Point,
-  increment: number,
-  threshold: number
-): RouteSection | null {
-  const raw = sectionTo(from, target);
-  if (!raw || raw.kind === 'straight') {
-    return raw;
+function threadNetwork(
+  layout: Layout,
+  byId: ReadonlyMap<SectionId, Section>,
+  anchor: Anchor,
+  placed: Map<SectionId, PlacedSection>
+): void {
+  const start = byId.get(anchor.sectionEnd.section);
+  if (!start) {
+    throw new RangeError(
+      `anchor references unknown section ${anchor.sectionEnd.section}`
+    );
   }
-  const sweep = snapToIncrement(raw.arc.sweep, increment, threshold);
-  if (sweep === raw.arc.sweep) {
-    return raw;
-  }
+  // The anchor names the section's entry (anchorSection plants it there).
+  const pending: Array<{section: Section; entry: Pose}> = [
+    {section: start, entry: anchor.pose},
+  ];
+  for (let item = pending.shift(); item; item = pending.shift()) {
+    const {section, entry} = item;
+    if (placed.has(section.id)) {
+      continue;
+    }
+    const placedSection = placeSection(section, entry);
+    placed.set(section.id, placedSection);
 
-  const toTarget = subtract(target, from.position);
-  if (sweep === 0) {
-    // Flatten to a straight reaching the pointer's forward projection.
-    const ahead = dot(unitVector(from.heading), toTarget);
-    return ahead > EPSILON ? straight(ahead) : raw;
+    const neighbor = partner(layout, {section: section.id, end: 'exit'});
+    if (!neighbor) {
+      continue;
+    }
+    const exit = endPose(placedSection, 'exit');
+    const alreadyPlaced = placed.get(neighbor.section);
+    if (alreadyPlaced) {
+      // The join closes a cycle: never re-place, only require it to align.
+      const meeting = endPose(alreadyPlaced, neighbor.end);
+      if (!posesAlign(exit, meeting, EPSILON, CONNECTION_HEADING_TOLERANCE)) {
+        throw new RangeError(
+          'a closing join does not align; geometry is unsatisfiable'
+        );
+      }
+      continue;
+    }
+    const next = byId.get(neighbor.section);
+    if (!next) {
+      throw new RangeError(
+        `join references unknown section ${neighbor.section}`
+      );
+    }
+    pending.push({section: next, entry: exit});
   }
-
-  // With the sweep fixed, the arc's end rides a ray out of `from`: it is
-  // `from + radius·chord`, where `chord` is the unit-radius arc's straight
-  // start→end (see {@link arcChord}). The end slides out along that ray as the
-  // radius grows, so the radius whose end is nearest the pointer is the
-  // pointer's projection onto the ray; a negative projection means the pointer
-  // is behind `from`, so leave the curve raw.
-  const chord = arcChord(from, sweep, raw.handedness);
-  const chordLengthSquared = dot(chord, chord); // ~0 only for a full-circle sweep
-  const radius =
-    chordLengthSquared > EPSILON
-      ? dot(toTarget, chord) / chordLengthSquared
-      : 0;
-  return radius > 0
-    ? {kind: 'curved', arc: arc(radius, sweep), handedness: raw.handedness}
-    : raw;
 }
 
-/**
- * The section laid from `from` toward `target` once `target` has snapped onto
- * `line`, composing the two snaps: the angle snap picks the shape, then
- * alignment slides that shape's end onto the line. A straight slides its length
- * to where its heading line crosses `line`; a curve keeps its snapped sweep and
- * slides its radius to where its chord ray crosses `line` — each keeping its
- * clean shape while meeting the line. When the crossing lies behind or is
- * parallel, the angle-snapped section is kept. `increment`/`threshold` are
- * radians.
- */
-export function sectionOntoLine(
-  from: Pose,
-  target: Point,
-  line: Line,
-  increment: number,
-  threshold: number
-): RouteSection | null {
-  const shaped = snappedSectionTo(from, target, increment, threshold);
-  if (!shaped) {
-    return null;
-  }
-  const aligned =
-    shaped.kind === 'straight'
-      ? straightOntoLine(from, line)
-      : curveOntoLine(from, line, shaped.arc.sweep, shaped.handedness);
-  return aligned ?? shaped;
+/** A stable string key for a section end, for membership tests. */
+function endKey(end: SectionEnd): string {
+  return `${end.section}:${end.end}`;
 }
 
-/**
- * The straight start→end of the unit-radius `sweep`/`handedness` arc leaving
- * `from`: the direction the placed arc's end rides out along as its radius grows.
- * Vanishes (length ~0) only for a full-circle sweep.
- */
-function arcChord(from: Pose, sweep: number, handedness: Handedness): Vector {
-  return unitArcChord(from.heading, handednessSign(handedness) * sweep);
-}
-
-// A straight from `from` ending where its heading line crosses `line`, or null.
-function straightOntoLine(from: Pose, line: Line): RouteSection | null {
-  const forward = unitVector(from.heading);
-  const meeting = lineIntersection(
-    {origin: from.position, direction: forward},
-    line
-  );
-  if (!meeting) {
-    return null;
-  }
-  const reach = dot(forward, subtract(meeting, from.position));
-  return reach > EPSILON ? straight(reach) : null;
-}
-
-// A `sweep`/`handedness` curve from `from` whose end meets `line`, or null. The
-// end rides the ray `from + radius·chord`, so the radius that lands it on the
-// line is where that ray crosses the line.
-function curveOntoLine(
-  from: Pose,
-  line: Line,
-  sweep: number,
-  handedness: Handedness
-): RouteSection | null {
-  const chord = arcChord(from, sweep, handedness);
-  const meeting = lineIntersection(
-    {origin: from.position, direction: chord},
-    line
-  );
-  if (!meeting) {
-    return null;
-  }
-  const radius =
-    dot(subtract(meeting, from.position), chord) / dot(chord, chord);
-  return radius > EPSILON
-    ? {kind: 'curved', arc: arc(radius, sweep), handedness}
-    : null;
+/** Whether two ends reference the same section end. */
+function sameEnd(a: SectionEnd, b: SectionEnd): boolean {
+  return a.section === b.section && a.end === b.end;
 }

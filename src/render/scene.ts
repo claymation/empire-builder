@@ -18,6 +18,7 @@ import {
   Line,
   normalize,
   PlacedArc,
+  PlacedSegment,
   Point,
   Pose,
   radToDeg,
@@ -25,7 +26,9 @@ import {
   segmentEnd,
   subtract,
 } from '../domain/geometry';
-import {Snap, sectionGeometry, PlacedSection} from '../domain/layout';
+import {PlacedLayout} from '../domain/layout';
+import {PlacedSection} from '../domain/section';
+import {Snap} from '../domain/snapping';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
 import {assertNever} from '../domain/validate';
@@ -62,12 +65,14 @@ export function sceneTransform(
 export function renderStatic(
   transform: ViewTransform,
   space: Space,
-  sections: readonly PlacedSection[]
+  placed: PlacedLayout
 ): void {
   const toCanvas = onLayer('static', transform);
   drawSheet(space, toCanvas);
-  for (const section of sections) {
-    drawSection(section, toCanvas, RAIL_COLOR, false);
+  for (const section of placed.sectionsById.values()) {
+    for (const geometry of section.geometry) {
+      drawGeometry(geometry, toCanvas, RAIL_COLOR, false);
+    }
   }
 }
 
@@ -90,8 +95,14 @@ export function renderOverlay(
     drawGuide(guide, toCanvas, transform.scale);
   }
   if (preview) {
-    drawSection(preview, toCanvas, PREVIEW_COLOR, true);
-    drawAngleLabel(preview, toCanvas);
+    for (const geometry of preview.geometry) {
+      drawGeometry(geometry, toCanvas, PREVIEW_COLOR, true);
+    }
+    // The preview is a single drafted shape; label its leading end.
+    const leading = preview.geometry.at(-1);
+    if (leading) {
+      drawAngleLabel(leading, toCanvas);
+    }
   }
   if (railhead) {
     drawRailhead(railhead.position, toCanvas);
@@ -154,8 +165,10 @@ function drawSnapRing(point: Point, toCanvas: ToCanvas): void {
  * clear of the track: radially out from the arc's center for a curve, just above
  * the end for a straight. A straight reads 0.0°.
  */
-function drawAngleLabel(section: PlacedSection, toCanvas: ToCanvas): void {
-  const geometry = sectionGeometry(section);
+function drawAngleLabel(
+  geometry: PlacedSegment | PlacedArc,
+  toCanvas: ToCanvas
+): void {
   if (geometry.kind === 'arc') {
     const degrees = Math.abs(radToDeg(geometry.sweep));
     const radius = toInches(geometry.radius);
@@ -247,13 +260,12 @@ function drawSheet(space: Space, toCanvas: ToCanvas): void {
   sheet.strokeWidth = 2;
 }
 
-function drawSection(
-  section: PlacedSection,
+function drawGeometry(
+  geometry: PlacedSegment | PlacedArc,
   toCanvas: ToCanvas,
   color: string,
   preview: boolean
 ): void {
-  const geometry = sectionGeometry(section);
   const path =
     geometry.kind === 'segment'
       ? new paper.Path.Line(
