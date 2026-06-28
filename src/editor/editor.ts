@@ -34,7 +34,8 @@ import {renderOverlay, renderStatic, sceneTransform} from '../render/scene';
 import {ViewTransform} from '../render/transform';
 import {commit, EditorState, EMPTY, redo, start, undo} from './state';
 
-/** Direction the first section leaves the start point until drag-to-aim exists. */
+/** Heading the first section leaves the planted start at. The start carries no
+ *  aim of its own, so this is fixed. */
 const INITIAL_HEADING = 0;
 /** Curve sweeps snap to multiples of this when within SNAP_THRESHOLD of one. */
 const SNAP_INCREMENT = degToRad(15);
@@ -172,8 +173,8 @@ export function startEditor(
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
     refreshOverlay(view);
   };
-  // Commit on the click's release, the convention for drawing tools — it leaves
-  // press-and-drag free for a future drag-to-aim gesture.
+  // Commit on the click's release, not the press — the drawing-tool convention,
+  // and it keeps a press-and-drag available as its own gesture.
   tool.onMouseUp = (event: paper.ToolEvent) => {
     const view = transform();
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
@@ -190,8 +191,17 @@ export function startEditor(
       if (railheadPose) {
         const {shape, closeOnto} = draft(view, railheadPose, placed);
         if (shape) {
-          const at = state.pendingStart ? null : railheadEnd();
-          state = commit(state, at, withId(shape), closeOnto);
+          state = commit(
+            state,
+            state.pendingStart
+              ? {kind: 'plant', section: withId(shape)}
+              : {
+                  kind: 'extend',
+                  at: railheadEnd(),
+                  section: withId(shape),
+                  closeOnto,
+                }
+          );
         }
       }
     }

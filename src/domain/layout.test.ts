@@ -247,16 +247,20 @@ describe('joinSection', () => {
     });
   });
 
-  it('rejects a closeOnto the new exit does not align with', () => {
+  it('records a misaligned closeOnto; placement, not joinSection, rejects it', () => {
     // s2 is a straight from (100,0) to (200,0); asserting its exit closes onto
-    // s1's entry at the origin cannot hold.
-    expect(() =>
-      joinSection(
-        base,
-        end('s1', 'exit'),
-        withId('s2', straight(100)),
-        end('s1', 'entry')
-      )
-    ).toThrow(RangeError);
+    // s1's entry at the origin cannot hold. joinSection is pure topology, so it
+    // records the join without complaint — placeLayout is where the geometry is
+    // found unsatisfiable.
+    const layout = joinSection(
+      base,
+      end('s1', 'exit'),
+      withId('s2', straight(100)),
+      end('s1', 'entry')
+    );
+    expect(layout.joins).toContainEqual({
+      ends: [end('s2', 'exit'), end('s1', 'entry')],
+    });
+    expect(() => placeLayout(layout)).toThrow(RangeError);
   });
 });

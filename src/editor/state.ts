@@ -24,6 +24,7 @@ import {
   SectionEnd,
 } from '../domain/layout';
 import {Section} from '../domain/section';
+import {assertNever} from '../domain/validate';
 
 export interface EditorState {
   readonly layout: Layout;
@@ -49,26 +50,49 @@ export function start(state: EditorState, pose: Pose): EditorState {
 }
 
 /**
- * Commit `section`. With a start pending it becomes a new network's first
- * section ({@link anchorSection} at the pending pose), clearing the pending
- * start; otherwise it joins onto open end `at` ({@link joinSection}), optionally
- * closing onto `closeOnto`. Either way the prior layout goes to `past` — one undo
- * step — and the redo stack is dropped.
+ * A track-laying command. `plant` lays a new network's first section at the
+ * pending start; `extend` joins a section onto open end `at`, optionally closing
+ * its exit onto `closeOnto`. The end joined onto and the close belong only to
+ * `extend` — planting cannot carry them, so the nonsensical combinations are
+ * unrepresentable rather than ignored.
  */
-export function commit(
-  state: EditorState,
-  at: SectionEnd | null,
-  section: Section,
-  closeOnto: SectionEnd | null
-): EditorState {
+export type Placement =
+  | {readonly kind: 'plant'; readonly section: Section}
+  | {
+      readonly kind: 'extend';
+      readonly at: SectionEnd;
+      readonly section: Section;
+      readonly closeOnto: SectionEnd | null;
+    };
+
+/**
+ * Apply `placement`: {@link anchorSection} for a `plant` (at the pending start,
+ * which it clears), {@link joinSection} for an `extend`. Either way the prior
+ * layout goes to `past` — one undo step — and the redo stack is dropped.
+ */
+export function commit(state: EditorState, placement: Placement): EditorState {
   let layout: Layout;
-  if (state.pendingStart) {
-    layout = anchorSection(state.layout, section, state.pendingStart);
-  } else {
-    if (!at) {
-      throw new Error('joining a section requires an open end to join onto');
-    }
-    layout = joinSection(state.layout, at, section, closeOnto ?? undefined);
+  switch (placement.kind) {
+    case 'plant':
+      if (!state.pendingStart) {
+        throw new Error('planting a section requires a pending start');
+      }
+      layout = anchorSection(
+        state.layout,
+        placement.section,
+        state.pendingStart
+      );
+      break;
+    case 'extend':
+      layout = joinSection(
+        state.layout,
+        placement.at,
+        placement.section,
+        placement.closeOnto ?? undefined
+      );
+      break;
+    default:
+      return assertNever(placement);
   }
   return {
     layout,

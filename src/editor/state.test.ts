@@ -40,7 +40,10 @@ describe('editor state', () => {
 
   it('commits the first section as a new anchored network', () => {
     const planted = start(EMPTY, ORIGIN);
-    const drawn = commit(planted, null, withId('s1', straight(300)), null);
+    const drawn = commit(planted, {
+      kind: 'plant',
+      section: withId('s1', straight(300)),
+    });
     expect(drawn.layout.sections.map(s => s.id)).toEqual(['s1']);
     expect(drawn.layout.anchors).toHaveLength(1);
     expect(drawn.pendingStart).toBeNull();
@@ -51,12 +54,10 @@ describe('editor state', () => {
   });
 
   it('undoes the first section straight back to empty', () => {
-    const drawn = commit(
-      start(EMPTY, ORIGIN),
-      null,
-      withId('s1', straight(300)),
-      null
-    );
+    const drawn = commit(start(EMPTY, ORIGIN), {
+      kind: 'plant',
+      section: withId('s1', straight(300)),
+    });
     const undone = undo(drawn);
     expect(undone.layout.sections).toHaveLength(0);
     expect(undone.pendingStart).toBeNull(); // the planted origin is not restored
@@ -66,49 +67,50 @@ describe('editor state', () => {
   it('closes a loop, leaving no open ends, and reopens them on undo', () => {
     // The oval: two straights joined by two 180° curves, the last closing onto
     // the anchored entry.
-    let state = commit(
-      start(EMPTY, ORIGIN),
-      null,
-      withId('s1', straight(100)),
-      null
-    );
-    state = commit(
-      state,
-      end('s1', 'exit'),
-      withId('s2', curveLeft(50, 180)),
-      null
-    );
-    state = commit(state, end('s2', 'exit'), withId('s3', straight(100)), null);
-    const closed = commit(
-      state,
-      end('s3', 'exit'),
-      withId('s4', curveLeft(50, 180)),
-      end('s1', 'entry')
-    );
+    let state = commit(start(EMPTY, ORIGIN), {
+      kind: 'plant',
+      section: withId('s1', straight(100)),
+    });
+    state = commit(state, {
+      kind: 'extend',
+      at: end('s1', 'exit'),
+      section: withId('s2', curveLeft(50, 180)),
+      closeOnto: null,
+    });
+    state = commit(state, {
+      kind: 'extend',
+      at: end('s2', 'exit'),
+      section: withId('s3', straight(100)),
+      closeOnto: null,
+    });
+    const closed = commit(state, {
+      kind: 'extend',
+      at: end('s3', 'exit'),
+      section: withId('s4', curveLeft(50, 180)),
+      closeOnto: end('s1', 'entry'),
+    });
     expect(openEnds(closed.layout)).toEqual([]);
     expect(openEnds(undo(closed).layout)).not.toEqual([]);
   });
 
   it('drops the redo stack once a new section is committed', () => {
-    const anchored = commit(
-      start(EMPTY, ORIGIN),
-      null,
-      withId('s1', straight(300)),
-      null
-    );
-    const extended = commit(
-      anchored,
-      end('s1', 'exit'),
-      withId('s2', straight(200)),
-      null
-    );
+    const anchored = commit(start(EMPTY, ORIGIN), {
+      kind: 'plant',
+      section: withId('s1', straight(300)),
+    });
+    const extended = commit(anchored, {
+      kind: 'extend',
+      at: end('s1', 'exit'),
+      section: withId('s2', straight(200)),
+      closeOnto: null,
+    });
     // Undo s2, then grow a different section from the same open end.
-    const branched = commit(
-      undo(extended),
-      end('s1', 'exit'),
-      withId('s3', straight(150)),
-      null
-    );
+    const branched = commit(undo(extended), {
+      kind: 'extend',
+      at: end('s1', 'exit'),
+      section: withId('s3', straight(150)),
+      closeOnto: null,
+    });
     expect(branched.layout.sections.map(s => s.id)).toEqual(['s1', 's3']);
     expect(redo(branched)).toBe(branched); // the undone s2 is gone
   });

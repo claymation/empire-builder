@@ -86,9 +86,9 @@ export interface PlacedLayout {
  * the neighbor's `entry` at the pose carried across the shared join (exit→entry).
  * On reaching an already-placed section — the join that closes a cycle, e.g. the
  * oval's last join — it does not re-place: it checks the join is aligned
- * ({@link posesAlign}) and stops. An unaligned revisit throws {@link RangeError};
- * the geometry is unsatisfiable without the deferred US-7 solver. Threading is
- * forward-only — every section is reached downstream of an anchor's `entry`.
+ * ({@link posesAlign}) and stops. An unaligned revisit throws {@link RangeError}:
+ * no single placement aligns the closing join. Threading is forward-only — every
+ * section is reached downstream of an anchor's `entry`.
  */
 export function placeLayout(layout: Layout): PlacedLayout {
   const byId = new Map(layout.sections.map(section => [section.id, section]));
@@ -160,9 +160,10 @@ export function anchorSection(
 /**
  * Join `section` onto open end `at`, recording a join between `at` and the new
  * section's `entry`. When the new `exit` lands on an existing open end
- * `closeOnto`, record that join too — the loop close. A `closeOnto` whose pose
- * does not align with the new exit leaves the layout unplaceable; this throws
- * {@link RangeError} rather than return it.
+ * `closeOnto`, record that join too — the loop close.
+ *
+ * Pure topology: whether a `closeOnto` actually aligns is a geometric fact,
+ * surfaced where geometry is computed ({@link placeLayout}), not enforced here.
  */
 export function joinSection(
   layout: Layout,
@@ -176,17 +177,11 @@ export function joinSection(
     const exit: SectionEnd = {section: section.id, end: 'exit'};
     joins.push({ends: [exit, closeOnto]});
   }
-  const joined: Layout = {
+  return {
     sections: [...layout.sections, section],
     joins,
     anchors: layout.anchors,
   };
-  // A closing join introduces a revisit; place the layout so its alignment is
-  // checked now, surfacing an unaligned close as a throw rather than later.
-  if (closeOnto) {
-    placeLayout(joined);
-  }
-  return joined;
 }
 
 /**
