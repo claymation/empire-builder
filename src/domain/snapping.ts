@@ -17,6 +17,7 @@ import {
   colinear,
   distance,
   dot,
+  EPSILON,
   Handedness,
   handednessSign,
   Line,
@@ -44,10 +45,6 @@ import {
   straight,
 } from './section';
 import {assertNever} from './validate';
-
-// Distances (mm), dot products (mm²), and heading gaps (radians) below this are
-// treated as zero.
-const EPSILON = 1e-9;
 
 /**
  * What the pointer's target snapped to. Every kind carries the resolved `point`
@@ -115,7 +112,7 @@ export function resolveSnap(
       continue;
     }
     const exit = endPose(placeSection(connector, from), 'exit');
-    if (posesEqual(exit, pose, EPSILON, EPSILON)) {
+    if (posesEqual(exit, pose)) {
       nearest = {end: sectionEnd, pose, gap};
     }
   }

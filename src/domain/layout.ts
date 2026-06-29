@@ -20,11 +20,6 @@ import {
   SectionId,
 } from './section';
 
-// Position (mm) and heading (radians) gaps below this are treated as zero — the
-// slack allowed when a join's two ends must coincide. Section geometry is exact
-// (analytic), so a join formed by the snapping guides closes to within rounding.
-const EPSILON = 1e-9;
-
 /** A reference to one end of a section: which section, which end. */
 export interface SectionEnd {
   readonly sectionId: SectionId;
@@ -124,6 +119,26 @@ export function openEnds(layout: Layout): readonly SectionEnd[] {
   return open;
 }
 
+/** The world pose of `end` within a placed layout. */
+export function poseOf(placed: PlacedLayout, end: SectionEnd): Pose {
+  const section = placed.sectionsById.get(end.sectionId);
+  if (!section) {
+    throw new RangeError(`end references unplaced section ${end.sectionId}`);
+  }
+  return endPose(section, end.end);
+}
+
+/** Each open end paired with its world pose, ready to snap onto. */
+export function openEndPoses(
+  layout: Layout,
+  placed: PlacedLayout
+): SectionEndPose[] {
+  return openEnds(layout).map(sectionEnd => ({
+    sectionEnd,
+    pose: poseOf(placed, sectionEnd),
+  }));
+}
+
 /** The end joined to `at`, or null if `at` is open. Symmetric. */
 export function partner(layout: Layout, at: SectionEnd): SectionEnd | null {
   for (const join of layout.joins) {
@@ -219,7 +234,7 @@ function threadNetwork(
     if (alreadyPlaced) {
       // The join closes a cycle: never re-place, only require it to align.
       const meeting = endPose(alreadyPlaced, neighbor.end);
-      if (!posesAlign(exit, meeting, EPSILON, EPSILON)) {
+      if (!posesAlign(exit, meeting)) {
         throw new RangeError(
           'a closing join does not align; geometry is unsatisfiable'
         );

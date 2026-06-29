@@ -8,16 +8,14 @@
 import paper from 'paper';
 import {degToRad, Point, Pose} from '../domain/geometry';
 import {
-  Layout,
-  openEnds,
+  openEndPoses,
   partner,
   placeLayout,
   PlacedLayout,
+  poseOf,
   SectionEnd,
-  SectionEndPose,
 } from '../domain/layout';
 import {
-  endPose,
   placeSection,
   PlacedSection,
   Section,
@@ -97,18 +95,14 @@ export function startEditor(
   const transform = (): ViewTransform =>
     sceneTransform(space, paper.view.size.width, paper.view.size.height);
 
-  // The current layout, placed. Held across pointer moves and re-placed only when
-  // the layout changes: it is immutable and swapped wholesale on every edit, so a
-  // changed reference is exactly a changed layout. A single slot, not a growing
-  // cache. Placing is linear in the layout, too much to repeat on every move.
-  let placedFrom: Layout = state.layout;
+  // The current layout, placed. Advancing the state is the one place the layout
+  // changes, so it is the one place to re-place — paying the linear cost of
+  // placing the whole graph once per edit, never on a pointer move (which leaves
+  // the layout untouched and reuses this).
   let placed: PlacedLayout = placeLayout(state.layout);
-  function placedLayout(): PlacedLayout {
-    if (placedFrom !== state.layout) {
-      placedFrom = state.layout;
-      placed = placeLayout(state.layout);
-    }
-    return placed;
+  function setState(next: EditorState): void {
+    state = next;
+    placed = placeLayout(state.layout);
   }
 
   /**
@@ -118,7 +112,7 @@ export function startEditor(
    * been joined (a closed loop), which leaves no railhead and stops drawing. A
    * function of the layout, so undo/redo restore it for free.
    */
-  function railheadOf(): Pose | null {
+  function railhead(): Pose | null {
     if (state.pendingAnchor) {
       return state.pendingAnchor;
     }
@@ -129,17 +123,16 @@ export function startEditor(
     if (partner(state.layout, {sectionId: last.id, end: 'exit'})) {
       return null;
     }
-    return poseOf(placedLayout(), {sectionId: last.id, end: 'exit'});
+    return poseOf(placed, {sectionId: last.id, end: 'exit'});
   }
 
   /**
-   * What the next click would lay (see {@link Preview}). It derives the railhead
-   * itself, so callers need only hand it the view; with no pointer or no railhead
-   * there is nothing to lay.
+   * What the next click would lay (see {@link Preview}); with no pointer or no
+   * railhead there is nothing to lay.
    */
   function preview(view: ViewTransform): Preview {
-    const railhead = railheadOf();
-    if (!pointer || !railhead) {
+    const from = railhead();
+    if (!pointer || !from) {
       return NOTHING;
     }
     let shape: SectionShape | null;
@@ -148,60 +141,54 @@ export function startEditor(
     if (suspendSnap) {
       // Suspending snapping (Option/Alt) lays the plain section to the pointer,
       // with no open-end snap and no guides.
-      shape = shapeTo(railhead, pointer);
+      shape = shapeTo(from, pointer);
       snap = null;
       closeOnto = null;
     } else {
-      const openEndPoses: SectionEndPose[] = openEnds(state.layout).map(
-        sectionEnd => ({sectionEnd, pose: poseOf(placedLayout(), sectionEnd)})
-      );
       const resolved = resolveSnap(
-        railhead,
+        from,
         pointer,
-        openEndPoses,
+        openEndPoses(state.layout, placed),
         POINT_MAGNET_PX / view.scale,
         LINE_MAGNET_PX / view.scale
       );
-      shape = shapeForSnap(railhead, resolved, SNAP_INCREMENT, SNAP_THRESHOLD);
-      // An end snap names the open end it latched onto; closing onto it records
+      shape = shapeForSnap(from, resolved, SNAP_INCREMENT, SNAP_THRESHOLD);
+      // An end snap names the open end it latched onto (it is only offered when a
+      // section can reach it, so there is always a shape); closing onto it records
       // the join.
-      closeOnto = shape && resolved.kind === 'end' ? resolved.end : null;
+      closeOnto = resolved.kind === 'end' ? resolved.end : null;
       // Show only the snap the section earns — a guide whose line the end lands on.
-      snap = shownSnap(railhead, resolved, shape);
+      snap = shownSnap(from, resolved, shape);
     }
     return {
-      railhead,
+      railhead: from,
       shape,
-      ghost: shape ? placeSection(shape, railhead) : null,
+      ghost: shape ? placeSection(shape, from) : null,
       snap,
       closeOnto,
     };
   }
 
   function refreshStatic(view: ViewTransform): void {
-    renderStatic(view, space, placedLayout());
+    renderStatic(view, space, placed);
     if (status) {
       status.textContent = describe(state);
     }
   }
 
-  // The refresh functions build the Paper.js scene graph; presenting it to the
-  // canvas is a separate step each frame ends with, so the draw order of the
-  // layers within a frame is not tangled up with when the frame is flushed.
   function refreshOverlay(view: ViewTransform): void {
-    const {railhead, ghost, snap} = preview(view);
-    renderOverlay(view, ghost, railhead, snap);
+    const {railhead: from, ghost, snap} = preview(view);
+    renderOverlay(view, ghost, from, snap);
   }
 
-  function present(): void {
-    paper.view.update();
-  }
-
+  // refresh* build the Paper.js scene graph; flushing it to the canvas
+  // (paper.view.update) is a separate step each frame ends with, so it is not
+  // tied to which layer happens to draw last.
   function refreshAll(): void {
     const view = transform();
     refreshStatic(view);
     refreshOverlay(view);
-    present();
+    paper.view.update();
   }
 
   const tool = new paper.Tool();
@@ -209,7 +196,7 @@ export function startEditor(
     const view = transform();
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
     refreshOverlay(view);
-    present();
+    paper.view.update();
   };
   // Commit on the click's release, not the press — the drawing-tool convention,
   // and it keeps a press-and-drag available as its own gesture.
@@ -218,16 +205,20 @@ export function startEditor(
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
     if (!state.pendingAnchor && state.layout.sections.length === 0) {
       // An empty canvas: drop the anchor the first section grows from.
-      state = dropAnchor(state, {position: pointer, heading: INITIAL_HEADING});
+      setState(
+        dropAnchor(state, {position: pointer, heading: INITIAL_HEADING})
+      );
     } else {
       // The preview lays from the railhead; a tangent end snap closes its exit
       // onto an open end, recording the join. With the loop closed there is no
       // railhead, so the preview has no shape and the click is ignored.
       const {shape, closeOnto} = preview(view);
       if (shape) {
-        state = state.pendingAnchor
-          ? anchor(state, withId(shape))
-          : extend(state, railheadEnd(), withId(shape), closeOnto);
+        setState(
+          state.pendingAnchor
+            ? anchor(state, withId(shape))
+            : extend(state, railheadEnd(), withId(shape), closeOnto)
+        );
       }
     }
     refreshAll();
@@ -240,14 +231,14 @@ export function startEditor(
     if (held !== suspendSnap) {
       suspendSnap = held;
       refreshOverlay(transform());
-      present();
+      paper.view.update();
     }
   };
   window.addEventListener('keydown', event => {
     setSuspend(event.altKey);
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault();
-      state = event.shiftKey ? redo(state) : undo(state);
+      setState(event.shiftKey ? redo(state) : undo(state));
       refreshAll();
     }
   });
@@ -268,15 +259,6 @@ export function startEditor(
   function withId(shape: SectionShape): Section {
     return {...shape, id: allocateId()};
   }
-}
-
-/** The world pose of `end` within a placed layout. */
-function poseOf(placed: PlacedLayout, end: SectionEnd): Pose {
-  const section = placed.sectionsById.get(end.sectionId);
-  if (!section) {
-    throw new Error(`end references unplaced section ${end.sectionId}`);
-  }
-  return endPose(section, end.end);
 }
 
 // Modifier keys read by their platform names: ⌥/⌘ on macOS, Alt/Ctrl elsewhere.

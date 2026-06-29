@@ -9,8 +9,8 @@ import {requireFinite, requirePositive} from './validate';
 
 const TWO_PI = Math.PI * 2;
 const QUARTER_TURN = Math.PI / 2;
-// Values below this are treated as zero.
-const EPSILON = 1e-9;
+/** Floating-point comparison tolerance: values closer than this count as equal. */
+export const EPSILON = 1e-9;
 
 // ── Points ──
 
@@ -112,15 +112,15 @@ export interface Pose {
 }
 
 /**
- * Whether two poses are equal within the given tolerances: the same position,
- * and the same heading compared modulo a full turn (so two poses facing the
- * same way match, two facing opposite ways do not).
+ * Whether two poses are equal within the given tolerances (EPSILON by default):
+ * the same position, and the same heading compared modulo a full turn (so two
+ * poses facing the same way match, two facing opposite ways do not).
  */
 export function posesEqual(
   a: Pose,
   b: Pose,
-  positionTolerance: number,
-  headingTolerance: number
+  positionTolerance = EPSILON,
+  headingTolerance = EPSILON
 ): boolean {
   if (distance(a.position, b.position) > positionTolerance) {
     return false;
@@ -136,16 +136,16 @@ export function reversePose(pose: Pose): Pose {
 }
 
 /**
- * Whether two poses align within the given tolerances: the same position, with
- * headings parallel — pointing the same way or exactly opposite. Two section
- * ends meeting at a join align when they sit at one place on one line, whichever
- * way each was reached by threading.
+ * Whether two poses align within the given tolerances (EPSILON by default): the
+ * same position, with headings parallel — pointing the same way or exactly
+ * opposite. Two section ends meeting at a join align when they sit at one place
+ * on one line, whichever way each was reached by threading.
  */
 export function posesAlign(
   a: Pose,
   b: Pose,
-  positionTolerance: number,
-  headingTolerance: number
+  positionTolerance = EPSILON,
+  headingTolerance = EPSILON
 ): boolean {
   return (
     posesEqual(a, b, positionTolerance, headingTolerance) ||
