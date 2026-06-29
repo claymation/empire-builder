@@ -10,7 +10,7 @@
  * anchorSection}/{@link joinSection} grow the graph.
  */
 
-import {degToRad, posesAlign, Pose} from './geometry';
+import {posesAlign, Pose} from './geometry';
 import {
   endPose,
   EndName,
@@ -20,17 +20,10 @@ import {
   SectionId,
 } from './section';
 
-// Distances (mm) below this are treated as zero.
+// Position (mm) and heading (radians) gaps below this are treated as zero — the
+// slack allowed when a join's two ends must coincide. Section geometry is exact
+// (analytic), so a join formed by the snapping guides closes to within rounding.
 const EPSILON = 1e-9;
-
-/**
- * The largest heading mismatch (radians) at which two section ends count as
- * meeting tangentially — the single tolerance that defines an aligned join. It
- * gates whether the snap offers a point onto an open end (../domain/snapping)
- * and whether {@link placeLayout} accepts a closing join. Wider tolerates a
- * slight kink at a join; tighter demands a more exact approach.
- */
-export const CONNECTION_HEADING_TOLERANCE = degToRad(2);
 
 /** A reference to one end of a section: which section, which end. */
 export interface SectionEnd {
@@ -226,7 +219,7 @@ function threadNetwork(
     if (alreadyPlaced) {
       // The join closes a cycle: never re-place, only require it to align.
       const meeting = endPose(alreadyPlaced, neighbor.end);
-      if (!posesAlign(exit, meeting, EPSILON, CONNECTION_HEADING_TOLERANCE)) {
+      if (!posesAlign(exit, meeting, EPSILON, EPSILON)) {
         throw new RangeError(
           'a closing join does not align; geometry is unsatisfiable'
         );

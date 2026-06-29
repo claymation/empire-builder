@@ -34,11 +34,7 @@ import {
   unitVector,
   Vector,
 } from './geometry';
-import {
-  CONNECTION_HEADING_TOLERANCE,
-  SectionEnd,
-  SectionEndPose,
-} from './layout';
+import {SectionEnd, SectionEndPose} from './layout';
 import {
   curveLeft,
   curveRight,
@@ -49,7 +45,8 @@ import {
 } from './section';
 import {assertNever} from './validate';
 
-// Distances (mm) and dot products (mm²) below this are treated as zero.
+// Distances (mm), dot products (mm²), and heading gaps (radians) below this are
+// treated as zero.
 const EPSILON = 1e-9;
 
 /**
@@ -76,8 +73,8 @@ export type Snap =
  * the `angle` snap, leaving the sweep to snap toward `target`.
  *
  * An end snap lands the section's end on the open end itself, so it is offered
- * only when the section reaching that end meets it tangentially (within
- * {@link CONNECTION_HEADING_TOLERANCE}) — a connection never kinks. A near miss
+ * only when the section reaching that end meets it tangentially — its heading
+ * equal to the end's within an epsilon, so a connection never kinks. A near miss
  * declines the point and falls through to the line and angle snaps, which help
  * align the heading until the approach is tangent.
  *
@@ -118,7 +115,7 @@ export function resolveSnap(
       continue;
     }
     const exit = endPose(placeSection(connector, from), 'exit');
-    if (posesEqual(exit, pose, EPSILON, CONNECTION_HEADING_TOLERANCE)) {
+    if (posesEqual(exit, pose, EPSILON, EPSILON)) {
       nearest = {end: sectionEnd, pose, gap};
     }
   }
