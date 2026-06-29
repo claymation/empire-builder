@@ -48,15 +48,19 @@ export interface Join {
   readonly ends: readonly [SectionEnd, SectionEnd];
 }
 
-/**
- * Anchors a network to the plane: its `sectionEnd` sits at world pose `pose`,
- * and every other pose in its network derives by threading. One anchor per
- * network fixes that network's absolute placement.
- */
-export interface Anchor {
+/** A section end paired with a world pose. */
+export interface SectionEndPose {
   readonly sectionEnd: SectionEnd;
   readonly pose: Pose;
 }
+
+/**
+ * Anchors a network to the plane: a section end fixed at an absolute world pose,
+ * from which every other pose in its network derives by threading. One anchor per
+ * network fixes that network's placement. It is a {@link SectionEndPose} used in
+ * that role — the pose is chosen, not derived.
+ */
+export type Anchor = SectionEndPose;
 
 /**
  * The track plan as a graph: the sections, the joins between their ends, and the
@@ -169,7 +173,7 @@ export function joinSection(
   layout: Layout,
   at: SectionEnd,
   section: Section,
-  closeOnto?: SectionEnd | null
+  closeOnto: SectionEnd | null
 ): Layout {
   const entry: SectionEnd = {sectionId: section.id, end: 'entry'};
   const joins: Join[] = [...layout.joins, {ends: [at, entry]}];

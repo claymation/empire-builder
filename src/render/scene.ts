@@ -77,27 +77,27 @@ export function renderStatic(
 }
 
 /**
- * Renders the pointer-follow preview, railhead marker, and any alignment
- * feedback. The guide sits beneath the preview; a snap ring rides on top,
- * marking the open end the target has latched onto. Redraw on every move.
+ * Renders the pointer-follow ghost, railhead marker, and any alignment feedback.
+ * The guide sits beneath the ghost; a snap ring rides on top, marking the open
+ * end the target has latched onto. Redraw on every move.
  */
 export function renderOverlay(
   transform: ViewTransform,
-  preview: PlacedSection | null,
+  ghost: PlacedSection | null,
   railhead: Pose | null,
   snap: Snap | null
 ): void {
   const toCanvas = onLayer('overlay', transform);
-  // The guide sits under the preview, the ring on top, so resolve both up front
+  // The guide sits under the ghost, the ring on top, so resolve both up front
   // and draw them around it.
   const {guide, ring} = snapFeedback(snap);
   if (guide) {
     drawGuide(guide, toCanvas, transform.scale);
   }
-  if (preview) {
-    // The preview is one drafted shape — a single segment or arc. Draw it and
+  if (ghost) {
+    // The ghost is one drafted shape — a single segment or arc. Draw it and
     // label that shape (a curve shows its sweep and radius, a straight 0.0°).
-    const [shape] = preview.geometry;
+    const [shape] = ghost.geometry;
     if (shape) {
       drawGeometry(shape, toCanvas, PREVIEW_COLOR, true);
       drawAngleLabel(shape, toCanvas);
@@ -113,7 +113,7 @@ export function renderOverlay(
 
 /**
  * The alignment feedback a snap calls for: a guide `line` to draw beneath the
- * preview, a `ring` point to draw on top, or neither.
+ * ghost, a `ring` point to draw on top, or neither.
  */
 function snapFeedback(snap: Snap | null): {
   guide: Line | null;
@@ -125,7 +125,7 @@ function snapFeedback(snap: Snap | null): {
   switch (snap.kind) {
     case 'line':
       return {guide: snap.line, ring: null};
-    case 'point':
+    case 'end':
       return {guide: null, ring: snap.point};
     case 'angle':
       return {guide: null, ring: null};

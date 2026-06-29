@@ -1,5 +1,6 @@
 import {describe, it, expect} from 'vitest';
 import {degToRad, radToDeg, type Point, type Pose} from './geometry';
+import {type SectionEnd, type SectionEndPose} from './layout';
 import {curveLeft, endPose, placeSection, straight} from './section';
 import {
   resolveSnap,
@@ -13,6 +14,12 @@ import {
 
 /** A pose at the origin, facing east (+x). */
 const ORIGIN: Pose = {position: {x: 0, y: 0}, heading: 0};
+
+/** A section end; its identity is immaterial to these snap tests. */
+const SOME_END: SectionEnd = {sectionId: 'e', end: 'exit'};
+
+/** Pairs an open-end pose with a section end, as the editor passes them in. */
+const oe = (pose: Pose): SectionEndPose => ({sectionEnd: SOME_END, pose});
 
 /** Asserts the section from `from` actually ends at `target`. */
 function reaches(from: Pose, target: Point): void {
@@ -139,7 +146,7 @@ describe('resolveSnap', () => {
   // its normal line the line x = 100. The railhead is off both lines, so both
   // are on offer.
   const end: Pose = {position: {x: 100, y: 50}, heading: 0};
-  const ends = [end];
+  const ends = [oe(end)];
   const from: Pose = {position: {x: 0, y: 0}, heading: 0};
   const pointTolerance = 10;
   const lineTolerance = 6;
@@ -153,11 +160,11 @@ describe('resolveSnap', () => {
     const snap = resolveSnap(
       from,
       {x: 104, y: 103},
-      [tangentEnd],
+      [oe(tangentEnd)],
       pointTolerance,
       lineTolerance
     );
-    expect(snap.kind).toBe('point');
+    expect(snap.kind).toBe('end');
     expect(snap.point).toEqual({x: 100, y: 100});
   });
 
@@ -208,11 +215,11 @@ describe('resolveSnap', () => {
     const snap = resolveSnap(
       from,
       {x: 108, y: 100},
-      [tangentEnd],
+      [oe(tangentEnd)],
       pointTolerance,
       lineTolerance
     );
-    expect(snap.kind).toBe('point');
+    expect(snap.kind).toBe('end');
     expect(snap.point).toEqual({x: 100, y: 100});
   });
 
@@ -281,11 +288,11 @@ describe('resolveSnap', () => {
     const snap = resolveSnap(
       from,
       {x: 101, y: 101},
-      [farther, nearer],
+      [oe(farther), oe(nearer)],
       pointTolerance,
       lineTolerance
     );
-    expect(snap.kind).toBe('point');
+    expect(snap.kind).toBe('end');
     expect(snap.point).toEqual({x: 100, y: 100});
   });
 
@@ -297,7 +304,7 @@ describe('resolveSnap', () => {
     const snap = resolveSnap(
       from,
       {x: 103, y: 250},
-      [left, right],
+      [oe(left), oe(right)],
       pointTolerance,
       lineTolerance
     );
@@ -312,14 +319,19 @@ describe('resolveSnap', () => {
     const justInside = {x: 106, y: 108}; // distance 10
     const justOutside = {x: 106.06, y: 108.08}; // distance 10.1, clear of both lines
     expect(
-      resolveSnap(from, justInside, [tangentEnd], pointTolerance, lineTolerance)
-        .kind
-    ).toBe('point');
+      resolveSnap(
+        from,
+        justInside,
+        [oe(tangentEnd)],
+        pointTolerance,
+        lineTolerance
+      ).kind
+    ).toBe('end');
     expect(
       resolveSnap(
         from,
         justOutside,
-        [tangentEnd],
+        [oe(tangentEnd)],
         pointTolerance,
         lineTolerance
       ).kind
@@ -347,7 +359,7 @@ describe('resolveSnap', () => {
     const snap = resolveSnap(
       onlyEnd,
       {x: 8, y: 2}, // 8.2 from the point (inside the magnet), 8 off the normal
-      [onlyEnd],
+      [oe(onlyEnd)],
       pointTolerance,
       lineTolerance
     );
@@ -491,7 +503,7 @@ describe('shapeForSnap', () => {
 
   it('aims straight at a snapped open-end point', () => {
     const end: Pose = {position: {x: 100, y: 40}, heading: Math.PI};
-    const snap = {kind: 'point' as const, point: end.position, endIndex: 0};
+    const snap = {kind: 'end' as const, point: end.position, end: SOME_END};
     expect(shapeForSnap(ORIGIN, snap, increment, threshold)).toEqual(
       shapeTo(ORIGIN, end.position)
     );
@@ -529,7 +541,7 @@ describe('shownSnap', () => {
 
   it('passes point and angle snaps through', () => {
     const end: Pose = {position: {x: 100, y: 40}, heading: Math.PI};
-    const point = {kind: 'point' as const, point: end.position, endIndex: 0};
+    const point = {kind: 'end' as const, point: end.position, end: SOME_END};
     const angle = {kind: 'angle' as const, point: {x: 100, y: 95}};
     expect(shownSnap(ORIGIN, point, straight(10))).toEqual(point);
     expect(shownSnap(ORIGIN, angle, straight(10))).toEqual(angle);

@@ -54,12 +54,14 @@ function oval(anchor: Pose, straightLength: number, radius: number): Layout {
   layout = joinSection(
     layout,
     end('s1', 'exit'),
-    withId('s2', curveLeft(radius, 180))
+    withId('s2', curveLeft(radius, 180)),
+    null
   );
   layout = joinSection(
     layout,
     end('s2', 'exit'),
-    withId('s3', straight(straightLength))
+    withId('s3', straight(straightLength)),
+    null
   );
   return joinSection(
     layout,
@@ -96,7 +98,8 @@ describe('placeLayout', () => {
     layout = joinSection(
       layout,
       end('s1', 'exit'),
-      withId('s2', curveLeft(50, 90))
+      withId('s2', curveLeft(50, 90)),
+      null
     );
     const placed = placeLayout(layout).sectionsById;
     // s2's entry sits exactly on s1's exit.
@@ -179,7 +182,8 @@ describe('openEnds', () => {
     layout = joinSection(
       layout,
       end('s1', 'exit'),
-      withId('s2', straight(100))
+      withId('s2', straight(100)),
+      null
     );
     // s1.exit and s2.entry are joined; s1.entry and s2.exit remain open.
     expect(openEnds(layout)).toEqual([end('s1', 'entry'), end('s2', 'exit')]);
@@ -196,7 +200,12 @@ describe('partner', () => {
     withId('s1', straight(100)),
     ORIGIN
   );
-  layout = joinSection(layout, end('s1', 'exit'), withId('s2', straight(100)));
+  layout = joinSection(
+    layout,
+    end('s1', 'exit'),
+    withId('s2', straight(100)),
+    null
+  );
 
   it('reports the joined end from either side', () => {
     expect(partner(layout, end('s1', 'exit'))).toEqual(end('s2', 'entry'));
@@ -229,7 +238,8 @@ describe('joinSection', () => {
     const layout = joinSection(
       base,
       end('s1', 'exit'),
-      withId('s2', straight(100))
+      withId('s2', straight(100)),
+      null
     );
     expect(layout.sections.map(s => s.id)).toEqual(['s1', 's2']);
     expect(layout.joins).toEqual([

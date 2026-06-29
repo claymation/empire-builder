@@ -4,9 +4,9 @@
  * {@link resolveSnap} reads how a section laid from a pose toward a target snaps
  * onto the layout's open ends — their points and alignment lines — from
  * proximity alone. {@link shapeForSnap} turns that snap into the section,
- * spending any freedom the snap leaves on a tidy sweep angle. The functions are
- * storage-agnostic: they take a `from` pose and a list of open-end poses, free of
- * how the layout records them.
+ * spending any freedom the snap leaves on a tidy sweep angle. An open end is a
+ * {@link SectionEndPose}: the snap reads each end's pose for the geometry and
+ * names the end it latched onto, so the caller can act on it (record a join).
  *
  * Each section below leads with its public surface and ends with the private
  * helpers behind it.
@@ -34,7 +34,11 @@ import {
   unitVector,
   Vector,
 } from './geometry';
-import {CONNECTION_HEADING_TOLERANCE} from './layout';
+import {
+  CONNECTION_HEADING_TOLERANCE,
+  SectionEnd,
+  SectionEndPose,
+} from './layout';
 import {
   curveLeft,
   curveRight,
@@ -50,19 +54,18 @@ const EPSILON = 1e-9;
 
 /**
  * What the pointer's target snapped to. Every kind carries the resolved `point`
- * the section is then built toward; `point` and `line` also carry the open-end
+ * the section is then built toward; `end` and `line` also carry the open-end
  * feature they latched onto, which the editor draws.
  *
- * - `point`: an open end's point — drawn as a ring. Carries `endIndex`, the
- *   position in the `openEnds` list it latched onto, so the caller can act on
- *   that end (e.g. record a join) without matching it back from the point.
+ * - `end`: an open end — drawn as a ring at its `point`. Carries the `end` it
+ *   latched onto, so the caller can act on it (e.g. record a join).
  * - `line`: one of an open end's normal or tangent lines (carries the `line`) —
  *   drawn as a guide.
  * - `angle`: no open end in range; the sweep angle-snaps toward `point`. There is
  *   no feature to carry — the snapped sweep is fixed when the arc is built.
  */
 export type Snap =
-  | {readonly kind: 'point'; readonly point: Point; readonly endIndex: number}
+  | {readonly kind: 'end'; readonly point: Point; readonly end: SectionEnd}
   | {readonly kind: 'line'; readonly point: Point; readonly line: Line}
   | {readonly kind: 'angle'; readonly point: Point};
 
@@ -72,7 +75,7 @@ export type Snap =
  * within `lineTolerance`, a point winning over a line. Failing both it returns
  * the `angle` snap, leaving the sweep to snap toward `target`.
  *
- * A point snap lands the section's end on the open end itself, so it is offered
+ * An end snap lands the section's end on the open end itself, so it is offered
  * only when the section reaching that end meets it tangentially (within
  * {@link CONNECTION_HEADING_TOLERANCE}) — a connection never kinks. A near miss
  * declines the point and falls through to the line and angle snaps, which help
@@ -90,47 +93,42 @@ export type Snap =
 export function resolveSnap(
   from: Pose,
   target: Point,
-  openEnds: readonly Pose[],
+  openEnds: readonly SectionEndPose[],
   pointTolerance: number,
   lineTolerance: number
 ): Snap {
-  // A point wins over any line, so look for the nearest open-end point first and
-  // skip the line search entirely when one is in range.
-  let nearestPoint: {index: number; pose: Pose; gap: number} | null = null;
-  for (let index = 0; index < openEnds.length; index++) {
-    const end = openEnds[index];
+  // An end wins over any line, so look for the nearest open end first and skip
+  // the line search entirely when one is in range.
+  let nearest: {end: SectionEnd; pose: Pose; gap: number} | null = null;
+  for (const {sectionEnd, pose} of openEnds) {
     // The railhead can't snap to itself: a section to its own start is empty.
-    if (distance(end.position, from.position) <= EPSILON) {
+    if (distance(pose.position, from.position) <= EPSILON) {
       continue;
     }
-    const gap = distance(target, end.position);
-    if (gap > pointTolerance || (nearestPoint && gap >= nearestPoint.gap)) {
+    const gap = distance(target, pose.position);
+    if (gap > pointTolerance || (nearest && gap >= nearest.gap)) {
       continue;
     }
-    // A point snap lays a section straight onto the end, so only offer it when
+    // An end snap lays a section straight onto the end, so only offer it when
     // that section meets the end tangentially — otherwise the join would kink,
     // which a run never permits. The connecting section reaches the end's
     // position; it qualifies when its exit pose coincides with the end.
-    const connector = shapeTo(from, end.position);
+    const connector = shapeTo(from, pose.position);
     if (!connector) {
       continue;
     }
     const exit = endPose(placeSection(connector, from), 'exit');
-    if (posesEqual(exit, end, EPSILON, CONNECTION_HEADING_TOLERANCE)) {
-      nearestPoint = {index, pose: end, gap};
+    if (posesEqual(exit, pose, EPSILON, CONNECTION_HEADING_TOLERANCE)) {
+      nearest = {end: sectionEnd, pose, gap};
     }
   }
-  if (nearestPoint) {
-    return {
-      kind: 'point',
-      point: nearestPoint.pose.position,
-      endIndex: nearestPoint.index,
-    };
+  if (nearest) {
+    return {kind: 'end', point: nearest.pose.position, end: nearest.end};
   }
 
   let nearestLine: {point: Point; line: Line; gap: number} | null = null;
-  for (const end of openEnds) {
-    for (const line of tangentAndNormalLines(end)) {
+  for (const {pose} of openEnds) {
+    for (const line of tangentAndNormalLines(pose)) {
       if (colinear(from, line)) {
         continue;
       }
@@ -159,7 +157,7 @@ export function resolveSnap(
  * - `line`: the end must land on a line, which leaves one degree of freedom;
  *   {@link shapeOntoLine} angle-snaps the shape, then spends that freedom
  *   sliding the end onto the line.
- * - `point`: the end is pinned to an open end, so the section just reaches it.
+ * - `end`: pinned to an open end, so the section just reaches it.
  */
 export function shapeForSnap(
   from: Pose,
@@ -172,7 +170,7 @@ export function shapeForSnap(
       return snappedShapeTo(from, snap.point, increment, threshold);
     case 'line':
       return shapeOntoLine(from, snap.point, snap.line, increment, threshold);
-    case 'point':
+    case 'end':
       return shapeTo(from, snap.point);
     default:
       return assertNever(snap);
@@ -184,7 +182,7 @@ export function shapeForSnap(
  * none. A line's guide is shown only where the section's end actually lands on
  * the line: an active alignment always lands there, while a line the railhead
  * lies on lands only when the section curves back onto it (a 180° arc onto the
- * start's normal). A point's ring and the featureless `angle` snap carry through
+ * start's normal). An end's ring and the featureless `angle` snap carry through
  * unchanged; a null section (nothing to lay) shows nothing.
  */
 export function shownSnap(
