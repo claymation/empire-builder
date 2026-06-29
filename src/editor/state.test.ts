@@ -7,7 +7,7 @@ import {
   type Section,
   type SectionShape,
 } from '../domain/section';
-import {commit, EMPTY, redo, start, undo} from './state';
+import {anchor, EMPTY, extend, plantAnchor, redo, undo} from './state';
 
 const ORIGIN: Pose = {position: {x: 0, y: 0}, heading: 0};
 
@@ -16,19 +16,19 @@ function withId(id: string, shape: SectionShape): Section {
   return {...shape, id};
 }
 
-const end = (section: string, name: 'entry' | 'exit'): SectionEnd => ({
-  section,
+const end = (sectionId: string, name: 'entry' | 'exit'): SectionEnd => ({
+  sectionId,
   end: name,
 });
 
 describe('editor state', () => {
-  it('starts empty, with no layout and no pending start', () => {
+  it('starts empty, with no layout and no pending anchor', () => {
     expect(EMPTY.layout.sections).toHaveLength(0);
     expect(EMPTY.pendingStart).toBeNull();
   });
 
-  it('plants the origin as a transient, recording no history', () => {
-    const planted = start(EMPTY, {position: {x: 100, y: 50}, heading: 0});
+  it('plants an anchor as a transient, recording no history', () => {
+    const planted = plantAnchor(EMPTY, {position: {x: 100, y: 50}, heading: 0});
     expect(planted.pendingStart).toEqual({
       position: {x: 100, y: 50},
       heading: 0,
@@ -38,12 +38,9 @@ describe('editor state', () => {
     expect(undo(planted)).toBe(planted); // nothing to undo
   });
 
-  it('commits the first section as a new anchored network', () => {
-    const planted = start(EMPTY, ORIGIN);
-    const drawn = commit(planted, {
-      kind: 'plant',
-      section: withId('s1', straight(300)),
-    });
+  it('lays the first section as a new anchored network', () => {
+    const planted = plantAnchor(EMPTY, ORIGIN);
+    const drawn = anchor(planted, withId('s1', straight(300)));
     expect(drawn.layout.sections.map(s => s.id)).toEqual(['s1']);
     expect(drawn.layout.anchors).toHaveLength(1);
     expect(drawn.pendingStart).toBeNull();
@@ -53,64 +50,60 @@ describe('editor state', () => {
     ]);
   });
 
+  it('anchoring without a pending anchor throws', () => {
+    expect(() => anchor(EMPTY, withId('s1', straight(300)))).toThrow();
+  });
+
   it('undoes the first section straight back to empty', () => {
-    const drawn = commit(start(EMPTY, ORIGIN), {
-      kind: 'plant',
-      section: withId('s1', straight(300)),
-    });
+    const drawn = anchor(
+      plantAnchor(EMPTY, ORIGIN),
+      withId('s1', straight(300))
+    );
     const undone = undo(drawn);
     expect(undone.layout.sections).toHaveLength(0);
-    expect(undone.pendingStart).toBeNull(); // the planted origin is not restored
+    expect(undone.pendingStart).toBeNull(); // the planted anchor is not restored
     expect(redo(undone).layout.sections).toHaveLength(1);
   });
 
   it('closes a loop, leaving no open ends, and reopens them on undo', () => {
     // The oval: two straights joined by two 180° curves, the last closing onto
     // the anchored entry.
-    let state = commit(start(EMPTY, ORIGIN), {
-      kind: 'plant',
-      section: withId('s1', straight(100)),
-    });
-    state = commit(state, {
-      kind: 'extend',
-      at: end('s1', 'exit'),
-      section: withId('s2', curveLeft(50, 180)),
-      closeOnto: null,
-    });
-    state = commit(state, {
-      kind: 'extend',
-      at: end('s2', 'exit'),
-      section: withId('s3', straight(100)),
-      closeOnto: null,
-    });
-    const closed = commit(state, {
-      kind: 'extend',
-      at: end('s3', 'exit'),
-      section: withId('s4', curveLeft(50, 180)),
-      closeOnto: end('s1', 'entry'),
-    });
+    let state = anchor(plantAnchor(EMPTY, ORIGIN), withId('s1', straight(100)));
+    state = extend(
+      state,
+      end('s1', 'exit'),
+      withId('s2', curveLeft(50, 180)),
+      null
+    );
+    state = extend(state, end('s2', 'exit'), withId('s3', straight(100)), null);
+    const closed = extend(
+      state,
+      end('s3', 'exit'),
+      withId('s4', curveLeft(50, 180)),
+      end('s1', 'entry')
+    );
     expect(openEnds(closed.layout)).toEqual([]);
     expect(openEnds(undo(closed).layout)).not.toEqual([]);
   });
 
   it('drops the redo stack once a new section is committed', () => {
-    const anchored = commit(start(EMPTY, ORIGIN), {
-      kind: 'plant',
-      section: withId('s1', straight(300)),
-    });
-    const extended = commit(anchored, {
-      kind: 'extend',
-      at: end('s1', 'exit'),
-      section: withId('s2', straight(200)),
-      closeOnto: null,
-    });
+    const anchored = anchor(
+      plantAnchor(EMPTY, ORIGIN),
+      withId('s1', straight(300))
+    );
+    const extended = extend(
+      anchored,
+      end('s1', 'exit'),
+      withId('s2', straight(200)),
+      null
+    );
     // Undo s2, then grow a different section from the same open end.
-    const branched = commit(undo(extended), {
-      kind: 'extend',
-      at: end('s1', 'exit'),
-      section: withId('s3', straight(150)),
-      closeOnto: null,
-    });
+    const branched = extend(
+      undo(extended),
+      end('s1', 'exit'),
+      withId('s3', straight(150)),
+      null
+    );
     expect(branched.layout.sections.map(s => s.id)).toEqual(['s1', 's3']);
     expect(redo(branched)).toBe(branched); // the undone s2 is gone
   });

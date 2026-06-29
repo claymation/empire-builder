@@ -34,7 +34,7 @@ export const CONNECTION_HEADING_TOLERANCE = degToRad(2);
 
 /** A reference to one end of a section: which section, which end. */
 export interface SectionEnd {
-  readonly section: SectionId;
+  readonly sectionId: SectionId;
   readonly end: EndName;
 }
 
@@ -118,7 +118,7 @@ export function openEnds(layout: Layout): readonly SectionEnd[] {
   const open: SectionEnd[] = [];
   for (const section of layout.sections) {
     for (const end of ['entry', 'exit'] as const) {
-      const sectionEnd: SectionEnd = {section: section.id, end};
+      const sectionEnd: SectionEnd = {sectionId: section.id, end};
       if (!joined.has(endKey(sectionEnd))) {
         open.push(sectionEnd);
       }
@@ -152,7 +152,7 @@ export function anchorSection(
     joins: layout.joins,
     anchors: [
       ...layout.anchors,
-      {sectionEnd: {section: section.id, end: 'entry'}, pose},
+      {sectionEnd: {sectionId: section.id, end: 'entry'}, pose},
     ],
   };
 }
@@ -171,10 +171,10 @@ export function joinSection(
   section: Section,
   closeOnto?: SectionEnd
 ): Layout {
-  const entry: SectionEnd = {section: section.id, end: 'entry'};
+  const entry: SectionEnd = {sectionId: section.id, end: 'entry'};
   const joins: Join[] = [...layout.joins, {ends: [at, entry]}];
   if (closeOnto) {
-    const exit: SectionEnd = {section: section.id, end: 'exit'};
+    const exit: SectionEnd = {sectionId: section.id, end: 'exit'};
     joins.push({ends: [exit, closeOnto]});
   }
   return {
@@ -195,10 +195,10 @@ function threadNetwork(
   anchor: Anchor,
   placed: Map<SectionId, PlacedSection>
 ): void {
-  const start = byId.get(anchor.sectionEnd.section);
+  const start = byId.get(anchor.sectionEnd.sectionId);
   if (!start) {
     throw new RangeError(
-      `anchor references unknown section ${anchor.sectionEnd.section}`
+      `anchor references unknown section ${anchor.sectionEnd.sectionId}`
     );
   }
   // The anchor names the section's entry (anchorSection plants it there).
@@ -213,12 +213,12 @@ function threadNetwork(
     const placedSection = placeSection(section, entry);
     placed.set(section.id, placedSection);
 
-    const neighbor = partner(layout, {section: section.id, end: 'exit'});
+    const neighbor = partner(layout, {sectionId: section.id, end: 'exit'});
     if (!neighbor) {
       continue;
     }
     const exit = endPose(placedSection, 'exit');
-    const alreadyPlaced = placed.get(neighbor.section);
+    const alreadyPlaced = placed.get(neighbor.sectionId);
     if (alreadyPlaced) {
       // The join closes a cycle: never re-place, only require it to align.
       const meeting = endPose(alreadyPlaced, neighbor.end);
@@ -229,10 +229,10 @@ function threadNetwork(
       }
       continue;
     }
-    const next = byId.get(neighbor.section);
+    const next = byId.get(neighbor.sectionId);
     if (!next) {
       throw new RangeError(
-        `join references unknown section ${neighbor.section}`
+        `join references unknown section ${neighbor.sectionId}`
       );
     }
     pending.push({section: next, entry: exit});
@@ -241,10 +241,10 @@ function threadNetwork(
 
 /** A stable string key for a section end, for membership tests. */
 function endKey(end: SectionEnd): string {
-  return `${end.section}:${end.end}`;
+  return `${end.sectionId}:${end.end}`;
 }
 
 /** Whether two ends reference the same section end. */
 function sameEnd(a: SectionEnd, b: SectionEnd): boolean {
-  return a.section === b.section && a.end === b.end;
+  return a.sectionId === b.sectionId && a.end === b.end;
 }

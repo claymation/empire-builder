@@ -95,13 +95,12 @@ export function renderOverlay(
     drawGuide(guide, toCanvas, transform.scale);
   }
   if (preview) {
-    for (const geometry of preview.geometry) {
-      drawGeometry(geometry, toCanvas, PREVIEW_COLOR, true);
-    }
-    // The preview is a single drafted shape; label its leading end.
-    const leading = preview.geometry.at(-1);
-    if (leading) {
-      drawAngleLabel(leading, toCanvas);
+    // The preview is one drafted shape — a single segment or arc. Draw it and
+    // label that shape (a curve shows its sweep and radius, a straight 0.0°).
+    const [shape] = preview.geometry;
+    if (shape) {
+      drawGeometry(shape, toCanvas, PREVIEW_COLOR, true);
+      drawAngleLabel(shape, toCanvas);
     }
   }
   if (railhead) {

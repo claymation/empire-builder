@@ -4,13 +4,14 @@
  * edge (./editor) owns an instance, calls these on pointer and keyboard events,
  * and renders the result.
  *
- * The state is the current {@link Layout} plus a transient pending start and the
- * history undo/redo walk; the layout itself is the snapshot. {@link start} plants
- * the origin on an empty canvas; {@link commit} lays a section — the network's
- * first, or one joined onto an open end. The editor decides which and computes
- * the section (so snapping applies once); these transitions record history.
+ * The state is the current {@link Layout} plus a transient pending anchor and the
+ * history undo/redo walk; the layout itself is the snapshot. {@link plantAnchor}
+ * plants the anchor on an empty canvas; {@link anchor} lays the network's first
+ * section there, and {@link extend} lays one joined onto an open end. The editor
+ * picks between the latter two and computes the section (so snapping applies
+ * once); these transitions record history.
  *
- * The pending start — a planted origin awaiting its first section — is a drawing
+ * The pending anchor — a planted anchor awaiting its first section — is a drawing
  * transient, not a fact about the plan, so it lives here, not in the layout, and
  * is never recorded in history. Only a layout change is undoable.
  */
@@ -24,11 +25,10 @@ import {
   SectionEnd,
 } from '../domain/layout';
 import {Section} from '../domain/section';
-import {assertNever} from '../domain/validate';
 
 export interface EditorState {
   readonly layout: Layout;
-  /** A planted origin awaiting its first section. Transient: never historized. */
+  /** A planted anchor awaiting its first section. Transient: never historized. */
   readonly pendingStart: Pose | null;
   /** Past layouts, most recent last. */
   readonly past: readonly Layout[];
@@ -44,56 +44,45 @@ export const EMPTY: EditorState = {
   future: [],
 };
 
-/** Plant the origin (first click): set a pending start. No section, no history. */
-export function start(state: EditorState, pose: Pose): EditorState {
+/** Plant an anchor (first click): set a pending start. No section, no history. */
+export function plantAnchor(state: EditorState, pose: Pose): EditorState {
   return {...state, pendingStart: pose};
 }
 
 /**
- * A track-laying command. `plant` lays a new network's first section at the
- * pending start; `extend` joins a section onto open end `at`, optionally closing
- * its exit onto `closeOnto`. The end joined onto and the close belong only to
- * `extend` — planting cannot carry them, so the nonsensical combinations are
- * unrepresentable rather than ignored.
+ * Lay the network's first section, anchored by its entry at the pending anchor
+ * ({@link anchorSection}), which it clears. The prior layout goes to `past` — one
+ * undo step — and the redo stack is dropped.
  */
-export type Placement =
-  | {readonly kind: 'plant'; readonly section: Section}
-  | {
-      readonly kind: 'extend';
-      readonly at: SectionEnd;
-      readonly section: Section;
-      readonly closeOnto: SectionEnd | null;
-    };
+export function anchor(state: EditorState, section: Section): EditorState {
+  if (!state.pendingStart) {
+    throw new Error('anchoring a section requires a pending anchor');
+  }
+  return record(
+    state,
+    anchorSection(state.layout, section, state.pendingStart)
+  );
+}
 
 /**
- * Apply `placement`: {@link anchorSection} for a `plant` (at the pending start,
- * which it clears), {@link joinSection} for an `extend`. Either way the prior
- * layout goes to `past` — one undo step — and the redo stack is dropped.
+ * Lay `section` joined onto open end `at` ({@link joinSection}), optionally
+ * closing its exit onto `closeOnto`. The prior layout goes to `past` — one undo
+ * step — and the redo stack is dropped.
  */
-export function commit(state: EditorState, placement: Placement): EditorState {
-  let layout: Layout;
-  switch (placement.kind) {
-    case 'plant':
-      if (!state.pendingStart) {
-        throw new Error('planting a section requires a pending start');
-      }
-      layout = anchorSection(
-        state.layout,
-        placement.section,
-        state.pendingStart
-      );
-      break;
-    case 'extend':
-      layout = joinSection(
-        state.layout,
-        placement.at,
-        placement.section,
-        placement.closeOnto ?? undefined
-      );
-      break;
-    default:
-      return assertNever(placement);
-  }
+export function extend(
+  state: EditorState,
+  at: SectionEnd,
+  section: Section,
+  closeOnto: SectionEnd | null
+): EditorState {
+  return record(
+    state,
+    joinSection(state.layout, at, section, closeOnto ?? undefined)
+  );
+}
+
+/** Advance to `layout`, pushing the prior one onto the undo stack. */
+function record(state: EditorState, layout: Layout): EditorState {
   return {
     layout,
     pendingStart: null,

@@ -3,7 +3,7 @@
  *
  * {@link resolveSnap} reads how a section laid from a pose toward a target snaps
  * onto the layout's open ends — their points and alignment lines — from
- * proximity alone. {@link sectionForSnap} turns that snap into the section,
+ * proximity alone. {@link shapeForSnap} turns that snap into the section,
  * spending any freedom the snap leaves on a tidy sweep angle. The functions are
  * storage-agnostic: they take a `from` pose and a list of open-end poses, free of
  * how the layout records them.
@@ -108,7 +108,7 @@ export function resolveSnap(
     // that section meets the end tangentially — otherwise the join would kink,
     // which a run never permits. The connecting section reaches the end's
     // position; it qualifies when its exit pose coincides with the end.
-    const connector = sectionTo(from, end.position);
+    const connector = shapeTo(from, end.position);
     if (!connector) {
       continue;
     }
@@ -154,11 +154,11 @@ export function resolveSnap(
  * - `angle`: the end is free, so the sweep angle-snaps toward the target — the
  *   ordinary drawing behavior, used whenever no end is in range.
  * - `line`: the end must land on a line, which leaves one degree of freedom;
- *   {@link sectionOntoLine} angle-snaps the shape, then spends that freedom
+ *   {@link shapeOntoLine} angle-snaps the shape, then spends that freedom
  *   sliding the end onto the line.
  * - `point`: the end is pinned to an open end, so the section just reaches it.
  */
-export function sectionForSnap(
+export function shapeForSnap(
   from: Pose,
   snap: Snap,
   increment: number,
@@ -166,11 +166,11 @@ export function sectionForSnap(
 ): SectionShape | null {
   switch (snap.kind) {
     case 'angle':
-      return snappedSectionTo(from, snap.point, increment, threshold);
+      return snappedShapeTo(from, snap.point, increment, threshold);
     case 'line':
-      return sectionOntoLine(from, snap.point, snap.line, increment, threshold);
+      return shapeOntoLine(from, snap.point, snap.line, increment, threshold);
     case 'point':
-      return sectionTo(from, snap.point);
+      return shapeTo(from, snap.point);
     default:
       return assertNever(snap);
   }
@@ -204,8 +204,8 @@ export function shownSnap(
  * The section from `from` to `target`: the unique straight or arc that leaves
  * `from` tangent to its heading and ends at `target` — or `null` when none
  * exists (the target is `from`'s own position, or lies straight behind it).
- * This is the exact geometry, with no snapping; {@link snappedSectionTo} and
- * {@link sectionOntoLine} layer the angle and line snaps onto it, and a point
+ * This is the exact geometry, with no snapping; {@link snappedShapeTo} and
+ * {@link shapeOntoLine} layer the angle and line snaps onto it, and a point
  * snap, which already names an exact target, uses it as is.
  *
  * The arc lies on the circle tangent to `from`'s heading at its position and
@@ -215,7 +215,7 @@ export function shownSnap(
  * direction, and the angle subtended at the center is the sweep. A target on the
  * heading line has no such circle — it is a straight, or, if behind, unreachable.
  */
-export function sectionTo(from: Pose, target: Point): SectionShape | null {
+export function shapeTo(from: Pose, target: Point): SectionShape | null {
   const forward = unitVector(from.heading);
   const left = unitVector(from.heading + Math.PI / 2);
   const toTarget = subtract(target, from.position);
@@ -271,7 +271,7 @@ export function snapToIncrement(
 }
 
 /**
- * Like {@link sectionTo}, but with the curve's sweep snapped to a tidy
+ * Like {@link shapeTo}, but with the curve's sweep snapped to a tidy
  * angle (clean angles, arbitrary radii — the flex/handlaid promise). When the
  * sweep snaps, the radius is *fitted* so the snapped arc still ends as near the
  * pointer as it can, so the preview keeps tracking the pointer instead of
@@ -279,13 +279,13 @@ export function snapToIncrement(
  * sweep lands on no tidy multiple, and a section already straight, pass through
  * unchanged. `increment`/`threshold` are radians.
  */
-export function snappedSectionTo(
+export function snappedShapeTo(
   from: Pose,
   target: Point,
   increment: number,
   threshold: number
 ): SectionShape | null {
-  const raw = sectionTo(from, target);
+  const raw = shapeTo(from, target);
   if (!raw || raw.kind === 'straight') {
     return raw;
   }
@@ -328,14 +328,14 @@ export function snappedSectionTo(
  * parallel, the angle-snapped section is kept. `increment`/`threshold` are
  * radians.
  */
-export function sectionOntoLine(
+export function shapeOntoLine(
   from: Pose,
   target: Point,
   line: Line,
   increment: number,
   threshold: number
 ): SectionShape | null {
-  const shaped = snappedSectionTo(from, target, increment, threshold);
+  const shaped = snappedShapeTo(from, target, increment, threshold);
   if (!shaped) {
     return null;
   }

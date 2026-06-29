@@ -3,10 +3,10 @@ import {degToRad, radToDeg, type Point, type Pose} from './geometry';
 import {curveLeft, endPose, placeSection, straight} from './section';
 import {
   resolveSnap,
-  sectionForSnap,
-  sectionOntoLine,
-  sectionTo,
-  snappedSectionTo,
+  shapeForSnap,
+  shapeOntoLine,
+  shapeTo,
+  snappedShapeTo,
   snapToIncrement,
   shownSnap,
 } from './snapping';
@@ -16,21 +16,21 @@ const ORIGIN: Pose = {position: {x: 0, y: 0}, heading: 0};
 
 /** Asserts the section from `from` actually ends at `target`. */
 function reaches(from: Pose, target: Point): void {
-  const section = sectionTo(from, target);
+  const section = shapeTo(from, target);
   if (!section) throw new Error('expected a section');
   const exit = endPose(placeSection(section, from), 'exit');
   expect(exit.position.x).toBeCloseTo(target.x);
   expect(exit.position.y).toBeCloseTo(target.y);
 }
 
-describe('sectionTo', () => {
+describe('shapeTo', () => {
   it('returns a straight to a point dead ahead', () => {
-    expect(sectionTo(ORIGIN, {x: 100, y: 0})?.kind).toBe('straight');
+    expect(shapeTo(ORIGIN, {x: 100, y: 0})?.kind).toBe('straight');
     reaches(ORIGIN, {x: 100, y: 0});
   });
 
   it('curves left toward a point off to the left', () => {
-    expect(sectionTo(ORIGIN, {x: 100, y: 100})).toMatchObject({
+    expect(shapeTo(ORIGIN, {x: 100, y: 100})).toMatchObject({
       kind: 'curved',
       handedness: 'left',
     });
@@ -38,7 +38,7 @@ describe('sectionTo', () => {
   });
 
   it('curves right toward a point off to the right', () => {
-    expect(sectionTo(ORIGIN, {x: 100, y: -100})).toMatchObject({
+    expect(shapeTo(ORIGIN, {x: 100, y: -100})).toMatchObject({
       kind: 'curved',
       handedness: 'right',
     });
@@ -72,19 +72,19 @@ describe('sectionTo', () => {
   });
 
   it('returns null for a degenerate or unreachable target', () => {
-    expect(sectionTo(ORIGIN, {x: 0, y: 0})).toBeNull();
-    expect(sectionTo(ORIGIN, {x: -100, y: 0})).toBeNull();
+    expect(shapeTo(ORIGIN, {x: 0, y: 0})).toBeNull();
+    expect(shapeTo(ORIGIN, {x: -100, y: 0})).toBeNull();
   });
 });
 
-describe('snappedSectionTo', () => {
+describe('snappedShapeTo', () => {
   const increment = degToRad(15);
   const threshold = degToRad(5);
 
   it('snaps the sweep and fits the radius so the end stays near the pointer', () => {
     // From the origin heading east, a pointer just shy of the 90° arc's corner
     // snaps to 90°, with the radius fitted to the pointer's projection (97.5).
-    const section = snappedSectionTo(
+    const section = snappedShapeTo(
       ORIGIN,
       {x: 100, y: 95},
       increment,
@@ -99,13 +99,13 @@ describe('snappedSectionTo', () => {
 
   it('leaves an off-grid sweep (and its radius) alone', () => {
     const target = {x: 100, y: 90}; // ~84° — outside the snap threshold
-    expect(snappedSectionTo(ORIGIN, target, increment, threshold)).toEqual(
-      sectionTo(ORIGIN, target)
+    expect(snappedShapeTo(ORIGIN, target, increment, threshold)).toEqual(
+      shapeTo(ORIGIN, target)
     );
   });
 
   it('flattens a near-straight curve to the pointer projection', () => {
-    const section = snappedSectionTo(
+    const section = snappedShapeTo(
       ORIGIN,
       {x: 200, y: 3},
       increment,
@@ -117,7 +117,7 @@ describe('snappedSectionTo', () => {
 
   it('returns null for a degenerate target', () => {
     expect(
-      snappedSectionTo(ORIGIN, {x: 0, y: 0}, increment, threshold)
+      snappedShapeTo(ORIGIN, {x: 0, y: 0}, increment, threshold)
     ).toBeNull();
   });
 });
@@ -355,7 +355,7 @@ describe('resolveSnap', () => {
   });
 });
 
-describe('sectionOntoLine', () => {
+describe('shapeOntoLine', () => {
   const increment = degToRad(15);
   const threshold = degToRad(5);
   // The anchor's normal line: the vertical line x = 0.
@@ -365,7 +365,7 @@ describe('sectionOntoLine', () => {
     // Railhead heading west, level above the anchor. A target a hair off the
     // heading line still yields a perfectly straight section ending on the line.
     const from: Pose = {position: {x: 200, y: 100}, heading: Math.PI};
-    const section = sectionOntoLine(
+    const section = shapeOntoLine(
       from,
       {x: 0, y: 103},
       normalLine,
@@ -383,7 +383,7 @@ describe('sectionOntoLine', () => {
     // Heading up-left at 135°: a plain flatten would miss the line, but the
     // crossing of the heading line with x = 0 is (0, 100).
     const from: Pose = {position: {x: 100, y: 0}, heading: (3 * Math.PI) / 4};
-    const section = sectionOntoLine(
+    const section = shapeOntoLine(
       from,
       {x: 0, y: 98},
       normalLine,
@@ -400,7 +400,7 @@ describe('sectionOntoLine', () => {
     // A 90° arc from the origin: its chord ray crosses x = 100 at (100, 100).
     const from: Pose = {position: {x: 0, y: 0}, heading: 0};
     const line = {origin: {x: 100, y: 0}, direction: {x: 0, y: 1}};
-    const section = sectionOntoLine(
+    const section = shapeOntoLine(
       from,
       {x: 100, y: 100},
       line,
@@ -419,7 +419,7 @@ describe('sectionOntoLine', () => {
     // radius slides so the end lands on x = 100 — at (100, 100), not the target.
     const from: Pose = {position: {x: 0, y: 0}, heading: 0};
     const line = {origin: {x: 100, y: 0}, direction: {x: 0, y: 1}};
-    const section = sectionOntoLine(
+    const section = shapeOntoLine(
       from,
       {x: 100, y: 105},
       line,
@@ -438,7 +438,7 @@ describe('sectionOntoLine', () => {
     // its radius slides so the end lands on x = 100, at (100, -100).
     const from: Pose = {position: {x: 0, y: 0}, heading: 0};
     const line = {origin: {x: 100, y: 0}, direction: {x: 0, y: 1}};
-    const section = sectionOntoLine(
+    const section = shapeOntoLine(
       from,
       {x: 100, y: -105},
       line,
@@ -458,7 +458,7 @@ describe('sectionOntoLine', () => {
     // slide the end onto; the plain angle-snapped section stands.
     const from: Pose = {position: {x: 0, y: 0}, heading: 0};
     const parallel = {origin: {x: 0, y: 100}, direction: {x: 1, y: 0}};
-    const section = sectionOntoLine(
+    const section = shapeOntoLine(
       from,
       {x: 50, y: 0},
       parallel,
@@ -466,34 +466,34 @@ describe('sectionOntoLine', () => {
       threshold
     );
     expect(section).toEqual(
-      snappedSectionTo(from, {x: 50, y: 0}, increment, threshold)
+      snappedShapeTo(from, {x: 50, y: 0}, increment, threshold)
     );
   });
 
   it('returns null when there is no section to lay', () => {
     const from: Pose = {position: {x: 0, y: 0}, heading: 0};
     expect(
-      sectionOntoLine(from, from.position, normalLine, increment, threshold)
+      shapeOntoLine(from, from.position, normalLine, increment, threshold)
     ).toBeNull();
   });
 });
 
-describe('sectionForSnap', () => {
+describe('shapeForSnap', () => {
   const increment = degToRad(15);
   const threshold = degToRad(5);
 
   it('angle-snaps toward the target when no end is in range', () => {
     const snap = {kind: 'angle' as const, point: {x: 100, y: 95}};
-    expect(sectionForSnap(ORIGIN, snap, increment, threshold)).toEqual(
-      snappedSectionTo(ORIGIN, snap.point, increment, threshold)
+    expect(shapeForSnap(ORIGIN, snap, increment, threshold)).toEqual(
+      snappedShapeTo(ORIGIN, snap.point, increment, threshold)
     );
   });
 
   it('aims straight at a snapped open-end point', () => {
     const end: Pose = {position: {x: 100, y: 40}, heading: Math.PI};
     const snap = {kind: 'point' as const, point: end.position, end};
-    expect(sectionForSnap(ORIGIN, snap, increment, threshold)).toEqual(
-      sectionTo(ORIGIN, end.position)
+    expect(shapeForSnap(ORIGIN, snap, increment, threshold)).toEqual(
+      shapeTo(ORIGIN, end.position)
     );
   });
 
@@ -501,12 +501,12 @@ describe('sectionForSnap', () => {
     const from: Pose = {position: {x: 200, y: 100}, heading: Math.PI};
     const line = {origin: {x: 0, y: 0}, direction: {x: 0, y: 1}};
     const snap = {kind: 'line' as const, point: {x: 0, y: 103}, line};
-    const section = sectionForSnap(from, snap, increment, threshold);
+    const section = shapeForSnap(from, snap, increment, threshold);
     if (!section) throw new Error('expected a section');
     const exit = endPose(placeSection(section, from), 'exit');
     expect(exit.position.x).toBeCloseTo(0); // landed on the line x = 0
     expect(section).toEqual(
-      sectionOntoLine(from, snap.point, line, increment, threshold)
+      shapeOntoLine(from, snap.point, line, increment, threshold)
     );
   });
 });

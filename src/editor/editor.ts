@@ -17,14 +17,15 @@ import {
 import {
   endPose,
   placeSection,
+  PlacedSection,
   Section,
   SectionShape,
   sectionLength,
 } from '../domain/section';
 import {
   resolveSnap,
-  sectionForSnap,
-  sectionTo,
+  shapeForSnap,
+  shapeTo,
   shownSnap,
   Snap,
 } from '../domain/snapping';
@@ -32,7 +33,15 @@ import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
 import {renderOverlay, renderStatic, sceneTransform} from '../render/scene';
 import {ViewTransform} from '../render/transform';
-import {commit, EditorState, EMPTY, redo, start, undo} from './state';
+import {
+  anchor,
+  EditorState,
+  EMPTY,
+  extend,
+  plantAnchor,
+  redo,
+  undo,
+} from './state';
 
 /** Heading the first section leaves the planted start at. The start carries no
  *  aim of its own, so this is fixed. */
@@ -45,16 +54,24 @@ const POINT_MAGNET_PX = 12;
 const LINE_MAGNET_PX = 8;
 
 /**
- * What a release would lay right now: the section's shape, the snap that shaped
- * it, and the open end the section closes onto (a tangent point snap) or null.
+ * What a release would lay right now, computed once so the preview and the commit
+ * agree: the section's `shape` (to commit), that shape placed at the railhead as
+ * a `preview` (to draw), the `snap` that shaped it, and the open end it closes
+ * onto (a tangent point snap) or null.
  */
 interface Draft {
   readonly shape: SectionShape | null;
+  readonly preview: PlacedSection | null;
   readonly snap: Snap | null;
   readonly closeOnto: SectionEnd | null;
 }
 
-const NOTHING: Draft = {shape: null, snap: null, closeOnto: null};
+const NOTHING: Draft = {
+  shape: null,
+  preview: null,
+  snap: null,
+  closeOnto: null,
+};
 
 /** Wires the lay-track tool onto `canvas`, drawing within `space`. */
 export function startEditor(
@@ -91,10 +108,10 @@ export function startEditor(
     if (!last) {
       return null;
     }
-    if (partner(state.layout, {section: last.id, end: 'exit'})) {
+    if (partner(state.layout, {sectionId: last.id, end: 'exit'})) {
       return null;
     }
-    return poseOf(placed, {section: last.id, end: 'exit'});
+    return poseOf(placed, {sectionId: last.id, end: 'exit'});
   }
 
   /**
@@ -111,67 +128,76 @@ export function startEditor(
     if (!pointer || !railheadPose) {
       return NOTHING;
     }
+    const drafted = (shape: SectionShape | null): PlacedSection | null =>
+      shape ? placeSection(shape, railheadPose) : null;
     // Suspending snapping (Option/Alt) lays the plain section to the pointer with
     // no snap guides — only the preview.
     if (suspendSnap) {
-      return {
-        shape: sectionTo(railheadPose, pointer),
-        snap: null,
-        closeOnto: null,
-      };
+      const shape = shapeTo(railheadPose, pointer);
+      return {shape, preview: drafted(shape), snap: null, closeOnto: null};
     }
-    // Snap the target onto the open ends, resolving each to its world pose; the
-    // pose objects round-trip through the snap, so the point snap's end can be
-    // matched back to the open end it latched onto.
-    const ends = openEnds(state.layout);
-    const poses = ends.map(end => poseOf(placed, end));
+    // Pair each open end with its world pose, snap the target onto those poses,
+    // then read the latched end straight off the pair — the resolved pose is one
+    // of the very objects passed in, so the point snap carries it back by identity.
+    const openEndPoses = openEnds(state.layout).map(sectionEnd => ({
+      sectionEnd,
+      pose: poseOf(placed, sectionEnd),
+    }));
     const snap = resolveSnap(
       railheadPose,
       pointer,
-      poses,
+      openEndPoses.map(e => e.pose),
       POINT_MAGNET_PX / view.scale,
       LINE_MAGNET_PX / view.scale
     );
-    const shape = sectionForSnap(
+    const shape = shapeForSnap(
       railheadPose,
       snap,
       SNAP_INCREMENT,
       SNAP_THRESHOLD
     );
     const closeOnto =
-      shape && snap.kind === 'point' ? ends[poses.indexOf(snap.end)] : null;
+      shape && snap.kind === 'point'
+        ? (openEndPoses.find(e => e.pose === snap.end)?.sectionEnd ?? null)
+        : null;
     // Show only the snap the section earns — a guide whose line the end lands on.
-    return {shape, snap: shownSnap(railheadPose, snap, shape), closeOnto};
+    return {
+      shape,
+      preview: drafted(shape),
+      snap: shownSnap(railheadPose, snap, shape),
+      closeOnto,
+    };
   }
 
-  function refreshStatic(view: ViewTransform): void {
-    renderStatic(view, space, placeLayout(state.layout));
+  // The two refreshes take the placement rather than each recomputing it, so a
+  // frame that redraws both layers places the layout once. placeLayout is cheap
+  // pure arithmetic; the cost the layer split avoids is the Paper.js redraw.
+  function refreshStatic(view: ViewTransform, placed: PlacedLayout): void {
+    renderStatic(view, space, placed);
     if (status) {
       status.textContent = describe(state);
     }
   }
 
-  function refreshOverlay(view: ViewTransform): void {
-    const placed = placeLayout(state.layout);
+  function refreshOverlay(view: ViewTransform, placed: PlacedLayout): void {
     const railheadPose = railhead(placed);
-    const {shape, snap} = draft(view, railheadPose, placed);
-    const preview =
-      railheadPose && shape ? placeSection(shape, railheadPose) : null;
+    const {preview, snap} = draft(view, railheadPose, placed);
     renderOverlay(view, preview, railheadPose, snap);
     paper.view.update();
   }
 
   function refreshAll(): void {
     const view = transform();
-    refreshStatic(view);
-    refreshOverlay(view);
+    const placed = placeLayout(state.layout);
+    refreshStatic(view, placed);
+    refreshOverlay(view, placed);
   }
 
   const tool = new paper.Tool();
   tool.onMouseMove = (event: paper.ToolEvent) => {
     const view = transform();
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
-    refreshOverlay(view);
+    refreshOverlay(view, placeLayout(state.layout));
   };
   // Commit on the click's release, not the press — the drawing-tool convention,
   // and it keeps a press-and-drag available as its own gesture.
@@ -179,8 +205,8 @@ export function startEditor(
     const view = transform();
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
     if (!state.pendingStart && state.layout.sections.length === 0) {
-      // An empty canvas: plant the origin the first section grows from.
-      state = start(state, {position: pointer, heading: INITIAL_HEADING});
+      // An empty canvas: plant the anchor the first section grows from.
+      state = plantAnchor(state, {position: pointer, heading: INITIAL_HEADING});
     } else {
       // A railhead is the free tail to extend; a tangent point snap closes the
       // section's exit onto an open end, recording the join. Closing the only
@@ -191,22 +217,13 @@ export function startEditor(
       if (railheadPose) {
         const {shape, closeOnto} = draft(view, railheadPose, placed);
         if (shape) {
-          state = commit(
-            state,
-            state.pendingStart
-              ? {kind: 'plant', section: withId(shape)}
-              : {
-                  kind: 'extend',
-                  at: railheadEnd(),
-                  section: withId(shape),
-                  closeOnto,
-                }
-          );
+          state = state.pendingStart
+            ? anchor(state, withId(shape))
+            : extend(state, railheadEnd(), withId(shape), closeOnto);
         }
       }
     }
-    refreshStatic(view);
-    refreshOverlay(view);
+    refreshAll();
   };
 
   paper.view.onResize = () => refreshAll();
@@ -215,7 +232,7 @@ export function startEditor(
   const setSuspend = (held: boolean) => {
     if (held !== suspendSnap) {
       suspendSnap = held;
-      refreshOverlay(transform());
+      refreshOverlay(transform(), placeLayout(state.layout));
     }
   };
   window.addEventListener('keydown', event => {
@@ -236,7 +253,7 @@ export function startEditor(
     if (!last) {
       throw new Error('no section to extend from');
     }
-    return {section: last.id, end: 'exit'};
+    return {sectionId: last.id, end: 'exit'};
   }
 
   /** Gives `shape` a fresh id, ready to commit into the layout. */
@@ -247,9 +264,9 @@ export function startEditor(
 
 /** The world pose of `end` within a placed layout. */
 function poseOf(placed: PlacedLayout, end: SectionEnd): Pose {
-  const section = placed.sectionsById.get(end.section);
+  const section = placed.sectionsById.get(end.sectionId);
   if (!section) {
-    throw new Error(`open end references unplaced section ${end.section}`);
+    throw new Error(`end references unplaced section ${end.sectionId}`);
   }
   return endPose(section, end.end);
 }

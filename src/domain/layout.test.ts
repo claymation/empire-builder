@@ -29,8 +29,8 @@ function withId(id: string, shape: SectionShape): Section {
   return {...shape, id};
 }
 
-const end = (section: string, name: 'entry' | 'exit'): SectionEnd => ({
-  section,
+const end = (sectionId: string, name: 'entry' | 'exit'): SectionEnd => ({
+  sectionId,
   end: name,
 });
 
