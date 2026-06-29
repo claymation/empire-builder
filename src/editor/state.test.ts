@@ -7,7 +7,7 @@ import {
   type Section,
   type SectionShape,
 } from '../domain/section';
-import {anchor, EMPTY, extend, plantAnchor, redo, undo} from './state';
+import {anchor, EMPTY, extend, dropAnchor, redo, undo} from './state';
 
 const ORIGIN: Pose = {position: {x: 0, y: 0}, heading: 0};
 
@@ -24,12 +24,12 @@ const end = (sectionId: string, name: 'entry' | 'exit'): SectionEnd => ({
 describe('editor state', () => {
   it('starts empty, with no layout and no pending anchor', () => {
     expect(EMPTY.layout.sections).toHaveLength(0);
-    expect(EMPTY.pendingStart).toBeNull();
+    expect(EMPTY.pendingAnchor).toBeNull();
   });
 
   it('plants an anchor as a transient, recording no history', () => {
-    const planted = plantAnchor(EMPTY, {position: {x: 100, y: 50}, heading: 0});
-    expect(planted.pendingStart).toEqual({
+    const planted = dropAnchor(EMPTY, {position: {x: 100, y: 50}, heading: 0});
+    expect(planted.pendingAnchor).toEqual({
       position: {x: 100, y: 50},
       heading: 0,
     });
@@ -39,11 +39,11 @@ describe('editor state', () => {
   });
 
   it('lays the first section as a new anchored network', () => {
-    const planted = plantAnchor(EMPTY, ORIGIN);
+    const planted = dropAnchor(EMPTY, ORIGIN);
     const drawn = anchor(planted, withId('s1', straight(300)));
     expect(drawn.layout.sections.map(s => s.id)).toEqual(['s1']);
     expect(drawn.layout.anchors).toHaveLength(1);
-    expect(drawn.pendingStart).toBeNull();
+    expect(drawn.pendingAnchor).toBeNull();
     expect(openEnds(drawn.layout)).toEqual([
       end('s1', 'entry'),
       end('s1', 'exit'),
@@ -56,19 +56,19 @@ describe('editor state', () => {
 
   it('undoes the first section straight back to empty', () => {
     const drawn = anchor(
-      plantAnchor(EMPTY, ORIGIN),
+      dropAnchor(EMPTY, ORIGIN),
       withId('s1', straight(300))
     );
     const undone = undo(drawn);
     expect(undone.layout.sections).toHaveLength(0);
-    expect(undone.pendingStart).toBeNull(); // the planted anchor is not restored
+    expect(undone.pendingAnchor).toBeNull(); // the planted anchor is not restored
     expect(redo(undone).layout.sections).toHaveLength(1);
   });
 
   it('closes a loop, leaving no open ends, and reopens them on undo', () => {
     // The oval: two straights joined by two 180° curves, the last closing onto
     // the anchored entry.
-    let state = anchor(plantAnchor(EMPTY, ORIGIN), withId('s1', straight(100)));
+    let state = anchor(dropAnchor(EMPTY, ORIGIN), withId('s1', straight(100)));
     state = extend(
       state,
       end('s1', 'exit'),
@@ -88,7 +88,7 @@ describe('editor state', () => {
 
   it('drops the redo stack once a new section is committed', () => {
     const anchored = anchor(
-      plantAnchor(EMPTY, ORIGIN),
+      dropAnchor(EMPTY, ORIGIN),
       withId('s1', straight(300))
     );
     const extended = extend(

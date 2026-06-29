@@ -491,7 +491,7 @@ describe('shapeForSnap', () => {
 
   it('aims straight at a snapped open-end point', () => {
     const end: Pose = {position: {x: 100, y: 40}, heading: Math.PI};
-    const snap = {kind: 'point' as const, point: end.position, end};
+    const snap = {kind: 'point' as const, point: end.position, endIndex: 0};
     expect(shapeForSnap(ORIGIN, snap, increment, threshold)).toEqual(
       shapeTo(ORIGIN, end.position)
     );
@@ -529,7 +529,7 @@ describe('shownSnap', () => {
 
   it('passes point and angle snaps through', () => {
     const end: Pose = {position: {x: 100, y: 40}, heading: Math.PI};
-    const point = {kind: 'point' as const, point: end.position, end};
+    const point = {kind: 'point' as const, point: end.position, endIndex: 0};
     const angle = {kind: 'angle' as const, point: {x: 100, y: 95}};
     expect(shownSnap(ORIGIN, point, straight(10))).toEqual(point);
     expect(shownSnap(ORIGIN, angle, straight(10))).toEqual(angle);

@@ -169,7 +169,7 @@ export function joinSection(
   layout: Layout,
   at: SectionEnd,
   section: Section,
-  closeOnto?: SectionEnd
+  closeOnto?: SectionEnd | null
 ): Layout {
   const entry: SectionEnd = {sectionId: section.id, end: 'entry'};
   const joins: Join[] = [...layout.joins, {ends: [at, entry]}];

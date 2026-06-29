@@ -53,14 +53,16 @@ const EPSILON = 1e-9;
  * the section is then built toward; `point` and `line` also carry the open-end
  * feature they latched onto, which the editor draws.
  *
- * - `point`: an open end's point (carries the `end`) — drawn as a ring.
+ * - `point`: an open end's point — drawn as a ring. Carries `endIndex`, the
+ *   position in the `openEnds` list it latched onto, so the caller can act on
+ *   that end (e.g. record a join) without matching it back from the point.
  * - `line`: one of an open end's normal or tangent lines (carries the `line`) —
  *   drawn as a guide.
  * - `angle`: no open end in range; the sweep angle-snaps toward `point`. There is
  *   no feature to carry — the snapped sweep is fixed when the arc is built.
  */
 export type Snap =
-  | {readonly kind: 'point'; readonly point: Point; readonly end: Pose}
+  | {readonly kind: 'point'; readonly point: Point; readonly endIndex: number}
   | {readonly kind: 'line'; readonly point: Point; readonly line: Line}
   | {readonly kind: 'angle'; readonly point: Point};
 
@@ -94,8 +96,9 @@ export function resolveSnap(
 ): Snap {
   // A point wins over any line, so look for the nearest open-end point first and
   // skip the line search entirely when one is in range.
-  let nearestPoint: {end: Pose; gap: number} | null = null;
-  for (const end of openEnds) {
+  let nearestPoint: {index: number; pose: Pose; gap: number} | null = null;
+  for (let index = 0; index < openEnds.length; index++) {
+    const end = openEnds[index];
     // The railhead can't snap to itself: a section to its own start is empty.
     if (distance(end.position, from.position) <= EPSILON) {
       continue;
@@ -114,14 +117,14 @@ export function resolveSnap(
     }
     const exit = endPose(placeSection(connector, from), 'exit');
     if (posesEqual(exit, end, EPSILON, CONNECTION_HEADING_TOLERANCE)) {
-      nearestPoint = {end, gap};
+      nearestPoint = {index, pose: end, gap};
     }
   }
   if (nearestPoint) {
     return {
       kind: 'point',
-      point: nearestPoint.end.position,
-      end: nearestPoint.end,
+      point: nearestPoint.pose.position,
+      endIndex: nearestPoint.index,
     };
   }
 

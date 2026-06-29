@@ -5,13 +5,13 @@
  * and renders the result.
  *
  * The state is the current {@link Layout} plus a transient pending anchor and the
- * history undo/redo walk; the layout itself is the snapshot. {@link plantAnchor}
- * plants the anchor on an empty canvas; {@link anchor} lays the network's first
+ * history undo/redo walk; the layout itself is the snapshot. {@link dropAnchor}
+ * drops the anchor on an empty canvas; {@link anchor} lays the network's first
  * section there, and {@link extend} lays one joined onto an open end. The editor
  * picks between the latter two and computes the section (so snapping applies
  * once); these transitions record history.
  *
- * The pending anchor — a planted anchor awaiting its first section — is a drawing
+ * The pending anchor — a dropped anchor awaiting its first section — is a drawing
  * transient, not a fact about the plan, so it lives here, not in the layout, and
  * is never recorded in history. Only a layout change is undoable.
  */
@@ -28,8 +28,8 @@ import {Section} from '../domain/section';
 
 export interface EditorState {
   readonly layout: Layout;
-  /** A planted anchor awaiting its first section. Transient: never historized. */
-  readonly pendingStart: Pose | null;
+  /** A dropped anchor awaiting its first section. Transient: never historized. */
+  readonly pendingAnchor: Pose | null;
   /** Past layouts, most recent last. */
   readonly past: readonly Layout[];
   /** Undone layouts available to redo, most recent last. */
@@ -39,14 +39,14 @@ export interface EditorState {
 /** The editor before the first click. */
 export const EMPTY: EditorState = {
   layout: EMPTY_LAYOUT,
-  pendingStart: null,
+  pendingAnchor: null,
   past: [],
   future: [],
 };
 
-/** Plant an anchor (first click): set a pending start. No section, no history. */
-export function plantAnchor(state: EditorState, pose: Pose): EditorState {
-  return {...state, pendingStart: pose};
+/** Drop an anchor (first click): set a pending anchor. No section, no history. */
+export function dropAnchor(state: EditorState, pose: Pose): EditorState {
+  return {...state, pendingAnchor: pose};
 }
 
 /**
@@ -55,12 +55,12 @@ export function plantAnchor(state: EditorState, pose: Pose): EditorState {
  * undo step — and the redo stack is dropped.
  */
 export function anchor(state: EditorState, section: Section): EditorState {
-  if (!state.pendingStart) {
+  if (!state.pendingAnchor) {
     throw new Error('anchoring a section requires a pending anchor');
   }
-  return record(
+  return commit(
     state,
-    anchorSection(state.layout, section, state.pendingStart)
+    anchorSection(state.layout, section, state.pendingAnchor)
   );
 }
 
@@ -75,25 +75,25 @@ export function extend(
   section: Section,
   closeOnto: SectionEnd | null
 ): EditorState {
-  return record(
-    state,
-    joinSection(state.layout, at, section, closeOnto ?? undefined)
-  );
+  return commit(state, joinSection(state.layout, at, section, closeOnto));
 }
 
-/** Advance to `layout`, pushing the prior one onto the undo stack. */
-function record(state: EditorState, layout: Layout): EditorState {
+/**
+ * Make `layout` current: push the prior one onto the undo stack, clear the
+ * pending anchor, and drop the redo stack.
+ */
+function commit(state: EditorState, layout: Layout): EditorState {
   return {
     layout,
-    pendingStart: null,
+    pendingAnchor: null,
     past: [...state.past, state.layout],
     future: [],
   };
 }
 
 /**
- * Restore the previous layout, clearing any pending start. With nothing
- * historized — including a lone pending start — there is nothing to undo.
+ * Restore the previous layout, clearing any pending anchor. With nothing
+ * historized — including a lone pending anchor — there is nothing to undo.
  */
 export function undo(state: EditorState): EditorState {
   const previous = state.past.at(-1);
@@ -102,13 +102,13 @@ export function undo(state: EditorState): EditorState {
   }
   return {
     layout: previous,
-    pendingStart: null,
+    pendingAnchor: null,
     past: state.past.slice(0, -1),
     future: [...state.future, state.layout],
   };
 }
 
-/** Re-apply the most recently undone layout, clearing any pending start. */
+/** Re-apply the most recently undone layout, clearing any pending anchor. */
 export function redo(state: EditorState): EditorState {
   const next = state.future.at(-1);
   if (!next) {
@@ -116,7 +116,7 @@ export function redo(state: EditorState): EditorState {
   }
   return {
     layout: next,
-    pendingStart: null,
+    pendingAnchor: null,
     past: [...state.past, state.layout],
     future: state.future.slice(0, -1),
   };
