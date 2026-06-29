@@ -20,8 +20,10 @@ import {
   normalize,
   normalizeAngle,
   onLine,
-  posesCoincide,
+  posesAlign,
+  posesEqual,
   projectOntoLine,
+  reversePose,
   radToDeg,
   scale,
   segmentBounds,
@@ -176,34 +178,69 @@ describe('normalizeAngle', () => {
 
 // ── Poses ──
 
-describe('posesCoincide', () => {
+describe('posesEqual', () => {
   const origin: Pose = {position: {x: 0, y: 0}, heading: 0};
 
   it('matches a pose with itself', () => {
-    expect(posesCoincide(origin, origin, 1e-6, 1e-6)).toBe(true);
+    expect(posesEqual(origin, origin, 1e-6, 1e-6)).toBe(true);
   });
 
   it('treats headings a full turn apart as equal', () => {
     const spun: Pose = {position: {x: 0, y: 0}, heading: 2 * Math.PI};
-    expect(posesCoincide(origin, spun, 1e-6, 1e-6)).toBe(true);
+    expect(posesEqual(origin, spun, 1e-6, 1e-6)).toBe(true);
   });
 
   it('measures the heading gap across the 0 / 2π seam', () => {
     const a: Pose = {position: {x: 0, y: 0}, heading: 0.05};
     const b: Pose = {position: {x: 0, y: 0}, heading: 2 * Math.PI - 0.05};
-    expect(posesCoincide(a, b, 1e-6, 0.2)).toBe(true); // gap 0.1
-    expect(posesCoincide(a, b, 1e-6, 0.05)).toBe(false);
+    expect(posesEqual(a, b, 1e-6, 0.2)).toBe(true); // gap 0.1
+    expect(posesEqual(a, b, 1e-6, 0.05)).toBe(false);
   });
 
   it('accepts a separation exactly at the position tolerance but not beyond', () => {
     const moved: Pose = {position: {x: 0.5, y: 0}, heading: 0};
-    expect(posesCoincide(origin, moved, 0.5, 1e-6)).toBe(true);
-    expect(posesCoincide(origin, moved, 0.4, 1e-6)).toBe(false);
+    expect(posesEqual(origin, moved, 0.5, 1e-6)).toBe(true);
+    expect(posesEqual(origin, moved, 0.4, 1e-6)).toBe(false);
   });
 
   it('rejects poses beyond the heading tolerance', () => {
     const turned: Pose = {position: {x: 0, y: 0}, heading: 0.5};
-    expect(posesCoincide(origin, turned, 1e-6, 0.1)).toBe(false);
+    expect(posesEqual(origin, turned, 1e-6, 0.1)).toBe(false);
+  });
+});
+
+describe('reversePose', () => {
+  it('keeps the position and turns the heading a half-turn', () => {
+    const pose: Pose = {position: {x: 3, y: -4}, heading: Math.PI / 6};
+    const reversed = reversePose(pose);
+    expect(reversed.position).toEqual({x: 3, y: -4});
+    expect(normalizeAngle(reversed.heading)).toBeCloseTo(Math.PI / 6 + Math.PI);
+  });
+});
+
+describe('posesAlign', () => {
+  const east: Pose = {position: {x: 10, y: 5}, heading: 0};
+
+  it('aligns poses facing the same way at the same place', () => {
+    const same: Pose = {position: {x: 10, y: 5}, heading: 2 * Math.PI};
+    expect(posesAlign(east, same, 1e-6, 1e-6)).toBe(true);
+  });
+
+  it('aligns poses facing exactly opposite ways — same line', () => {
+    const west: Pose = {position: {x: 10, y: 5}, heading: Math.PI};
+    expect(posesAlign(east, west, 1e-6, 1e-6)).toBe(true);
+    // posesEqual, which demands the same heading, would not.
+    expect(posesEqual(east, west, 1e-6, 1e-6)).toBe(false);
+  });
+
+  it('rejects a heading off the line by more than the tolerance', () => {
+    const skew: Pose = {position: {x: 10, y: 5}, heading: 0.2};
+    expect(posesAlign(east, skew, 1e-6, 0.1)).toBe(false);
+  });
+
+  it('rejects a separated position even when headings match', () => {
+    const moved: Pose = {position: {x: 11, y: 5}, heading: Math.PI};
+    expect(posesAlign(east, moved, 0.5, 1e-6)).toBe(false);
   });
 });
 

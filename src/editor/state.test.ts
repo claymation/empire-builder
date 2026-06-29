@@ -1,43 +1,110 @@
 import {describe, it, expect} from 'vitest';
 import {type Pose} from '../domain/geometry';
-import {railheadOf, straight} from '../domain/layout';
-import {append, EMPTY, redo, start, undo} from './state';
+import {openEnds, type SectionEnd} from '../domain/layout';
+import {
+  curveLeft,
+  straight,
+  type Section,
+  type SectionShape,
+} from '../domain/section';
+import {anchor, EMPTY, extend, dropAnchor, redo, undo} from './state';
 
-const ANCHOR: Pose = {position: {x: 0, y: 0}, heading: 0};
+const ORIGIN: Pose = {position: {x: 0, y: 0}, heading: 0};
+
+/** A shape given an id, as the editor would allocate before committing. */
+function withId(id: string, shape: SectionShape): Section {
+  return {...shape, id};
+}
+
+const end = (sectionId: string, name: 'entry' | 'exit'): SectionEnd => ({
+  sectionId,
+  end: name,
+});
 
 describe('editor state', () => {
-  it('starts empty, with nothing to draw from', () => {
-    expect(railheadOf(EMPTY.layout)).toBeNull();
+  it('starts empty, with no layout and no pending anchor', () => {
     expect(EMPTY.layout.sections).toHaveLength(0);
+    expect(EMPTY.pendingAnchor).toBeNull();
   });
 
-  it('places the anchor with start', () => {
-    const state = start(EMPTY, {position: {x: 100, y: 50}, heading: 0});
-    expect(railheadOf(state.layout)?.position).toEqual({x: 100, y: 50});
-    expect(state.layout.sections).toHaveLength(0);
+  it('plants an anchor as a transient, recording no history', () => {
+    const planted = dropAnchor(EMPTY, {position: {x: 100, y: 50}, heading: 0});
+    expect(planted.pendingAnchor).toEqual({
+      position: {x: 100, y: 50},
+      heading: 0,
+    });
+    expect(planted.layout.sections).toHaveLength(0);
+    expect(planted.past).toHaveLength(0); // planting is not historized
+    expect(undo(planted)).toBe(planted); // nothing to undo
   });
 
-  it('commits a section with append', () => {
-    const drawn = append(start(EMPTY, ANCHOR), straight(300));
-    expect(drawn.layout.sections).toHaveLength(1);
-    expect(railheadOf(drawn.layout)?.position.x).toBeCloseTo(300);
+  it('lays the first section as a new anchored network', () => {
+    const planted = dropAnchor(EMPTY, ORIGIN);
+    const drawn = anchor(planted, withId('s1', straight(300)));
+    expect(drawn.layout.sections.map(s => s.id)).toEqual(['s1']);
+    expect(drawn.layout.anchors).toHaveLength(1);
+    expect(drawn.pendingAnchor).toBeNull();
+    expect(openEnds(drawn.layout)).toEqual([
+      end('s1', 'entry'),
+      end('s1', 'exit'),
+    ]);
   });
 
-  it('undoes and redoes a committed section', () => {
-    const drawn = append(start(EMPTY, ANCHOR), straight(300));
+  it('anchoring without a pending anchor throws', () => {
+    expect(() => anchor(EMPTY, withId('s1', straight(300)))).toThrow();
+  });
+
+  it('undoes the first section straight back to empty', () => {
+    const drawn = anchor(
+      dropAnchor(EMPTY, ORIGIN),
+      withId('s1', straight(300))
+    );
     const undone = undo(drawn);
     expect(undone.layout.sections).toHaveLength(0);
-    expect(railheadOf(undone.layout)).not.toBeNull(); // anchor still placed
+    expect(undone.pendingAnchor).toBeNull(); // the planted anchor is not restored
     expect(redo(undone).layout.sections).toHaveLength(1);
   });
 
-  it('undoes the anchor back to empty', () => {
-    expect(railheadOf(undo(start(EMPTY, ANCHOR)).layout)).toBeNull();
+  it('closes a loop, leaving no open ends, and reopens them on undo', () => {
+    // The oval: two straights joined by two 180° curves, the last closing onto
+    // the anchored entry.
+    let state = anchor(dropAnchor(EMPTY, ORIGIN), withId('s1', straight(100)));
+    state = extend(
+      state,
+      end('s1', 'exit'),
+      withId('s2', curveLeft(50, 180)),
+      null
+    );
+    state = extend(state, end('s2', 'exit'), withId('s3', straight(100)), null);
+    const closed = extend(
+      state,
+      end('s3', 'exit'),
+      withId('s4', curveLeft(50, 180)),
+      end('s1', 'entry')
+    );
+    expect(openEnds(closed.layout)).toEqual([]);
+    expect(openEnds(undo(closed).layout)).not.toEqual([]);
   });
 
   it('drops the redo stack once a new section is committed', () => {
-    const drawn = append(start(EMPTY, ANCHOR), straight(300));
-    const branched = append(undo(drawn), straight(200));
-    expect(redo(branched)).toBe(branched); // nothing to redo
+    const anchored = anchor(
+      dropAnchor(EMPTY, ORIGIN),
+      withId('s1', straight(300))
+    );
+    const extended = extend(
+      anchored,
+      end('s1', 'exit'),
+      withId('s2', straight(200)),
+      null
+    );
+    // Undo s2, then grow a different section from the same open end.
+    const branched = extend(
+      undo(extended),
+      end('s1', 'exit'),
+      withId('s3', straight(150)),
+      null
+    );
+    expect(branched.layout.sections.map(s => s.id)).toEqual(['s1', 's3']);
+    expect(redo(branched)).toBe(branched); // the undone s2 is gone
   });
 });

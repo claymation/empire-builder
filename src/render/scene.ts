@@ -18,6 +18,7 @@ import {
   Line,
   normalize,
   PlacedArc,
+  PlacedSegment,
   Point,
   Pose,
   radToDeg,
@@ -25,7 +26,9 @@ import {
   segmentEnd,
   subtract,
 } from '../domain/geometry';
-import {Snap, sectionGeometry, PlacedSection} from '../domain/layout';
+import {PlacedLayout} from '../domain/layout';
+import {PlacedSection} from '../domain/section';
+import {Snap} from '../domain/snapping';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
 import {assertNever} from '../domain/validate';
@@ -62,36 +65,43 @@ export function sceneTransform(
 export function renderStatic(
   transform: ViewTransform,
   space: Space,
-  sections: readonly PlacedSection[]
+  placed: PlacedLayout
 ): void {
   const toCanvas = onLayer('static', transform);
   drawSheet(space, toCanvas);
-  for (const section of sections) {
-    drawSection(section, toCanvas, RAIL_COLOR, false);
+  for (const section of placed.sectionsById.values()) {
+    for (const geometry of section.geometry) {
+      drawGeometry(geometry, toCanvas, RAIL_COLOR, false);
+    }
   }
 }
 
 /**
- * Renders the pointer-follow preview, railhead marker, and any alignment
- * feedback. The guide sits beneath the preview; a snap ring rides on top,
- * marking the open end the target has latched onto. Redraw on every move.
+ * Renders the pointer-follow ghost, railhead marker, and any alignment feedback.
+ * The guide sits beneath the ghost; a snap ring rides on top, marking the open
+ * end the target has latched onto. Redraw on every move.
  */
 export function renderOverlay(
   transform: ViewTransform,
-  preview: PlacedSection | null,
+  ghost: PlacedSection | null,
   railhead: Pose | null,
   snap: Snap | null
 ): void {
   const toCanvas = onLayer('overlay', transform);
-  // The guide sits under the preview, the ring on top, so resolve both up front
+  // The guide sits under the ghost, the ring on top, so resolve both up front
   // and draw them around it.
   const {guide, ring} = snapFeedback(snap);
   if (guide) {
     drawGuide(guide, toCanvas, transform.scale);
   }
-  if (preview) {
-    drawSection(preview, toCanvas, PREVIEW_COLOR, true);
-    drawAngleLabel(preview, toCanvas);
+  if (ghost) {
+    // The ghost is one drafted shape — a single segment or arc. Draw it and
+    // label that shape (a curve shows its sweep and radius, a straight 0.0°).
+    const [shape] = ghost.geometry;
+    if (shape) {
+      drawGeometry(shape, toCanvas, PREVIEW_COLOR, true);
+      drawAngleLabel(shape, toCanvas);
+    }
   }
   if (railhead) {
     drawRailhead(railhead.position, toCanvas);
@@ -103,7 +113,7 @@ export function renderOverlay(
 
 /**
  * The alignment feedback a snap calls for: a guide `line` to draw beneath the
- * preview, a `ring` point to draw on top, or neither.
+ * ghost, a `ring` point to draw on top, or neither.
  */
 function snapFeedback(snap: Snap | null): {
   guide: Line | null;
@@ -115,7 +125,7 @@ function snapFeedback(snap: Snap | null): {
   switch (snap.kind) {
     case 'line':
       return {guide: snap.line, ring: null};
-    case 'point':
+    case 'end':
       return {guide: null, ring: snap.point};
     case 'angle':
       return {guide: null, ring: null};
@@ -154,8 +164,10 @@ function drawSnapRing(point: Point, toCanvas: ToCanvas): void {
  * clear of the track: radially out from the arc's center for a curve, just above
  * the end for a straight. A straight reads 0.0°.
  */
-function drawAngleLabel(section: PlacedSection, toCanvas: ToCanvas): void {
-  const geometry = sectionGeometry(section);
+function drawAngleLabel(
+  geometry: PlacedSegment | PlacedArc,
+  toCanvas: ToCanvas
+): void {
   if (geometry.kind === 'arc') {
     const degrees = Math.abs(radToDeg(geometry.sweep));
     const radius = toInches(geometry.radius);
@@ -247,13 +259,12 @@ function drawSheet(space: Space, toCanvas: ToCanvas): void {
   sheet.strokeWidth = 2;
 }
 
-function drawSection(
-  section: PlacedSection,
+function drawGeometry(
+  geometry: PlacedSegment | PlacedArc,
   toCanvas: ToCanvas,
   color: string,
   preview: boolean
 ): void {
-  const geometry = sectionGeometry(section);
   const path =
     geometry.kind === 'segment'
       ? new paper.Path.Line(
