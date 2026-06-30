@@ -11,7 +11,7 @@ import {
   type SectionEnd,
 } from './layout';
 import {
-  curveLeft,
+  curve,
   endPose,
   sectionBounds,
   straight,
@@ -29,7 +29,7 @@ function withId(id: string, shape: SectionShape): Section {
   return {...shape, id};
 }
 
-const end = (sectionId: string, name: 'entry' | 'exit'): SectionEnd => ({
+const end = (sectionId: string, name: 'A' | 'B'): SectionEnd => ({
   sectionId,
   end: name,
 });
@@ -43,7 +43,7 @@ function layoutBounds(layout: Layout): Bounds {
 
 /**
  * The canonical first layout, built end to end: two straights joined by two 180°
- * curves, the last curve closing back onto the anchored entry.
+ * curves, the last curve closing back onto the anchored A end.
  */
 function oval(anchor: Pose, straightLength: number, radius: number): Layout {
   let layout = anchorSection(
@@ -53,21 +53,21 @@ function oval(anchor: Pose, straightLength: number, radius: number): Layout {
   );
   layout = joinSection(
     layout,
-    end('s1', 'exit'),
-    withId('s2', curveLeft(radius, 180)),
+    end('s1', 'B'),
+    withId('s2', curve(radius, 180, 'ccw')),
     null
   );
   layout = joinSection(
     layout,
-    end('s2', 'exit'),
+    end('s2', 'B'),
     withId('s3', straight(straightLength)),
     null
   );
   return joinSection(
     layout,
-    end('s3', 'exit'),
-    withId('s4', curveLeft(radius, 180)),
-    end('s1', 'entry')
+    end('s3', 'B'),
+    withId('s4', curve(radius, 180, 'ccw')),
+    end('s1', 'A')
   );
 }
 
@@ -84,12 +84,12 @@ describe('placeLayout', () => {
     );
     const placed = placeLayout(layout).sectionsById.get('s1');
     expect(placed).toBeDefined();
-    expect(endPose(placed!, 'entry')).toEqual(ORIGIN);
-    expect(endPose(placed!, 'exit').position.x).toBeCloseTo(100);
-    expect(openEnds(layout)).toEqual([end('s1', 'entry'), end('s1', 'exit')]);
+    expect(endPose(placed!, 'A')).toEqual(ORIGIN);
+    expect(endPose(placed!, 'B').position.x).toBeCloseTo(100);
+    expect(openEnds(layout)).toEqual([end('s1', 'A'), end('s1', 'B')]);
   });
 
-  it('threads a run, meeting each joined entry to the previous open end', () => {
+  it('threads a run, meeting each joined A end to the previous open end', () => {
     let layout = anchorSection(
       EMPTY_LAYOUT,
       withId('s1', straight(100)),
@@ -97,27 +97,27 @@ describe('placeLayout', () => {
     );
     layout = joinSection(
       layout,
-      end('s1', 'exit'),
-      withId('s2', curveLeft(50, 90)),
+      end('s1', 'B'),
+      withId('s2', curve(50, 90, 'ccw')),
       null
     );
     const placed = placeLayout(layout).sectionsById;
-    // s2's entry sits exactly on s1's exit.
-    expect(endPose(placed.get('s2')!, 'entry')).toEqual(
-      endPose(placed.get('s1')!, 'exit')
+    // s2's A sits exactly on s1's B.
+    expect(endPose(placed.get('s2')!, 'A')).toEqual(
+      endPose(placed.get('s1')!, 'B')
     );
     // The quarter turn leaves heading north at (100 + 50, 50).
-    const exit = endPose(placed.get('s2')!, 'exit');
-    expect(exit.position.x).toBeCloseTo(150);
-    expect(exit.position.y).toBeCloseTo(50);
-    expect(exit.heading).toBeCloseTo(Math.PI / 2);
+    const b = endPose(placed.get('s2')!, 'B');
+    expect(b.position.x).toBeCloseTo(150);
+    expect(b.position.y).toBeCloseTo(50);
+    expect(b.heading).toBeCloseTo(Math.PI / 2);
   });
 
   it('closes the oval into a loop with no open ends', () => {
     const layout = oval(ORIGIN, inches(48), inches(18));
     expect(() => placeLayout(layout)).not.toThrow();
-    // The closing curve's exit lands back on the anchored entry.
-    const s4Exit = endPose(placeLayout(layout).sectionsById.get('s4')!, 'exit');
+    // The closing curve's B end lands back on the anchored A.
+    const s4Exit = endPose(placeLayout(layout).sectionsById.get('s4')!, 'B');
     expect(posesAlign(s4Exit, ORIGIN, 1e-6, 1e-6)).toBe(true);
     expect(openEnds(layout)).toEqual([]);
   });
@@ -145,15 +145,15 @@ describe('placeLayout', () => {
   });
 
   it('throws when a closing join does not align', () => {
-    // Two straights end to end, then a closing join asserting the second's exit
-    // meets the first's entry — which it cannot: they sit 200 apart.
+    // Two straights end to end, then a closing join asserting the second's B
+    // meets the first's A — which it cannot: they sit 200 apart.
     const misaligned: Layout = {
       sections: [withId('s1', straight(100)), withId('s2', straight(100))],
       joins: [
-        {ends: [end('s1', 'exit'), end('s2', 'entry')]},
-        {ends: [end('s2', 'exit'), end('s1', 'entry')]},
+        {ends: [end('s1', 'B'), end('s2', 'A')]},
+        {ends: [end('s2', 'B'), end('s1', 'A')]},
       ],
-      anchors: [{sectionEnd: end('s1', 'entry'), pose: ORIGIN}],
+      anchors: [{sectionEnd: end('s1', 'A'), pose: ORIGIN}],
     };
     expect(() => placeLayout(misaligned)).toThrow(RangeError);
   });
@@ -164,13 +164,13 @@ describe('openEnds', () => {
     expect(openEnds(EMPTY_LAYOUT)).toEqual([]);
   });
 
-  it('exposes both ends of a planted section, entry before exit', () => {
+  it('exposes both ends of a planted section, A before B', () => {
     const layout = anchorSection(
       EMPTY_LAYOUT,
       withId('s1', straight(100)),
       ORIGIN
     );
-    expect(openEnds(layout)).toEqual([end('s1', 'entry'), end('s1', 'exit')]);
+    expect(openEnds(layout)).toEqual([end('s1', 'A'), end('s1', 'B')]);
   });
 
   it('drops a joined end and keeps the free ones, in order', () => {
@@ -181,12 +181,12 @@ describe('openEnds', () => {
     );
     layout = joinSection(
       layout,
-      end('s1', 'exit'),
+      end('s1', 'B'),
       withId('s2', straight(100)),
       null
     );
-    // s1.exit and s2.entry are joined; s1.entry and s2.exit remain open.
-    expect(openEnds(layout)).toEqual([end('s1', 'entry'), end('s2', 'exit')]);
+    // s1.B and s2.A are joined; s1.A and s2.B remain open.
+    expect(openEnds(layout)).toEqual([end('s1', 'A'), end('s2', 'B')]);
   });
 
   it('exposes none once the loop is closed', () => {
@@ -202,29 +202,29 @@ describe('partner', () => {
   );
   layout = joinSection(
     layout,
-    end('s1', 'exit'),
+    end('s1', 'B'),
     withId('s2', straight(100)),
     null
   );
 
   it('reports the joined end from either side', () => {
-    expect(partner(layout, end('s1', 'exit'))).toEqual(end('s2', 'entry'));
-    expect(partner(layout, end('s2', 'entry'))).toEqual(end('s1', 'exit'));
+    expect(partner(layout, end('s1', 'B'))).toEqual(end('s2', 'A'));
+    expect(partner(layout, end('s2', 'A'))).toEqual(end('s1', 'B'));
   });
 
   it('reports null for an open end', () => {
-    expect(partner(layout, end('s1', 'entry'))).toBeNull();
-    expect(partner(layout, end('s2', 'exit'))).toBeNull();
+    expect(partner(layout, end('s1', 'A'))).toBeNull();
+    expect(partner(layout, end('s2', 'B'))).toBeNull();
   });
 });
 
 describe('anchorSection', () => {
-  it('adds the section and one anchor at its entry, leaving inputs untouched', () => {
+  it('adds the section and one anchor at its A end, leaving inputs untouched', () => {
     const before = EMPTY_LAYOUT;
     const layout = anchorSection(before, withId('s1', straight(100)), ORIGIN);
     expect(layout.sections.map(s => s.id)).toEqual(['s1']);
     expect(layout.anchors).toEqual([
-      {sectionEnd: end('s1', 'entry'), pose: ORIGIN},
+      {sectionEnd: end('s1', 'A'), pose: ORIGIN},
     ]);
     expect(layout.joins).toEqual([]);
     expect(before.sections).toEqual([]); // input unmutated
@@ -234,42 +234,40 @@ describe('anchorSection', () => {
 describe('joinSection', () => {
   const base = anchorSection(EMPTY_LAYOUT, withId('s1', straight(100)), ORIGIN);
 
-  it('adds the section and one join between the open end and the new entry', () => {
+  it('adds the section and one join between the open end and the new A', () => {
     const layout = joinSection(
       base,
-      end('s1', 'exit'),
+      end('s1', 'B'),
       withId('s2', straight(100)),
       null
     );
     expect(layout.sections.map(s => s.id)).toEqual(['s1', 's2']);
-    expect(layout.joins).toEqual([
-      {ends: [end('s1', 'exit'), end('s2', 'entry')]},
-    ]);
+    expect(layout.joins).toEqual([{ends: [end('s1', 'B'), end('s2', 'A')]}]);
     expect(base.sections.map(s => s.id)).toEqual(['s1']); // input unmutated
   });
 
-  it('records a second join closing the new exit onto an aligned open end', () => {
-    // The oval's last curve closes onto the anchored entry: joinSection records
+  it('records a second join closing the new B onto an aligned open end', () => {
+    // The oval's last curve closes onto the anchored A end: joinSection records
     // both the join onto the railhead and the closing join.
     const layout = oval(ORIGIN, inches(48), inches(18));
     expect(layout.joins).toContainEqual({
-      ends: [end('s4', 'exit'), end('s1', 'entry')],
+      ends: [end('s4', 'B'), end('s1', 'A')],
     });
   });
 
   it('records a misaligned closeOnto; placement, not joinSection, rejects it', () => {
-    // s2 is a straight from (100,0) to (200,0); asserting its exit closes onto
-    // s1's entry at the origin cannot hold. joinSection is pure topology, so it
+    // s2 is a straight from (100,0) to (200,0); asserting its B closes onto
+    // s1's A at the origin cannot hold. joinSection is pure topology, so it
     // records the join without complaint — placeLayout is where the geometry is
     // found unsatisfiable.
     const layout = joinSection(
       base,
-      end('s1', 'exit'),
+      end('s1', 'B'),
       withId('s2', straight(100)),
-      end('s1', 'entry')
+      end('s1', 'A')
     );
     expect(layout.joins).toContainEqual({
-      ends: [end('s2', 'exit'), end('s1', 'entry')],
+      ends: [end('s2', 'B'), end('s1', 'A')],
     });
     expect(() => placeLayout(layout)).toThrow(RangeError);
   });

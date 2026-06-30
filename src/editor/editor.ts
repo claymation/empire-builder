@@ -8,8 +8,8 @@
 import paper from 'paper';
 import {degToRad, Point, Pose} from '../domain/geometry';
 import {
+  openEnds,
   openEndPoses,
-  partner,
   placeLayout,
   PlacedLayout,
   poseOf,
@@ -106,24 +106,18 @@ export function startEditor(
   }
 
   /**
-   * The railhead — the free tail to extend from — or null when there is none.
-   * Before any section it is the pending anchor; otherwise it is the
-   * most-recently-added section's exit, the growing tail, unless that exit has
-   * been joined (a closed loop), which leaves no railhead and stops drawing. A
-   * function of the layout, so undo/redo restore it for free.
+   * The railhead — the free pose to extend from — or null when there is none.
+   * Before any section it is the pending anchor; otherwise it is the growing
+   * tail's open end ({@link railheadEnd}) placed, absent once a closed loop joins
+   * that end and leaves nowhere to draw. A function of the layout, so undo/redo
+   * restore it for free.
    */
   function railhead(): Pose | null {
     if (state.pendingAnchor) {
       return state.pendingAnchor;
     }
-    const last = state.layout.sections.at(-1);
-    if (!last) {
-      return null;
-    }
-    if (partner(state.layout, {sectionId: last.id, end: 'exit'})) {
-      return null;
-    }
-    return poseOf(placed, {sectionId: last.id, end: 'exit'});
+    const end = railheadEnd();
+    return end ? poseOf(placed, end) : null;
   }
 
   /**
@@ -209,16 +203,19 @@ export function startEditor(
         dropAnchor(state, {position: pointer, heading: INITIAL_HEADING})
       );
     } else {
-      // The preview lays from the railhead; a tangent end snap closes its exit
-      // onto an open end, recording the join. With the loop closed there is no
-      // railhead, so the preview has no shape and the click is ignored.
+      // The preview lays from the railhead; a tangent end snap closes the new
+      // section's B onto an open end, recording the join. With the loop closed
+      // there is no railhead, so the preview has no shape and the click is ignored.
       const {shape, closeOnto} = preview(view);
       if (shape) {
-        setState(
-          state.pendingAnchor
-            ? anchor(state, withId(shape))
-            : extend(state, railheadEnd(), withId(shape), closeOnto)
-        );
+        if (state.pendingAnchor) {
+          setState(anchor(state, withId(shape)));
+        } else {
+          const at = railheadEnd();
+          if (at) {
+            setState(extend(state, at, withId(shape), closeOnto));
+          }
+        }
       }
     }
     refreshAll();
@@ -246,13 +243,23 @@ export function startEditor(
 
   refreshAll();
 
-  /** The open end to join onto: the most-recently-added section's exit. */
-  function railheadEnd(): SectionEnd {
+  /**
+   * The growing tail's open end — the most-recently-added section's `B` while it
+   * is unjoined — or null when there is none: no section yet, or a closed loop
+   * that joined it. Read through {@link openEnds}, the places a section can grow
+   * from, rather than asserting `B` is free.
+   */
+  function railheadEnd(): SectionEnd | null {
     const last = state.layout.sections.at(-1);
     if (!last) {
-      throw new Error('no section to extend from');
+      return null;
     }
-    return {sectionId: last.id, end: 'exit'};
+    const tail: SectionEnd = {sectionId: last.id, end: 'B'};
+    return openEnds(state.layout).some(
+      open => open.sectionId === tail.sectionId && open.end === tail.end
+    )
+      ? tail
+      : null;
   }
 
   /** Gives `shape` a fresh id, ready to commit into the layout. */

@@ -1,7 +1,7 @@
 import {describe, it, expect} from 'vitest';
 import {degToRad, radToDeg, type Point, type Pose} from './geometry';
 import {type SectionEnd, type SectionEndPose} from './layout';
-import {curveLeft, endPose, placeSection, straight} from './section';
+import {curve, endPose, placeSection, straight} from './section';
 import {
   resolveSnap,
   shapeForSnap,
@@ -16,7 +16,7 @@ import {
 const ORIGIN: Pose = {position: {x: 0, y: 0}, heading: 0};
 
 /** A section end; its identity is immaterial to these snap tests. */
-const SOME_END: SectionEnd = {sectionId: 'e', end: 'exit'};
+const SOME_END: SectionEnd = {sectionId: 'e', end: 'B'};
 
 /** Pairs an open-end pose with a section end, as the editor passes them in. */
 const oe = (pose: Pose): SectionEndPose => ({sectionEnd: SOME_END, pose});
@@ -25,9 +25,9 @@ const oe = (pose: Pose): SectionEndPose => ({sectionEnd: SOME_END, pose});
 function reaches(from: Pose, target: Point): void {
   const section = shapeTo(from, target);
   if (!section) throw new Error('expected a section');
-  const exit = endPose(placeSection(section, from), 'exit');
-  expect(exit.position.x).toBeCloseTo(target.x);
-  expect(exit.position.y).toBeCloseTo(target.y);
+  const b = endPose(placeSection(section, from), 'B');
+  expect(b.position.x).toBeCloseTo(target.x);
+  expect(b.position.y).toBeCloseTo(target.y);
 }
 
 describe('shapeTo', () => {
@@ -39,7 +39,7 @@ describe('shapeTo', () => {
   it('curves left toward a point off to the left', () => {
     expect(shapeTo(ORIGIN, {x: 100, y: 100})).toMatchObject({
       kind: 'curved',
-      handedness: 'left',
+      turn: 'ccw',
     });
     reaches(ORIGIN, {x: 100, y: 100});
   });
@@ -47,7 +47,7 @@ describe('shapeTo', () => {
   it('curves right toward a point off to the right', () => {
     expect(shapeTo(ORIGIN, {x: 100, y: -100})).toMatchObject({
       kind: 'curved',
-      handedness: 'right',
+      turn: 'cw',
     });
     reaches(ORIGIN, {x: 100, y: -100});
   });
@@ -99,9 +99,9 @@ describe('snappedShapeTo', () => {
     );
     if (section?.kind !== 'curved') throw new Error('expected a curve');
     expect(radToDeg(section.arc.sweep)).toBeCloseTo(90);
-    const exit = endPose(placeSection(section, ORIGIN), 'exit');
-    expect(exit.position.x).toBeCloseTo(97.5);
-    expect(exit.position.y).toBeCloseTo(97.5);
+    const b = endPose(placeSection(section, ORIGIN), 'B');
+    expect(b.position.x).toBeCloseTo(97.5);
+    expect(b.position.y).toBeCloseTo(97.5);
   });
 
   it('leaves an off-grid sweep (and its radius) alone', () => {
@@ -385,10 +385,10 @@ describe('shapeOntoLine', () => {
       threshold
     );
     if (section?.kind !== 'straight') throw new Error('expected a straight');
-    const exit = endPose(placeSection(section, from), 'exit');
-    expect(exit.position.x).toBeCloseTo(0);
-    expect(exit.position.y).toBeCloseTo(100); // the heading line, not the target's y
-    expect(exit.heading).toBeCloseTo(Math.PI);
+    const b = endPose(placeSection(section, from), 'B');
+    expect(b.position.x).toBeCloseTo(0);
+    expect(b.position.y).toBeCloseTo(100); // the heading line, not the target's y
+    expect(b.heading).toBeCloseTo(Math.PI);
   });
 
   it('meets the line where an oblique heading line crosses it', () => {
@@ -403,9 +403,9 @@ describe('shapeOntoLine', () => {
       threshold
     );
     if (section?.kind !== 'straight') throw new Error('expected a straight');
-    const exit = endPose(placeSection(section, from), 'exit');
-    expect(exit.position.x).toBeCloseTo(0);
-    expect(exit.position.y).toBeCloseTo(100);
+    const b = endPose(placeSection(section, from), 'B');
+    expect(b.position.x).toBeCloseTo(0);
+    expect(b.position.y).toBeCloseTo(100);
   });
 
   it('keeps a clean-angle curve, ending where its chord meets the line', () => {
@@ -421,9 +421,9 @@ describe('shapeOntoLine', () => {
     );
     if (section?.kind !== 'curved') throw new Error('expected a curve');
     expect(radToDeg(section.arc.sweep)).toBeCloseTo(90);
-    const exit = endPose(placeSection(section, from), 'exit');
-    expect(exit.position.x).toBeCloseTo(100);
-    expect(exit.position.y).toBeCloseTo(100);
+    const b = endPose(placeSection(section, from), 'B');
+    expect(b.position.x).toBeCloseTo(100);
+    expect(b.position.y).toBeCloseTo(100);
   });
 
   it("snaps a curve's sweep and slides its radius onto the line", () => {
@@ -440,13 +440,13 @@ describe('shapeOntoLine', () => {
     );
     if (section?.kind !== 'curved') throw new Error('expected a curve');
     expect(radToDeg(section.arc.sweep)).toBeCloseTo(90);
-    const exit = endPose(placeSection(section, from), 'exit');
-    expect(exit.position.x).toBeCloseTo(100);
-    expect(exit.position.y).toBeCloseTo(100);
+    const b = endPose(placeSection(section, from), 'B');
+    expect(b.position.x).toBeCloseTo(100);
+    expect(b.position.y).toBeCloseTo(100);
   });
 
-  it('slides a right-handed curve onto the line', () => {
-    // Mirror of the left case below the axis: a ~93° right arc snaps to 90° and
+  it('slides a clockwise curve onto the line', () => {
+    // Mirror of the ccw case below the axis: a ~93° cw arc snaps to 90° and
     // its radius slides so the end lands on x = 100, at (100, -100).
     const from: Pose = {position: {x: 0, y: 0}, heading: 0};
     const line = {origin: {x: 100, y: 0}, direction: {x: 0, y: 1}};
@@ -458,11 +458,11 @@ describe('shapeOntoLine', () => {
       threshold
     );
     if (section?.kind !== 'curved') throw new Error('expected a curve');
-    expect(section.handedness).toBe('right');
+    expect(section.turn).toBe('cw');
     expect(radToDeg(section.arc.sweep)).toBeCloseTo(90);
-    const exit = endPose(placeSection(section, from), 'exit');
-    expect(exit.position.x).toBeCloseTo(100);
-    expect(exit.position.y).toBeCloseTo(-100);
+    const b = endPose(placeSection(section, from), 'B');
+    expect(b.position.x).toBeCloseTo(100);
+    expect(b.position.y).toBeCloseTo(-100);
   });
 
   it('keeps the angle-snapped section when the line never crosses', () => {
@@ -515,8 +515,8 @@ describe('shapeForSnap', () => {
     const snap = {kind: 'line' as const, point: {x: 0, y: 103}, line};
     const section = shapeForSnap(from, snap, increment, threshold);
     if (!section) throw new Error('expected a section');
-    const exit = endPose(placeSection(section, from), 'exit');
-    expect(exit.position.x).toBeCloseTo(0); // landed on the line x = 0
+    const b = endPose(placeSection(section, from), 'B');
+    expect(b.position.x).toBeCloseTo(0); // landed on the line x = 0
     expect(section).toEqual(
       shapeOntoLine(from, snap.point, line, increment, threshold)
     );
@@ -529,13 +529,13 @@ describe('shownSnap', () => {
 
   it('keeps a line guide the section ends on', () => {
     // A 180° curve from the origin ends on the start's normal (x = 0).
-    const half = curveLeft(50, 180);
+    const half = curve(50, 180, 'ccw');
     expect(shownSnap(ORIGIN, lineSnap, half)).toEqual(lineSnap);
   });
 
   it('drops a line guide the section does not end on', () => {
     // A 90° curve ends at (100, 100), off x = 0 — the guide would be idle.
-    const quarter = curveLeft(100, 90);
+    const quarter = curve(100, 90, 'ccw');
     expect(shownSnap(ORIGIN, lineSnap, quarter)).toBeNull();
   });
 
