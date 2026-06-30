@@ -47,6 +47,7 @@ We follow the [Google TypeScript Style Guide](https://google.github.io/styleguid
 
 ## Conventions
 
+- Use American English ("passing siding", not "passing loop"; "neighbor", not "neighbour").
 - TypeScript strict mode; prefer explicit types at module boundaries, let inference handle locals.
 - Named exports only; avoid default exports.
 - Keep Paper.js / canvas concerns separate from domain logic. Domain types (track, segment, layout) should not depend on Paper.js so they stay testable in isolation.
