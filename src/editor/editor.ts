@@ -106,11 +106,11 @@ export function startEditor(
   }
 
   /**
-   * The railhead — the free pose to extend from — or null when there is none.
-   * Before any section it is the pending anchor; otherwise it is the growing
-   * tail's open end ({@link railheadEnd}) placed, absent once a closed loop joins
-   * that end and leaves nowhere to draw. A function of the layout, so undo/redo
-   * restore it for free.
+   * The railhead — the pose to extend from — or null when there is none. Before
+   * any section it is the pending anchor (a pose, not yet an open end); otherwise
+   * it is the growing tail's open end ({@link railheadEnd}), placed. A closed loop
+   * joins that end, leaving no railhead and nowhere to draw. A function of the
+   * layout, so undo/redo restore it for free.
    */
   function railhead(): Pose | null {
     if (state.pendingAnchor) {

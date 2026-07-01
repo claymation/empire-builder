@@ -113,7 +113,6 @@ export function sectionLength(shape: SectionShape): number {
 export function endsOf(shape: SectionShape): readonly EndName[] {
   switch (shape.kind) {
     case 'straight':
-      return ['A', 'B'];
     case 'curved':
       return ['A', 'B'];
     default:
