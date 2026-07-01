@@ -295,14 +295,6 @@ export function segmentBounds(segment: PlacedSegment): Bounds {
 
 // ── Arcs ──
 
-/** Left bends counter-clockwise, right bends clockwise, about the travel direction. */
-export type Handedness = 'left' | 'right';
-
-/** The sign a handedness lends a sweep: left counter-clockwise (+), right (−). */
-export function handednessSign(handedness: Handedness): number {
-  return handedness === 'left' ? 1 : -1;
-}
-
 /** The shape of a circular arc: a radius and the (unsigned) angle it sweeps. */
 export interface Arc {
   /** Radius of the arc. */
@@ -343,8 +335,8 @@ export function unitArcChord(heading: number, signedSweep: number): Vector {
 
 /**
  * An arc placed in the plane: anchored at a start pose (its entry point and
- * tangent), with a signed `sweep` — counter-clockwise (left) is positive,
- * clockwise (right) negative.
+ * tangent), with a signed `sweep` — counter-clockwise positive, clockwise
+ * negative.
  */
 export interface PlacedArc {
   readonly kind: 'arc';
@@ -401,7 +393,7 @@ export function arcBounds(arc: PlacedArc): Bounds {
   return boundsOfPoints(points);
 }
 
-// +1 where the sweep bends left (CCW), -1 where it bends right (CW).
+// +1 for a counter-clockwise sweep, -1 for a clockwise one.
 function bendSign(sweep: number): number {
   return sweep >= 0 ? 1 : -1;
 }

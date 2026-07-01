@@ -2,7 +2,7 @@ import {describe, it, expect} from 'vitest';
 import {type Pose} from '../domain/geometry';
 import {openEnds, type SectionEnd} from '../domain/layout';
 import {
-  curveLeft,
+  curve,
   straight,
   type Section,
   type SectionShape,
@@ -16,7 +16,7 @@ function withId(id: string, shape: SectionShape): Section {
   return {...shape, id};
 }
 
-const end = (sectionId: string, name: 'entry' | 'exit'): SectionEnd => ({
+const end = (sectionId: string, name: 'A' | 'B'): SectionEnd => ({
   sectionId,
   end: name,
 });
@@ -44,10 +44,7 @@ describe('editor state', () => {
     expect(drawn.layout.sections.map(s => s.id)).toEqual(['s1']);
     expect(drawn.layout.anchors).toHaveLength(1);
     expect(drawn.pendingAnchor).toBeNull();
-    expect(openEnds(drawn.layout)).toEqual([
-      end('s1', 'entry'),
-      end('s1', 'exit'),
-    ]);
+    expect(openEnds(drawn.layout)).toEqual([end('s1', 'A'), end('s1', 'B')]);
   });
 
   it('anchoring without a pending anchor throws', () => {
@@ -67,20 +64,20 @@ describe('editor state', () => {
 
   it('closes a loop, leaving no open ends, and reopens them on undo', () => {
     // The oval: two straights joined by two 180° curves, the last closing onto
-    // the anchored entry.
+    // the anchored A end.
     let state = anchor(dropAnchor(EMPTY, ORIGIN), withId('s1', straight(100)));
     state = extend(
       state,
-      end('s1', 'exit'),
-      withId('s2', curveLeft(50, 180)),
+      end('s1', 'B'),
+      withId('s2', curve(50, 180, 'ccw')),
       null
     );
-    state = extend(state, end('s2', 'exit'), withId('s3', straight(100)), null);
+    state = extend(state, end('s2', 'B'), withId('s3', straight(100)), null);
     const closed = extend(
       state,
-      end('s3', 'exit'),
-      withId('s4', curveLeft(50, 180)),
-      end('s1', 'entry')
+      end('s3', 'B'),
+      withId('s4', curve(50, 180, 'ccw')),
+      end('s1', 'A')
     );
     expect(openEnds(closed.layout)).toEqual([]);
     expect(openEnds(undo(closed).layout)).not.toEqual([]);
@@ -93,14 +90,14 @@ describe('editor state', () => {
     );
     const extended = extend(
       anchored,
-      end('s1', 'exit'),
+      end('s1', 'B'),
       withId('s2', straight(200)),
       null
     );
     // Undo s2, then grow a different section from the same open end.
     const branched = extend(
       undo(extended),
-      end('s1', 'exit'),
+      end('s1', 'B'),
       withId('s3', straight(150)),
       null
     );

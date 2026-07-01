@@ -15,7 +15,6 @@ import {
   degToRad,
   distance,
   dot,
-  handednessSign,
   lineIntersection,
   normalize,
   normalizeAngle,
@@ -375,13 +374,6 @@ describe('tangentAndNormalLines', () => {
     expect(tangent.direction.y).toBeCloseTo(Math.sin(degToRad(30)));
     expect(normal.direction.x).toBeCloseTo(Math.cos(degToRad(120)));
     expect(normal.direction.y).toBeCloseTo(Math.sin(degToRad(120)));
-  });
-});
-
-describe('handednessSign', () => {
-  it('is +1 for left (counter-clockwise) and -1 for right', () => {
-    expect(handednessSign('left')).toBe(1);
-    expect(handednessSign('right')).toBe(-1);
   });
 });
 

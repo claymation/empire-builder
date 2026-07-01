@@ -50,7 +50,7 @@ export function dropAnchor(state: EditorState, pose: Pose): EditorState {
 }
 
 /**
- * Lay the network's first section, anchored by its entry at the pending anchor
+ * Lay the network's first section, anchored by its `A` end at the pending anchor
  * ({@link anchorSection}), which it clears. The prior layout goes to `past` — one
  * undo step — and the redo stack is dropped.
  */
@@ -66,7 +66,7 @@ export function anchor(state: EditorState, section: Section): EditorState {
 
 /**
  * Lay `section` joined onto open end `at` ({@link joinSection}), optionally
- * closing its exit onto `closeOnto`. The prior layout goes to `past` — one undo
+ * closing its `B` end onto `closeOnto`. The prior layout goes to `past` — one undo
  * step — and the redo stack is dropped.
  */
 export function extend(

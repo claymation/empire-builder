@@ -14,6 +14,7 @@ import {posesAlign, Pose} from './geometry';
 import {
   endPose,
   EndName,
+  endsOf,
   placeSection,
   PlacedSection,
   Section,
@@ -74,13 +75,13 @@ export interface PlacedLayout {
 
 /**
  * Locates every section by threading each network from its anchor: place the
- * anchored section by its `entry`, then walk each section's exit join to place
- * the neighbor's `entry` at the pose carried across the shared join (exit→entry).
- * On reaching an already-placed section — the join that closes a cycle, e.g. the
- * oval's last join — it does not re-place: it checks the join is aligned
- * ({@link posesAlign}) and stops. An unaligned revisit throws {@link RangeError}:
- * no single placement aligns the closing join. Threading is forward-only — every
- * section is reached downstream of an anchor's `entry`.
+ * anchored section by its `A`, then walk each section's `B` join to place the
+ * neighbor's `A` at the pose carried across the shared join (B→A). On reaching an
+ * already-placed section — the join that closes a cycle, e.g. the oval's last
+ * join — it does not re-place: it checks the join is aligned ({@link posesAlign})
+ * and stops. An unaligned revisit throws {@link RangeError}: no single placement
+ * aligns the closing join. Threading is forward-only — every section is reached
+ * downstream of an anchor's `A`.
  */
 export function placeLayout(layout: Layout): PlacedLayout {
   const byId = new Map(layout.sections.map(section => [section.id, section]));
@@ -96,9 +97,9 @@ export function placeLayout(layout: Layout): PlacedLayout {
  * Pure topology: openness is the absence of a join, so this needs only the
  * `Layout`, not a placement. An anchored end is open until something joins it; a
  * loop closes by joining onto it, after which the network exposes no open end and
- * drawing has nowhere to go. Ordering is deterministic: sections in order, entry
- * before exit. A caller wanting an end's world pose derives it from a
- * {@link PlacedLayout}.
+ * drawing has nowhere to go. Ordering is deterministic: sections in order, each
+ * section's ends in {@link endsOf} order. A caller wanting an end's world pose
+ * derives it from a {@link PlacedLayout}.
  */
 export function openEnds(layout: Layout): readonly SectionEnd[] {
   const joined = new Set<string>();
@@ -109,7 +110,7 @@ export function openEnds(layout: Layout): readonly SectionEnd[] {
   }
   const open: SectionEnd[] = [];
   for (const section of layout.sections) {
-    for (const end of ['entry', 'exit'] as const) {
+    for (const end of endsOf(section)) {
       const sectionEnd: SectionEnd = {sectionId: section.id, end};
       if (!joined.has(endKey(sectionEnd))) {
         open.push(sectionEnd);
@@ -153,7 +154,7 @@ export function partner(layout: Layout, at: SectionEnd): SectionEnd | null {
   return null;
 }
 
-/** Start a new network: add `section`, anchored by its `entry` at `pose`. */
+/** Start a new network: add `section`, anchored by its `A` end at `pose`. */
 export function anchorSection(
   layout: Layout,
   section: Section,
@@ -164,14 +165,14 @@ export function anchorSection(
     joins: layout.joins,
     anchors: [
       ...layout.anchors,
-      {sectionEnd: {sectionId: section.id, end: 'entry'}, pose},
+      {sectionEnd: {sectionId: section.id, end: 'A'}, pose},
     ],
   };
 }
 
 /**
  * Join `section` onto open end `at`, recording a join between `at` and the new
- * section's `entry`. When the new `exit` lands on an existing open end
+ * section's `A`. When the new section's `B` lands on an existing open end
  * `closeOnto`, record that join too — the loop close.
  *
  * Pure topology: whether a `closeOnto` actually aligns is a geometric fact,
@@ -183,11 +184,11 @@ export function joinSection(
   section: Section,
   closeOnto: SectionEnd | null
 ): Layout {
-  const entry: SectionEnd = {sectionId: section.id, end: 'entry'};
-  const joins: Join[] = [...layout.joins, {ends: [at, entry]}];
+  const a: SectionEnd = {sectionId: section.id, end: 'A'};
+  const joins: Join[] = [...layout.joins, {ends: [at, a]}];
   if (closeOnto) {
-    const exit: SectionEnd = {sectionId: section.id, end: 'exit'};
-    joins.push({ends: [exit, closeOnto]});
+    const b: SectionEnd = {sectionId: section.id, end: 'B'};
+    joins.push({ends: [b, closeOnto]});
   }
   return {
     sections: [...layout.sections, section],
@@ -197,9 +198,9 @@ export function joinSection(
 }
 
 /**
- * Threads one network: places the anchored section by its `entry`, then follows
- * each placed section's exit join forward, placing each neighbor's `entry` and
- * checking the join where it closes back onto an already-placed section.
+ * Threads one network: places the anchored section by its `A`, then follows each
+ * placed section's `B` join forward, placing each neighbor's `A` and checking the
+ * join where it closes back onto an already-placed section.
  */
 function threadNetwork(
   layout: Layout,
@@ -213,28 +214,28 @@ function threadNetwork(
       `anchor references unknown section ${anchor.sectionEnd.sectionId}`
     );
   }
-  // The anchor names the section's entry (anchorSection plants it there).
-  const pending: Array<{section: Section; entry: Pose}> = [
-    {section: start, entry: anchor.pose},
+  // The anchor names the section's A end (anchorSection plants it there).
+  const pending: Array<{section: Section; a: Pose}> = [
+    {section: start, a: anchor.pose},
   ];
   for (let item = pending.shift(); item; item = pending.shift()) {
-    const {section, entry} = item;
+    const {section, a} = item;
     if (placed.has(section.id)) {
       continue;
     }
-    const placedSection = placeSection(section, entry);
+    const placedSection = placeSection(section, a);
     placed.set(section.id, placedSection);
 
-    const neighbor = partner(layout, {sectionId: section.id, end: 'exit'});
+    const neighbor = partner(layout, {sectionId: section.id, end: 'B'});
     if (!neighbor) {
       continue;
     }
-    const exit = endPose(placedSection, 'exit');
+    const b = endPose(placedSection, 'B');
     const alreadyPlaced = placed.get(neighbor.sectionId);
     if (alreadyPlaced) {
       // The join closes a cycle: never re-place, only require it to align.
       const meeting = endPose(alreadyPlaced, neighbor.end);
-      if (!posesAlign(exit, meeting)) {
+      if (!posesAlign(b, meeting)) {
         throw new RangeError(
           'a closing join does not align; geometry is unsatisfiable'
         );
@@ -247,7 +248,7 @@ function threadNetwork(
         `join references unknown section ${neighbor.sectionId}`
       );
     }
-    pending.push({section: next, entry: exit});
+    pending.push({section: next, a: b});
   }
 }
 

@@ -18,8 +18,6 @@ import {
   distance,
   dot,
   EPSILON,
-  Handedness,
-  handednessSign,
   Line,
   lineIntersection,
   normalizeAngle,
@@ -37,12 +35,13 @@ import {
 } from './geometry';
 import {SectionEnd, SectionEndPose} from './layout';
 import {
-  curveLeft,
-  curveRight,
+  curve,
   endPose,
   placeSection,
   SectionShape,
   straight,
+  Turn,
+  turnSign,
 } from './section';
 import {assertNever} from './validate';
 
@@ -106,13 +105,13 @@ export function resolveSnap(
     // An end snap lays a section straight onto the end, so only offer it when
     // that section meets the end tangentially — otherwise the join would kink,
     // which a run never permits. The connecting section reaches the end's
-    // position; it qualifies when its exit pose coincides with the end.
+    // position; it qualifies when its far end (B) coincides with the open end.
     const connector = shapeTo(from, pose.position);
     if (!connector) {
       continue;
     }
-    const exit = endPose(placeSection(connector, from), 'exit');
-    if (posesEqual(exit, pose)) {
+    const b = endPose(placeSection(connector, from), 'B');
+    if (posesEqual(b, pose)) {
       nearest = {end: sectionEnd, pose, gap};
     }
   }
@@ -190,8 +189,8 @@ export function shownSnap(
   if (snap.kind !== 'line') {
     return snap;
   }
-  // The through route leaves by the exit; its end is where the guide lands.
-  const end = endPose(placeSection(section, from), 'exit');
+  // The section is laid from `from` by its A end; its far end B is where the guide lands.
+  const end = endPose(placeSection(section, from), 'B');
   return onLine(end.position, snap.line) ? snap : null;
 }
 
@@ -244,10 +243,10 @@ export function shapeTo(from: Pose, target: Point): SectionShape | null {
   );
   const endAngle = Math.atan2(target.y - center.y, target.x - center.x);
 
-  // A center to the left of travel bends the track left (counter-clockwise).
+  // A center to the left of travel bends the track counter-clockwise.
   return offset > 0
-    ? curveLeft(radius, radToDeg(normalizeAngle(endAngle - startAngle)))
-    : curveRight(radius, radToDeg(normalizeAngle(startAngle - endAngle)));
+    ? curve(radius, radToDeg(normalizeAngle(endAngle - startAngle)), 'ccw')
+    : curve(radius, radToDeg(normalizeAngle(startAngle - endAngle)), 'cw');
 }
 
 /**
@@ -302,14 +301,14 @@ export function snappedShapeTo(
   // radius grows, so the radius whose end is nearest the pointer is the
   // pointer's projection onto the ray; a negative projection means the pointer
   // is behind `from`, so leave the curve raw.
-  const chord = arcChord(from, sweep, raw.handedness);
+  const chord = arcChord(from, sweep, raw.turn);
   const chordLengthSquared = dot(chord, chord); // ~0 only for a full-circle sweep
   const radius =
     chordLengthSquared > EPSILON
       ? dot(toTarget, chord) / chordLengthSquared
       : 0;
   return radius > 0
-    ? {kind: 'curved', arc: arc(radius, sweep), handedness: raw.handedness}
+    ? {kind: 'curved', arc: arc(radius, sweep), turn: raw.turn}
     : raw;
 }
 
@@ -337,17 +336,17 @@ export function shapeOntoLine(
   const aligned =
     shaped.kind === 'straight'
       ? straightOntoLine(from, line)
-      : curveOntoLine(from, line, shaped.arc.sweep, shaped.handedness);
+      : curveOntoLine(from, line, shaped.arc.sweep, shaped.turn);
   return aligned ?? shaped;
 }
 
 /**
- * The straight start→end of the unit-radius `sweep`/`handedness` arc leaving
- * `from`: the direction the placed arc's end rides out along as its radius grows.
+ * The straight start→end of the unit-radius `sweep`/`turn` arc leaving `from`:
+ * the direction the placed arc's end rides out along as its radius grows.
  * Vanishes (length ~0) only for a full-circle sweep.
  */
-function arcChord(from: Pose, sweep: number, handedness: Handedness): Vector {
-  return unitArcChord(from.heading, handednessSign(handedness) * sweep);
+function arcChord(from: Pose, sweep: number, turn: Turn): Vector {
+  return unitArcChord(from.heading, turnSign(turn) * sweep);
 }
 
 // A straight from `from` ending where its heading line crosses `line`, or null.
@@ -364,16 +363,16 @@ function straightOntoLine(from: Pose, line: Line): SectionShape | null {
   return reach > EPSILON ? straight(reach) : null;
 }
 
-// A `sweep`/`handedness` curve from `from` whose end meets `line`, or null. The
-// end rides the ray `from + radius·chord`, so the radius that lands it on the
-// line is where that ray crosses the line.
+// A `sweep`/`turn` curve from `from` whose end meets `line`, or null. The end
+// rides the ray `from + radius·chord`, so the radius that lands it on the line is
+// where that ray crosses the line.
 function curveOntoLine(
   from: Pose,
   line: Line,
   sweep: number,
-  handedness: Handedness
+  turn: Turn
 ): SectionShape | null {
-  const chord = arcChord(from, sweep, handedness);
+  const chord = arcChord(from, sweep, turn);
   const meeting = lineIntersection(
     {origin: from.position, direction: chord},
     line
@@ -384,6 +383,6 @@ function curveOntoLine(
   const radius =
     dot(subtract(meeting, from.position), chord) / dot(chord, chord);
   return radius > EPSILON
-    ? {kind: 'curved', arc: arc(radius, sweep), handedness}
+    ? {kind: 'curved', arc: arc(radius, sweep), turn}
     : null;
 }
