@@ -60,7 +60,7 @@ export function anchor(state: EditorState, section: Section): EditorState {
   }
   return commit(
     state,
-    anchorSection(state.layout, section, state.pendingAnchor)
+    anchorSection(state.layout, section, 'A', state.pendingAnchor)
   );
 }
 
@@ -75,7 +75,7 @@ export function extend(
   section: Section,
   closeOnto: SectionEnd | null
 ): EditorState {
-  return commit(state, joinSection(state.layout, at, section, closeOnto));
+  return commit(state, joinSection(state.layout, at, section, 'A', closeOnto));
 }
 
 /**

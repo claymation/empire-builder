@@ -110,7 +110,7 @@ export function resolveSnap(
     if (!connector) {
       continue;
     }
-    const b = endPose(placeSection(connector, from), 'B');
+    const b = endPose(placeSection(connector, 'A', from), 'B');
     if (posesEqual(b, pose)) {
       nearest = {end: sectionEnd, pose, gap};
     }
@@ -190,7 +190,7 @@ export function shownSnap(
     return snap;
   }
   // The section is laid from `from` by its A end; its far end B is where the guide lands.
-  const end = endPose(placeSection(section, from), 'B');
+  const end = endPose(placeSection(section, 'A', from), 'B');
   return onLine(end.position, snap.line) ? snap : null;
 }
 

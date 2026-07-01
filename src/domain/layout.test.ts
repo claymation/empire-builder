@@ -5,7 +5,7 @@ import {
   EMPTY_LAYOUT,
   joinSection,
   openEnds,
-  partner,
+  findNeighborEnd,
   placeLayout,
   type Layout,
   type SectionEnd,
@@ -49,24 +49,28 @@ function oval(anchor: Pose, straightLength: number, radius: number): Layout {
   let layout = anchorSection(
     EMPTY_LAYOUT,
     withId('s1', straight(straightLength)),
+    'A',
     anchor
   );
   layout = joinSection(
     layout,
     end('s1', 'B'),
     withId('s2', curve(radius, 180, 'ccw')),
+    'A',
     null
   );
   layout = joinSection(
     layout,
     end('s2', 'B'),
     withId('s3', straight(straightLength)),
+    'A',
     null
   );
   return joinSection(
     layout,
     end('s3', 'B'),
     withId('s4', curve(radius, 180, 'ccw')),
+    'A',
     end('s1', 'A')
   );
 }
@@ -80,6 +84,7 @@ describe('placeLayout', () => {
     const layout = anchorSection(
       EMPTY_LAYOUT,
       withId('s1', straight(100)),
+      'A',
       ORIGIN
     );
     const placed = placeLayout(layout).sectionsById.get('s1');
@@ -93,12 +98,14 @@ describe('placeLayout', () => {
     let layout = anchorSection(
       EMPTY_LAYOUT,
       withId('s1', straight(100)),
+      'A',
       ORIGIN
     );
     layout = joinSection(
       layout,
       end('s1', 'B'),
       withId('s2', curve(50, 90, 'ccw')),
+      'A',
       null
     );
     const placed = placeLayout(layout).sectionsById;
@@ -111,6 +118,50 @@ describe('placeLayout', () => {
     expect(b.position.x).toBeCloseTo(150);
     expect(b.position.y).toBeCloseTo(50);
     expect(b.heading).toBeCloseTo(Math.PI / 2);
+  });
+
+  it('seats a neighbor by its B end when the join names B', () => {
+    // s1 runs (0,0)→(100,0). The join meets s1's B with s2's *B*, so threading
+    // must seat s2 by its B there and carry A a length back to (40,0). A
+    // forward-only walk, always seating the neighbor by A, would instead put s2's
+    // A at (100,0) and its B out at (160,0) — the case this generalization fixes.
+    const layout: Layout = {
+      sections: [withId('s1', straight(100)), withId('s2', straight(60))],
+      joins: [{ends: [end('s1', 'B'), end('s2', 'B')]}],
+      anchors: [{sectionEnd: end('s1', 'A'), pose: ORIGIN}],
+    };
+    const placed = placeLayout(layout).sectionsById;
+    const b = endPose(placed.get('s2')!, 'B');
+    expect(b.position.x).toBeCloseTo(100);
+    expect(b.position.y).toBeCloseTo(0);
+    const a = endPose(placed.get('s2')!, 'A');
+    expect(a.position.x).toBeCloseTo(40);
+    expect(a.position.y).toBeCloseTo(0);
+  });
+
+  it('anchors and threads a network placed by a B end', () => {
+    // Anchor s1 by its B at the origin, then join s2 onto s1's open A. Placement
+    // must seat s1 by B and still carry the join across to s2.
+    let layout = anchorSection(
+      EMPTY_LAYOUT,
+      withId('s1', straight(100)),
+      'B',
+      ORIGIN
+    );
+    layout = joinSection(
+      layout,
+      end('s1', 'A'),
+      withId('s2', straight(40)),
+      'A',
+      null
+    );
+    const placed = placeLayout(layout).sectionsById;
+    // s1's B sits at the anchor; its A a length back along the heading.
+    expect(endPose(placed.get('s1')!, 'B')).toEqual(ORIGIN);
+    expect(endPose(placed.get('s1')!, 'A').position.x).toBeCloseTo(-100);
+    // s2's A meets s1's A at (-100,0); its B runs 40 forward along the heading.
+    expect(endPose(placed.get('s2')!, 'A').position.x).toBeCloseTo(-100);
+    expect(endPose(placed.get('s2')!, 'B').position.x).toBeCloseTo(-60);
   });
 
   it('closes the oval into a loop with no open ends', () => {
@@ -168,6 +219,7 @@ describe('openEnds', () => {
     const layout = anchorSection(
       EMPTY_LAYOUT,
       withId('s1', straight(100)),
+      'A',
       ORIGIN
     );
     expect(openEnds(layout)).toEqual([end('s1', 'A'), end('s1', 'B')]);
@@ -177,12 +229,14 @@ describe('openEnds', () => {
     let layout = anchorSection(
       EMPTY_LAYOUT,
       withId('s1', straight(100)),
+      'A',
       ORIGIN
     );
     layout = joinSection(
       layout,
       end('s1', 'B'),
       withId('s2', straight(100)),
+      'A',
       null
     );
     // s1.B and s2.A are joined; s1.A and s2.B remain open.
@@ -194,34 +248,41 @@ describe('openEnds', () => {
   });
 });
 
-describe('partner', () => {
+describe('findNeighborEnd', () => {
   let layout: Layout = anchorSection(
     EMPTY_LAYOUT,
     withId('s1', straight(100)),
+    'A',
     ORIGIN
   );
   layout = joinSection(
     layout,
     end('s1', 'B'),
     withId('s2', straight(100)),
+    'A',
     null
   );
 
   it('reports the joined end from either side', () => {
-    expect(partner(layout, end('s1', 'B'))).toEqual(end('s2', 'A'));
-    expect(partner(layout, end('s2', 'A'))).toEqual(end('s1', 'B'));
+    expect(findNeighborEnd(layout, end('s1', 'B'))).toEqual(end('s2', 'A'));
+    expect(findNeighborEnd(layout, end('s2', 'A'))).toEqual(end('s1', 'B'));
   });
 
   it('reports null for an open end', () => {
-    expect(partner(layout, end('s1', 'A'))).toBeNull();
-    expect(partner(layout, end('s2', 'B'))).toBeNull();
+    expect(findNeighborEnd(layout, end('s1', 'A'))).toBeNull();
+    expect(findNeighborEnd(layout, end('s2', 'B'))).toBeNull();
   });
 });
 
 describe('anchorSection', () => {
-  it('adds the section and one anchor at its A end, leaving inputs untouched', () => {
+  it('adds the section and one anchor at the named end, leaving inputs untouched', () => {
     const before = EMPTY_LAYOUT;
-    const layout = anchorSection(before, withId('s1', straight(100)), ORIGIN);
+    const layout = anchorSection(
+      before,
+      withId('s1', straight(100)),
+      'A',
+      ORIGIN
+    );
     expect(layout.sections.map(s => s.id)).toEqual(['s1']);
     expect(layout.anchors).toEqual([
       {sectionEnd: end('s1', 'A'), pose: ORIGIN},
@@ -229,21 +290,64 @@ describe('anchorSection', () => {
     expect(layout.joins).toEqual([]);
     expect(before.sections).toEqual([]); // input unmutated
   });
+
+  it('anchors at the B end when named', () => {
+    const layout = anchorSection(
+      EMPTY_LAYOUT,
+      withId('s1', straight(100)),
+      'B',
+      ORIGIN
+    );
+    expect(layout.anchors).toEqual([
+      {sectionEnd: end('s1', 'B'), pose: ORIGIN},
+    ]);
+  });
 });
 
 describe('joinSection', () => {
-  const base = anchorSection(EMPTY_LAYOUT, withId('s1', straight(100)), ORIGIN);
+  const base = anchorSection(
+    EMPTY_LAYOUT,
+    withId('s1', straight(100)),
+    'A',
+    ORIGIN
+  );
 
-  it('adds the section and one join between the open end and the new A', () => {
+  it('adds the section and one join between the open end and the attaching end', () => {
     const layout = joinSection(
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),
+      'A',
       null
     );
     expect(layout.sections.map(s => s.id)).toEqual(['s1', 's2']);
     expect(layout.joins).toEqual([{ends: [end('s1', 'B'), end('s2', 'A')]}]);
     expect(base.sections.map(s => s.id)).toEqual(['s1']); // input unmutated
+  });
+
+  it('attaches by the named end, joining the open end to that end', () => {
+    const layout = joinSection(
+      base,
+      end('s1', 'B'),
+      withId('s2', straight(100)),
+      'B',
+      null
+    );
+    expect(layout.joins).toEqual([{ends: [end('s1', 'B'), end('s2', 'B')]}]);
+  });
+
+  it('closes the other end onto an existing open end', () => {
+    // Attaching by A, the section's other end (B) is the one that closes.
+    const layout = joinSection(
+      base,
+      end('s1', 'B'),
+      withId('s2', straight(100)),
+      'A',
+      end('s1', 'A')
+    );
+    expect(layout.joins).toContainEqual({
+      ends: [end('s2', 'B'), end('s1', 'A')],
+    });
   });
 
   it('records a second join closing the new B onto an aligned open end', () => {
@@ -264,6 +368,7 @@ describe('joinSection', () => {
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),
+      'A',
       end('s1', 'A')
     );
     expect(layout.joins).toContainEqual({

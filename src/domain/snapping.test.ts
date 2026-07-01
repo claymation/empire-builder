@@ -25,7 +25,7 @@ const oe = (pose: Pose): SectionEndPose => ({sectionEnd: SOME_END, pose});
 function reaches(from: Pose, target: Point): void {
   const section = shapeTo(from, target);
   if (!section) throw new Error('expected a section');
-  const b = endPose(placeSection(section, from), 'B');
+  const b = endPose(placeSection(section, 'A', from), 'B');
   expect(b.position.x).toBeCloseTo(target.x);
   expect(b.position.y).toBeCloseTo(target.y);
 }
@@ -99,7 +99,7 @@ describe('snappedShapeTo', () => {
     );
     if (section?.kind !== 'curved') throw new Error('expected a curve');
     expect(radToDeg(section.arc.sweep)).toBeCloseTo(90);
-    const b = endPose(placeSection(section, ORIGIN), 'B');
+    const b = endPose(placeSection(section, 'A', ORIGIN), 'B');
     expect(b.position.x).toBeCloseTo(97.5);
     expect(b.position.y).toBeCloseTo(97.5);
   });
@@ -385,7 +385,7 @@ describe('shapeOntoLine', () => {
       threshold
     );
     if (section?.kind !== 'straight') throw new Error('expected a straight');
-    const b = endPose(placeSection(section, from), 'B');
+    const b = endPose(placeSection(section, 'A', from), 'B');
     expect(b.position.x).toBeCloseTo(0);
     expect(b.position.y).toBeCloseTo(100); // the heading line, not the target's y
     expect(b.heading).toBeCloseTo(Math.PI);
@@ -403,7 +403,7 @@ describe('shapeOntoLine', () => {
       threshold
     );
     if (section?.kind !== 'straight') throw new Error('expected a straight');
-    const b = endPose(placeSection(section, from), 'B');
+    const b = endPose(placeSection(section, 'A', from), 'B');
     expect(b.position.x).toBeCloseTo(0);
     expect(b.position.y).toBeCloseTo(100);
   });
@@ -421,7 +421,7 @@ describe('shapeOntoLine', () => {
     );
     if (section?.kind !== 'curved') throw new Error('expected a curve');
     expect(radToDeg(section.arc.sweep)).toBeCloseTo(90);
-    const b = endPose(placeSection(section, from), 'B');
+    const b = endPose(placeSection(section, 'A', from), 'B');
     expect(b.position.x).toBeCloseTo(100);
     expect(b.position.y).toBeCloseTo(100);
   });
@@ -440,7 +440,7 @@ describe('shapeOntoLine', () => {
     );
     if (section?.kind !== 'curved') throw new Error('expected a curve');
     expect(radToDeg(section.arc.sweep)).toBeCloseTo(90);
-    const b = endPose(placeSection(section, from), 'B');
+    const b = endPose(placeSection(section, 'A', from), 'B');
     expect(b.position.x).toBeCloseTo(100);
     expect(b.position.y).toBeCloseTo(100);
   });
@@ -460,7 +460,7 @@ describe('shapeOntoLine', () => {
     if (section?.kind !== 'curved') throw new Error('expected a curve');
     expect(section.turn).toBe('cw');
     expect(radToDeg(section.arc.sweep)).toBeCloseTo(90);
-    const b = endPose(placeSection(section, from), 'B');
+    const b = endPose(placeSection(section, 'A', from), 'B');
     expect(b.position.x).toBeCloseTo(100);
     expect(b.position.y).toBeCloseTo(-100);
   });
@@ -515,7 +515,7 @@ describe('shapeForSnap', () => {
     const snap = {kind: 'line' as const, point: {x: 0, y: 103}, line};
     const section = shapeForSnap(from, snap, increment, threshold);
     if (!section) throw new Error('expected a section');
-    const b = endPose(placeSection(section, from), 'B');
+    const b = endPose(placeSection(section, 'A', from), 'B');
     expect(b.position.x).toBeCloseTo(0); // landed on the line x = 0
     expect(section).toEqual(
       shapeOntoLine(from, snap.point, line, increment, threshold)
