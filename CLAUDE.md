@@ -13,6 +13,8 @@ Working code is not enough. The goal is code that is correct, clear, and that th
 - Favor clarity over cleverness. Code is read far more than it is written.
 - Keep functions small and single-purpose; keep names honest about what they do.
 - A name must be exactly what the thing is, not approximately — a heading is not a pose; a route section is not a "piece". Rename when a name could mislead, even late and even across a directory.
+- **One name per value; a function that returns a value is named for its action, not the value.** A value keeps one noun as it flows through the code — don't rebind it to a synonym. So give a value-returning function a verb name, leaving the noun free for the result: `const neighborEnd = findNeighborEnd(at)` — not `neighborEnd = joinedEnd(at)` (two nouns for one value) or `across = neighborEnd(at)` (a noun-named function forcing the variable to a synonym). A query that keeps a noun name (`railhead()`) is fine only when the variable takes a distinct *role*, not a synonym: `const from = railhead()`. Never name a variable with an adjective or a placeholder (`attaching`, `next`) — use the noun for what it holds (`newEnd`, `neighbor`).
+- **One word per concept.** Two words for one idea in the same code read as two concepts — `partner` and `neighbor` for a single graph adjacency. Pick the domain's term, use it everywhere, and retire the synonym.
 - Model the domain explicitly (tracks, segments, connections, layouts) rather than passing around loose primitives.
 - Handle the unhappy path. Validate inputs, surface errors, don't swallow them.
 - No dead code, no commented-out blocks, no `any` as a shortcut. Delete instead of disabling.
