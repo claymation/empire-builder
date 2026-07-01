@@ -5,7 +5,7 @@ import {
   EMPTY_LAYOUT,
   joinSection,
   openEnds,
-  neighborEnd,
+  findNeighborEnd,
   placeLayout,
   type Layout,
   type SectionEnd,
@@ -248,7 +248,7 @@ describe('openEnds', () => {
   });
 });
 
-describe('neighborEnd', () => {
+describe('findNeighborEnd', () => {
   let layout: Layout = anchorSection(
     EMPTY_LAYOUT,
     withId('s1', straight(100)),
@@ -264,13 +264,13 @@ describe('neighborEnd', () => {
   );
 
   it('reports the joined end from either side', () => {
-    expect(neighborEnd(layout, end('s1', 'B'))).toEqual(end('s2', 'A'));
-    expect(neighborEnd(layout, end('s2', 'A'))).toEqual(end('s1', 'B'));
+    expect(findNeighborEnd(layout, end('s1', 'B'))).toEqual(end('s2', 'A'));
+    expect(findNeighborEnd(layout, end('s2', 'A'))).toEqual(end('s1', 'B'));
   });
 
   it('reports null for an open end', () => {
-    expect(neighborEnd(layout, end('s1', 'A'))).toBeNull();
-    expect(neighborEnd(layout, end('s2', 'B'))).toBeNull();
+    expect(findNeighborEnd(layout, end('s1', 'A'))).toBeNull();
+    expect(findNeighborEnd(layout, end('s2', 'B'))).toBeNull();
   });
 });
 
