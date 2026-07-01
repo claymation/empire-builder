@@ -5,7 +5,7 @@ import {
   EMPTY_LAYOUT,
   joinSection,
   openEnds,
-  partner,
+  joinedEnd,
   placeLayout,
   type Layout,
   type SectionEnd,
@@ -248,7 +248,7 @@ describe('openEnds', () => {
   });
 });
 
-describe('partner', () => {
+describe('joinedEnd', () => {
   let layout: Layout = anchorSection(
     EMPTY_LAYOUT,
     withId('s1', straight(100)),
@@ -264,13 +264,13 @@ describe('partner', () => {
   );
 
   it('reports the joined end from either side', () => {
-    expect(partner(layout, end('s1', 'B'))).toEqual(end('s2', 'A'));
-    expect(partner(layout, end('s2', 'A'))).toEqual(end('s1', 'B'));
+    expect(joinedEnd(layout, end('s1', 'B'))).toEqual(end('s2', 'A'));
+    expect(joinedEnd(layout, end('s2', 'A'))).toEqual(end('s1', 'B'));
   });
 
   it('reports null for an open end', () => {
-    expect(partner(layout, end('s1', 'A'))).toBeNull();
-    expect(partner(layout, end('s2', 'B'))).toBeNull();
+    expect(joinedEnd(layout, end('s1', 'A'))).toBeNull();
+    expect(joinedEnd(layout, end('s2', 'B'))).toBeNull();
   });
 });
 

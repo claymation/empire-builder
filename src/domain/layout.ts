@@ -145,7 +145,7 @@ export function openEndPoses(
 }
 
 /** The end joined to `at`, or null if `at` is open. Symmetric. */
-export function partner(layout: Layout, at: SectionEnd): SectionEnd | null {
+export function joinedEnd(layout: Layout, at: SectionEnd): SectionEnd | null {
   for (const join of layout.joins) {
     const [a, b] = join.ends;
     if (sameEnd(a, at)) {
@@ -258,19 +258,19 @@ function threadNetwork(
       if (from === end) {
         continue;
       }
-      const partnerEnd = partner(layout, {sectionId: section.id, end: from});
-      if (!partnerEnd) {
+      const neighborEnd = joinedEnd(layout, {sectionId: section.id, end: from});
+      if (!neighborEnd) {
         continue;
       }
-      const neighbor = byId.get(partnerEnd.sectionId);
+      const neighbor = byId.get(neighborEnd.sectionId);
       if (!neighbor) {
         throw new RangeError(
-          `join references unknown section ${partnerEnd.sectionId}`
+          `join references unknown section ${neighborEnd.sectionId}`
         );
       }
       pending.push({
         section: neighbor,
-        end: partnerEnd.end,
+        end: neighborEnd.end,
         pose: endPose(placedSection, from),
       });
     }
