@@ -154,30 +154,29 @@ export function posesAlign(
 }
 
 /**
- * Composes two rigid plane motions. A {@link Pose} doubles as a *frame*: the
- * motion that rotates the plane by its heading, then translates it to its
- * position — a rotation plus translation that preserves distances and
- * orientation (the group of such motions is SE(2)). `composePose(frame, local)`
- * carries `local`, expressed in `frame`'s coordinates, out into the world: it
- * rotates `local`'s position by `frame`'s heading, translates by `frame`'s
- * position, and adds the headings.
+ * Composes two poses as rigid plane motions. A {@link Pose} doubles as a rigid
+ * motion — rotate the plane by its heading, then translate it to its position;
+ * distances and orientation are preserved (the group of such motions is SE(2)).
+ * `composePose(outer, inner)` is the single motion that applies `inner`, then
+ * `outer`: it rotates `inner`'s position by `outer`'s heading, translates by
+ * `outer`'s position, and adds the headings.
  */
-export function composePose(frame: Pose, local: Pose): Pose {
+export function composePose(outer: Pose, inner: Pose): Pose {
   return {
-    position: add(frame.position, rotateVector(local.position, frame.heading)),
-    heading: frame.heading + local.heading,
+    position: add(outer.position, rotateVector(inner.position, outer.heading)),
+    heading: outer.heading + inner.heading,
   };
 }
 
 /**
- * The rigid motion that undoes `frame`: its inverse in SE(2). {@link
- * composePose}`(inversePose(f), f)` and `composePose(f, inversePose(f))` are both
+ * The rigid motion that undoes `pose`: its inverse in SE(2). {@link
+ * composePose}`(inversePose(p), p)` and `composePose(p, inversePose(p))` are both
  * the identity pose — the origin, heading 0.
  */
-export function inversePose(frame: Pose): Pose {
-  const heading = -frame.heading;
+export function inversePose(pose: Pose): Pose {
+  const heading = -pose.heading;
   return {
-    position: rotateVector(scale(frame.position, -1), heading),
+    position: rotateVector(scale(pose.position, -1), heading),
     heading,
   };
 }

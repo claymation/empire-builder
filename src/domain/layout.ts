@@ -190,8 +190,8 @@ export function joinSection(
   end: EndName,
   closeOnto: SectionEnd | null
 ): Layout {
-  const attaching: SectionEnd = {sectionId: section.id, end};
-  const joins: Join[] = [...layout.joins, {ends: [at, attaching]}];
+  const newEnd: SectionEnd = {sectionId: section.id, end};
+  const joins: Join[] = [...layout.joins, {ends: [at, newEnd]}];
   if (closeOnto) {
     joins.push({
       ends: [{sectionId: section.id, end: otherEnd(section, end)}, closeOnto],
@@ -258,19 +258,19 @@ function threadNetwork(
       if (from === end) {
         continue;
       }
-      const neighbor = partner(layout, {sectionId: section.id, end: from});
-      if (!neighbor) {
+      const partnerEnd = partner(layout, {sectionId: section.id, end: from});
+      if (!partnerEnd) {
         continue;
       }
-      const next = byId.get(neighbor.sectionId);
-      if (!next) {
+      const neighbor = byId.get(partnerEnd.sectionId);
+      if (!neighbor) {
         throw new RangeError(
-          `join references unknown section ${neighbor.sectionId}`
+          `join references unknown section ${partnerEnd.sectionId}`
         );
       }
       pending.push({
-        section: next,
-        end: neighbor.end,
+        section: neighbor,
+        end: partnerEnd.end,
         pose: endPose(placedSection, from),
       });
     }

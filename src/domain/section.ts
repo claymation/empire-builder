@@ -150,24 +150,50 @@ export function placeSection(
 }
 
 /**
- * Places `shape` with its origin end at `originPose` — the canonical geometry
- * carried rigidly to that pose. The primitive both {@link placeSection} and
- * {@link canonicalEndPose} rest on; it seats one fixed end and takes no end name.
+ * Places `shape` with its origin end at `originPose`, deriving every end's world
+ * pose and the swept geometry together. The primitive both {@link placeSection}
+ * and {@link canonicalEndPose} rest on; it seats one fixed end and takes no end
+ * name.
+ *
+ * One exhaustive switch is each kind's sole authority on where its ends land and
+ * what it sweeps, so a new kind must add its case here before it compiles.
  */
 function placeByOrigin(shape: SectionShape, originPose: Pose): PlacedSection {
-  const geometry = placedGeometry(shape, originPose);
-  const b =
-    geometry.kind === 'segment'
-      ? segmentEndPose(geometry)
-      : arcEndPose(geometry);
-  return {
-    shape,
-    ends: new Map([
-      ['A', originPose],
-      ['B', b],
-    ]),
-    geometry: [geometry],
-  };
+  switch (shape.kind) {
+    case 'straight': {
+      const segment: PlacedSegment = {
+        kind: 'segment',
+        start: originPose,
+        length: shape.length,
+      };
+      return {
+        shape,
+        ends: new Map([
+          ['A', originPose],
+          ['B', segmentEndPose(segment)],
+        ]),
+        geometry: [segment],
+      };
+    }
+    case 'curved': {
+      const placedArc: PlacedArc = {
+        kind: 'arc',
+        start: originPose,
+        radius: shape.arc.radius,
+        sweep: turnSign(shape.turn) * shape.arc.sweep,
+      };
+      return {
+        shape,
+        ends: new Map([
+          ['A', originPose],
+          ['B', arcEndPose(placedArc)],
+        ]),
+        geometry: [placedArc],
+      };
+    }
+    default:
+      return assertNever(shape);
+  }
 }
 
 /**
@@ -198,24 +224,4 @@ export function sectionBounds(placed: PlacedSection): Bounds {
         : arcBounds(geometry)
     )
     .reduce(unionBounds);
-}
-
-/** The single segment or arc a straight or curve sweeps with its end `A` at `pose`. */
-function placedGeometry(
-  shape: SectionShape,
-  pose: Pose
-): PlacedSegment | PlacedArc {
-  switch (shape.kind) {
-    case 'straight':
-      return {kind: 'segment', start: pose, length: shape.length};
-    case 'curved':
-      return {
-        kind: 'arc',
-        start: pose,
-        radius: shape.arc.radius,
-        sweep: turnSign(shape.turn) * shape.arc.sweep,
-      };
-    default:
-      return assertNever(shape);
-  }
 }
