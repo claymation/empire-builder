@@ -154,6 +154,42 @@ export function posesAlign(
 }
 
 /**
+ * Composes two rigid plane motions. A {@link Pose} doubles as a *frame*: the
+ * motion that rotates the plane by its heading, then translates it to its
+ * position — a rotation plus translation that preserves distances and
+ * orientation (the group of such motions is SE(2)). `composePose(frame, local)`
+ * carries `local`, expressed in `frame`'s coordinates, out into the world: it
+ * rotates `local`'s position by `frame`'s heading, translates by `frame`'s
+ * position, and adds the headings.
+ */
+export function composePose(frame: Pose, local: Pose): Pose {
+  return {
+    position: add(frame.position, rotateVector(local.position, frame.heading)),
+    heading: frame.heading + local.heading,
+  };
+}
+
+/**
+ * The rigid motion that undoes `frame`: its inverse in SE(2). {@link
+ * composePose}`(inversePose(f), f)` and `composePose(f, inversePose(f))` are both
+ * the identity pose — the origin, heading 0.
+ */
+export function inversePose(frame: Pose): Pose {
+  const heading = -frame.heading;
+  return {
+    position: rotateVector(scale(frame.position, -1), heading),
+    heading,
+  };
+}
+
+/** `v` rotated counter-clockwise by `angle` radians about the origin. */
+function rotateVector(v: Vector, angle: number): Vector {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {x: v.x * cos - v.y * sin, y: v.x * sin + v.y * cos};
+}
+
+/**
  * A pose's two characteristic lines: the tangent line along its heading and the
  * normal line square to it, both through its position.
  */

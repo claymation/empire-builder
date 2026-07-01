@@ -157,7 +157,7 @@ export function startEditor(
     return {
       railhead: from,
       shape,
-      ghost: shape ? placeSection(shape, from) : null,
+      ghost: shape ? placeSection(shape, 'A', from) : null,
       snap,
       closeOnto,
     };

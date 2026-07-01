@@ -11,8 +11,10 @@ import {
   arcMidpoint,
   boundsOfPoints,
   colinear,
+  composePose,
   cross,
   degToRad,
+  inversePose,
   distance,
   dot,
   lineIntersection,
@@ -241,6 +243,74 @@ describe('posesAlign', () => {
     const moved: Pose = {position: {x: 11, y: 5}, heading: Math.PI};
     expect(posesAlign(east, moved, 0.5, 1e-6)).toBe(false);
   });
+});
+
+describe('composePose', () => {
+  const IDENTITY: Pose = {position: {x: 0, y: 0}, heading: 0};
+
+  it('leaves a local pose unchanged under the identity frame', () => {
+    const local: Pose = {position: {x: 3, y: -4}, heading: degToRad(50)};
+    const composed = composePose(IDENTITY, local);
+    expect(composed.position.x).toBeCloseTo(3);
+    expect(composed.position.y).toBeCloseTo(-4);
+    expect(composed.heading).toBeCloseTo(degToRad(50));
+  });
+
+  // A frame with both a nonzero position and heading maps a hand-computed local
+  // pose to its known world pose, from an off-axis frame in each quadrant. The
+  // world position is the frame's position plus the local position rotated by the
+  // frame's heading; the world heading is the sum. A dropped rotation, a swapped
+  // translate/rotate order, or a sign slip fails.
+  const local: Pose = {position: {x: 2, y: 1}, heading: degToRad(20)};
+  const frameHeadings = [
+    degToRad(35),
+    degToRad(125),
+    degToRad(215),
+    degToRad(305),
+  ];
+  for (const heading of frameHeadings) {
+    const frame: Pose = {position: {x: -6, y: 8}, heading};
+    it(`applies the frame's rotation then translation (${Math.round(radToDeg(heading))}°)`, () => {
+      const cos = Math.cos(heading);
+      const sin = Math.sin(heading);
+      const expectedX =
+        frame.position.x + (local.position.x * cos - local.position.y * sin);
+      const expectedY =
+        frame.position.y + (local.position.x * sin + local.position.y * cos);
+      const composed = composePose(frame, local);
+      expect(composed.position.x).toBeCloseTo(expectedX);
+      expect(composed.position.y).toBeCloseTo(expectedY);
+      expect(composed.heading).toBeCloseTo(heading + local.heading);
+    });
+  }
+});
+
+describe('inversePose', () => {
+  // Composed with its own inverse either way, a frame is the identity motion.
+  const frames: Pose[] = [
+    {position: {x: 5, y: -3}, heading: degToRad(40)},
+    {position: {x: -7, y: 2}, heading: degToRad(160)},
+    {position: {x: -1, y: -9}, heading: degToRad(250)},
+    {position: {x: 8, y: 6}, heading: degToRad(310)},
+  ];
+  for (const frame of frames) {
+    const label = `${Math.round(radToDeg(frame.heading))}°`;
+    it(`undoes the frame from the left (${label})`, () => {
+      const identity = composePose(inversePose(frame), frame);
+      expect(identity.position.x).toBeCloseTo(0);
+      expect(identity.position.y).toBeCloseTo(0);
+      expect(Math.sin(identity.heading)).toBeCloseTo(0);
+      expect(Math.cos(identity.heading)).toBeCloseTo(1);
+    });
+
+    it(`undoes the frame from the right (${label})`, () => {
+      const identity = composePose(frame, inversePose(frame));
+      expect(identity.position.x).toBeCloseTo(0);
+      expect(identity.position.y).toBeCloseTo(0);
+      expect(Math.sin(identity.heading)).toBeCloseTo(0);
+      expect(Math.cos(identity.heading)).toBeCloseTo(1);
+    });
+  }
 });
 
 // ── Lines ──

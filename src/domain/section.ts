@@ -4,8 +4,9 @@
  *
  * A {@link SectionShape} is the authored form — a straight or a curve — with no
  * identity and no placement. {@link Section} adds a stable id so the layout can
- * join and reference it. {@link placeSection} locates a shape by seating its end
- * `A` at a pose, deriving every end's world pose and the swept geometry together.
+ * join and reference it. {@link placeSection} locates a shape by seating any one
+ * of its ends at a pose, deriving every end's world pose and the swept geometry
+ * together.
  *
  * Sections stay plain, serializable data; the geometry is derived on demand,
  * never stored on the layout.
@@ -18,7 +19,9 @@ import {
   arcEndPose,
   arcLength,
   Bounds,
+  composePose,
   degToRad,
+  inversePose,
   PlacedArc,
   PlacedSegment,
   Pose,
@@ -120,13 +123,39 @@ export function endsOf(shape: SectionShape): readonly EndName[] {
   }
 }
 
+/** The canonical frame's origin, where a shape's origin end sits when unplaced. */
+const IDENTITY_POSE: Pose = {position: {x: 0, y: 0}, heading: 0};
+
 /**
- * Places `shape` by seating its end `A` at `pose`, deriving end `B`'s world pose
+ * Places `shape` by seating its `end` at `pose`, deriving every end's world pose
  * and the swept geometry together. A curve's {@link Turn} becomes the sign of the
  * arc's sweep — ccw counter-clockwise, cw clockwise.
+ *
+ * Seating works through the shape's canonical frame (its origin end at the
+ * identity pose). The seating transform carries `end`'s canonical pose onto
+ * `pose`; running the origin-end placement under that transform lands `end`
+ * exactly at `pose`, whichever end it is. Seating the origin end makes the
+ * transform equal `pose` and reduces to placing the raw geometry there.
  */
-export function placeSection(shape: SectionShape, pose: Pose): PlacedSection {
-  const geometry = placedGeometry(shape, pose);
+export function placeSection(
+  shape: SectionShape,
+  end: EndName,
+  pose: Pose
+): PlacedSection {
+  if (!endsOf(shape).includes(end)) {
+    throw new RangeError(`section of kind ${shape.kind} has no ${end} end`);
+  }
+  const seating = composePose(pose, inversePose(canonicalEndPose(shape, end)));
+  return placeByOrigin(shape, seating);
+}
+
+/**
+ * Places `shape` with its origin end at `originPose` — the canonical geometry
+ * carried rigidly to that pose. The primitive both {@link placeSection} and
+ * {@link canonicalEndPose} rest on; it seats one fixed end and takes no end name.
+ */
+function placeByOrigin(shape: SectionShape, originPose: Pose): PlacedSection {
+  const geometry = placedGeometry(shape, originPose);
   const b =
     geometry.kind === 'segment'
       ? segmentEndPose(geometry)
@@ -134,11 +163,21 @@ export function placeSection(shape: SectionShape, pose: Pose): PlacedSection {
   return {
     shape,
     ends: new Map([
-      ['A', pose],
+      ['A', originPose],
       ['B', b],
     ]),
     geometry: [geometry],
   };
+}
+
+/**
+ * The pose of `end` in the shape's canonical frame. Read from the origin-end
+ * placement at the identity pose ({@link placeByOrigin}), never from {@link
+ * placeSection}, whose seating transform is computed from this — routing it back
+ * through would recur without end.
+ */
+function canonicalEndPose(shape: SectionShape, end: EndName): Pose {
+  return endPose(placeByOrigin(shape, IDENTITY_POSE), end);
 }
 
 /** The world pose of one of a placed section's named ends. */
