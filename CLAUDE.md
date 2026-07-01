@@ -20,6 +20,8 @@ Working code is not enough. The goal is code that is correct, clear, and that th
 - **A comment states what the code *is* and *why*, never what it *is not*, *was*, or *might become*.** This is a recurring mistake, so check for it deliberately: before keeping any comment, scan it for a negation of identity ("not a ray", "isn't a tree"), a contrast with something unbuilt ("we don't use X here", "unlike a list"), or a future tense ("will later", "eventually") — and delete that clause. "An infinite line, not a ray" → "an infinite line". The only allowed contrast is the rationale for a choice the code actually made between real options, with its reason ("stored on the section rather than the arc, so it stays serializable"); a bare contrast carrying no "why" is not.
 - Leave the code better than you found it, but keep refactors separate from feature changes.
 - If a requirement is ambiguous or a design choice has real trade-offs, stop and ask rather than guessing.
+- The best code is no code. Find ways to solve problems without writing code.
+- Push back on requirements. If a behavior-preserving change introduces significant complexity, maybe the behavior should not be preserved.
 
 ## Tech stack
 
