@@ -25,6 +25,7 @@ import {
   PlacedArc,
   PlacedSegment,
   Pose,
+  reversePose,
   segmentBounds,
   segmentEndPose,
   unionBounds,
@@ -36,8 +37,10 @@ export type SectionId = string;
 
 /**
  * A section's two ends, named by position: anonymous labels carrying identity (a
- * join names one end, a placement seats one) but no direction. A straight and a
- * curve share the same two labels; {@link endsOf} enumerates a kind's ends.
+ * join names one end, a placement seats one) but no direction. Every end's pose
+ * faces into its section, so the names stay interchangeable — no end is an
+ * entrance or an exit. A straight and a curve share the same two labels;
+ * {@link endsOf} enumerates a kind's ends.
  */
 export type EndName = 'A' | 'B';
 
@@ -69,8 +72,10 @@ export type Section = SectionShape & {readonly id: SectionId};
 
 /**
  * A section located in the plane: every end's world pose, plus the placed
- * geometry it renders as. `geometry` is a list because a section may sweep more
- * than one segment or arc; a straight or curve sweeps exactly one.
+ * geometry it renders as. Each end's pose faces into the section — its position
+ * at the end, its heading aimed through it toward the interior. `geometry` is a
+ * list because a section may sweep more than one segment or arc; a straight or
+ * curve sweeps exactly one.
  */
 export interface PlacedSection {
   readonly shape: SectionShape;
@@ -156,7 +161,9 @@ export function placeSection(
  * name.
  *
  * One exhaustive switch is each kind's sole authority on where its ends land and
- * what it sweeps, so a new kind must add its case here before it compiles.
+ * what it sweeps, so a new kind must add its case here before it compiles. Every
+ * end's pose faces into the section: the origin end's pose is `originPose`
+ * itself, and each far end's is the reverse of the swept geometry's exit pose.
  */
 function placeByOrigin(shape: SectionShape, originPose: Pose): PlacedSection {
   switch (shape.kind) {
@@ -170,7 +177,7 @@ function placeByOrigin(shape: SectionShape, originPose: Pose): PlacedSection {
         shape,
         ends: new Map([
           ['A', originPose],
-          ['B', segmentEndPose(segment)],
+          ['B', reversePose(segmentEndPose(segment))],
         ]),
         geometry: [segment],
       };
@@ -186,7 +193,7 @@ function placeByOrigin(shape: SectionShape, originPose: Pose): PlacedSection {
         shape,
         ends: new Map([
           ['A', originPose],
-          ['B', arcEndPose(placedArc)],
+          ['B', reversePose(arcEndPose(placedArc))],
         ]),
         geometry: [placedArc],
       };
@@ -206,7 +213,10 @@ function canonicalEndPose(shape: SectionShape, end: EndName): Pose {
   return endPose(placeByOrigin(shape, IDENTITY_POSE), end);
 }
 
-/** The world pose of one of a placed section's named ends. */
+/**
+ * The world pose of one of a placed section's named ends: the pose looking into
+ * the section through that end.
+ */
 export function endPose(placed: PlacedSection, end: EndName): Pose {
   const pose = placed.ends.get(end);
   if (!pose) {

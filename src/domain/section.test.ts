@@ -1,9 +1,12 @@
 import {describe, it, expect} from 'vitest';
 import {
+  arcEndPose,
   cross,
   degToRad,
   posesEqual,
   radToDeg,
+  reversePose,
+  segmentEndPose,
   subtract,
   unitVector,
   type Pose,
@@ -62,13 +65,13 @@ describe('curve', () => {
 });
 
 describe('placeSection — straight', () => {
-  it('advances along the heading and keeps the heading', () => {
+  it('advances along the heading; B faces back into the section', () => {
     const placed = placeSection(straight(100), 'A', ORIGIN);
     expect(placed.geometry[0].kind).toBe('segment');
     const b = endPose(placed, 'B');
     expect(b.position.x).toBeCloseTo(100);
     expect(b.position.y).toBeCloseTo(0);
-    expect(b.heading).toBeCloseTo(0);
+    expect(b.heading).toBeCloseTo(Math.PI);
   });
 
   it('seats end A at the placing pose', () => {
@@ -76,12 +79,12 @@ describe('placeSection — straight', () => {
     expect(endPose(placed, 'A')).toEqual(ORIGIN);
   });
 
-  it('sits end B a length back along the heading from a non-axis pose', () => {
+  it('sits end B a length up the heading from a non-axis pose, facing back', () => {
     const facingNorth: Pose = {position: {x: 5, y: 5}, heading: Math.PI / 2};
     const b = endPose(placeSection(straight(10), 'A', facingNorth), 'B');
     expect(b.position.x).toBeCloseTo(5);
     expect(b.position.y).toBeCloseTo(15);
-    expect(b.heading).toBeCloseTo(Math.PI / 2);
+    expect(b.heading).toBeCloseTo((3 * Math.PI) / 2);
   });
 });
 
@@ -92,14 +95,15 @@ describe('placeSection — curve', () => {
     const b = endPose(placed, 'B');
     expect(b.position.x).toBeCloseTo(100);
     expect(b.position.y).toBeCloseTo(100);
-    expect(b.heading).toBeCloseTo(Math.PI / 2);
+    // B faces back into the curve: the sweep exits north, so B aims south.
+    expect(b.heading).toBeCloseTo(Math.PI / 2 + Math.PI);
   });
 
   it('a cw curve bends clockwise (right of travel)', () => {
     const b = endPose(placeSection(curve(100, 90, 'cw'), 'A', ORIGIN), 'B');
     expect(b.position.x).toBeCloseTo(100);
     expect(b.position.y).toBeCloseTo(-100);
-    expect(b.heading).toBeCloseTo(-Math.PI / 2);
+    expect(b.heading).toBeCloseTo(-Math.PI / 2 + Math.PI);
   });
 
   // The turn is defined by A→B travel, so it must hold from any start heading,
@@ -115,7 +119,8 @@ describe('placeSection — curve', () => {
         placeSection(curve(120, sweepDeg, 'ccw'), 'A', from),
         'B'
       );
-      expect(b.heading).toBeCloseTo(heading + degToRad(sweepDeg));
+      // B faces back into the curve: the reverse of the sweep's exit heading.
+      expect(b.heading).toBeCloseTo(heading + degToRad(sweepDeg) + Math.PI);
       // B lands to the left of travel (a positive cross with the forward ray).
       const toB = subtract(b.position, from.position);
       expect(cross(unitVector(heading), toB)).toBeGreaterThan(0);
@@ -126,10 +131,32 @@ describe('placeSection — curve', () => {
         placeSection(curve(120, sweepDeg, 'cw'), 'A', from),
         'B'
       );
-      expect(b.heading).toBeCloseTo(heading - degToRad(sweepDeg));
+      expect(b.heading).toBeCloseTo(heading - degToRad(sweepDeg) + Math.PI);
       const toB = subtract(b.position, from.position);
       expect(cross(unitVector(heading), toB)).toBeLessThan(0);
     });
+  }
+});
+
+describe('placeSection — ends face inward', () => {
+  // Every end's pose faces into its section: A's is the placing pose itself,
+  // aiming along the sweep, and B's is the reverse of the sweep's exit pose.
+  // Straights and both curve turns, from an off-axis heading in each quadrant.
+  const shapes = [straight(120), curve(90, 60, 'ccw'), curve(90, 60, 'cw')];
+  const headings = [degToRad(35), degToRad(125), degToRad(215), degToRad(305)];
+  for (const shape of shapes) {
+    for (const heading of headings) {
+      const from: Pose = {position: {x: 6, y: -3}, heading};
+      const label = `${shape.kind} from ${Math.round(radToDeg(heading))}°`;
+      it(`B's pose is the reverse of the sweep's exit (${label})`, () => {
+        const placed = placeSection(shape, 'A', from);
+        const swept = placed.geometry[0];
+        const exit =
+          swept.kind === 'segment' ? segmentEndPose(swept) : arcEndPose(swept);
+        expect(posesEqual(endPose(placed, 'A'), from)).toBe(true);
+        expect(posesEqual(endPose(placed, 'B'), reversePose(exit))).toBe(true);
+      });
+    }
   }
 });
 

@@ -151,12 +151,13 @@ describe('resolveSnap', () => {
   const pointTolerance = 10;
   const lineTolerance = 6;
 
-  // An end a left quarter-turn reaches: from the east-facing railhead, the arc
-  // to (100, 100) arrives heading north, tangent to this end, so its point is on
+  // An end whose pose faces north — its section stands north of (100, 100).
+  // From the east-facing railhead, the arc to (100, 100) arrives heading north,
+  // into that section: a facing, back-to-back arrival, so its point is on
   // offer. Its heading line is x = 100, its normal line y = 100.
   const tangentEnd: Pose = {position: {x: 100, y: 100}, heading: Math.PI / 2};
 
-  it('latches onto an end the section can reach tangentially', () => {
+  it('latches onto an end the section can reach facing it', () => {
     const snap = resolveSnap(
       from,
       {x: 104, y: 103},
@@ -168,10 +169,10 @@ describe('resolveSnap', () => {
     expect(snap.point).toEqual({x: 100, y: 100});
   });
 
-  it('declines a point the section cannot reach tangentially', () => {
+  it('declines a point the section cannot reach facing it', () => {
     // `end` faces east at (100, 50); the single arc from the railhead arrives
-    // there banking, not tangent, so the point is refused — the join would
-    // kink. The target falls through to the end's lines instead.
+    // there banking, not along the end's line, so the point is refused — the
+    // join would kink. The target falls through to the end's lines instead.
     const snap = resolveSnap(
       from,
       {x: 100, y: 53},
@@ -206,6 +207,31 @@ describe('resolveSnap', () => {
     expect(snap.kind).toBe('line');
     expect(snap.point.x).toBeCloseTo(100);
     expect(snap.point.y).toBeCloseTo(250);
+  });
+
+  it("latches onto a placed section's open B end, arriving facing it", () => {
+    // A section standing north of (100, 100): its open B end's pose faces back
+    // into it, north. The quarter-turn arc from the railhead arrives heading
+    // north — into the section, seating the ends back-to-back — so the point
+    // is on offer.
+    const standing = placeSection(straight(100), 'A', {
+      position: {x: 100, y: 200},
+      heading: -Math.PI / 2,
+    });
+    const bEnd: SectionEndPose = {
+      sectionEnd: {sectionId: 't', end: 'B'},
+      pose: endPose(standing, 'B'),
+    };
+    const snap = resolveSnap(
+      from,
+      {x: 104, y: 103},
+      [bEnd],
+      pointTolerance,
+      lineTolerance
+    );
+    expect(snap.kind).toBe('end');
+    expect(snap.point.x).toBeCloseTo(100);
+    expect(snap.point.y).toBeCloseTo(100);
   });
 
   it('prefers the point even when a line is strictly nearer', () => {
@@ -388,7 +414,8 @@ describe('shapeOntoLine', () => {
     const b = endPose(placeSection(section, 'A', from), 'B');
     expect(b.position.x).toBeCloseTo(0);
     expect(b.position.y).toBeCloseTo(100); // the heading line, not the target's y
-    expect(b.heading).toBeCloseTo(Math.PI);
+    // B faces back into the westward leg: east, a full turn from the heading.
+    expect(b.heading).toBeCloseTo(2 * Math.PI);
   });
 
   it('meets the line where an oblique heading line crosses it', () => {
