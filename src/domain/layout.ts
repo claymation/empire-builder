@@ -10,7 +10,7 @@
  * anchorSection}/{@link joinSection} grow the graph.
  */
 
-import {posesAlign, Pose} from './geometry';
+import {posesAlign, Pose, reversePose} from './geometry';
 import {
   endPose,
   EndName,
@@ -28,10 +28,11 @@ export interface SectionEnd {
 }
 
 /**
- * A join fixes two section ends to the same place: equal position and parallel
- * heading (the same line, either direction), within tolerance. Unordered and
- * directionless; threading discovers a route's direction from an anchor. Each
- * end takes part in at most one join.
+ * A join seats two section ends back-to-back: they share a position and their
+ * poses are mutually reversed — each faces its own section, so the sections
+ * extend on opposite sides of the shared point. Unordered and directionless;
+ * threading discovers a route's direction from an anchor. Each end takes part
+ * in at most one join.
  */
 export interface Join {
   readonly ends: readonly [SectionEnd, SectionEnd];
@@ -219,7 +220,8 @@ function otherEnd(section: Section, end: EndName): EndName {
 /**
  * Threads one network: seats the anchored section by the end its anchor names, at
  * the anchor pose, then follows each join to seat the neighbor by the end that
- * join names, at the pose carried across the join. A section reached again by
+ * join names, at the pose carried across the join — the near end's pose
+ * reversed, seating the joined ends back-to-back. A section reached again by
  * another join is not re-placed — the join is only required to align
  * ({@link posesAlign}), else the geometry is unsatisfiable.
  *
@@ -256,7 +258,9 @@ function threadNetwork(
     const placedSection = placeSection(section, end, pose);
     placed.set(section.id, placedSection);
 
-    // Carry a pose across every other end's join to the neighbor waiting there.
+    // Carry a pose across every other end's join to the neighbor waiting
+    // there. Joined ends sit back-to-back, so the neighbor's end seats at the
+    // reverse of this end's pose.
     for (const from of endsOf(section)) {
       if (from === end) {
         continue;
@@ -277,7 +281,7 @@ function threadNetwork(
       pending.push({
         section: neighbor,
         end: neighborEnd.end,
-        pose: endPose(placedSection, from),
+        pose: reversePose(endPose(placedSection, from)),
       });
     }
   }

@@ -6,7 +6,7 @@
  */
 
 import paper from 'paper';
-import {degToRad, Point, Pose} from '../domain/geometry';
+import {degToRad, Point, Pose, reversePose} from '../domain/geometry';
 import {
   openEnds,
   openEndPoses,
@@ -108,16 +108,17 @@ export function startEditor(
   /**
    * The railhead — the pose to extend from — or null when there is none. Before
    * any section it is the pending anchor (a pose, not yet an open end); otherwise
-   * it is the growing tail's open end ({@link railheadEnd}), placed. A closed loop
-   * joins that end, leaving no railhead and nowhere to draw. A function of the
-   * layout, so undo/redo restore it for free.
+   * it is the growing tail's open end ({@link railheadEnd}), placed and reversed:
+   * an end's pose faces into its section, and drawing extends away from it. A
+   * closed loop joins that end, leaving no railhead and nowhere to draw. A
+   * function of the layout, so undo/redo restore it for free.
    */
   function railhead(): Pose | null {
     if (state.pendingAnchor) {
       return state.pendingAnchor;
     }
     const end = railheadEnd();
-    return end ? poseOf(placed, end) : null;
+    return end ? reversePose(poseOf(placed, end)) : null;
   }
 
   /**

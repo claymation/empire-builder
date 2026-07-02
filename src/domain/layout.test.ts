@@ -1,5 +1,18 @@
 import {describe, it, expect} from 'vitest';
-import {posesAlign, unionBounds, type Bounds, type Pose} from './geometry';
+import {
+  cross,
+  degToRad,
+  dot,
+  normalizeAngle,
+  posesAlign,
+  posesEqual,
+  reversePose,
+  subtract,
+  unionBounds,
+  unitVector,
+  type Bounds,
+  type Pose,
+} from './geometry';
 import {
   anchorSection,
   EMPTY_LAYOUT,
@@ -7,6 +20,7 @@ import {
   openEnds,
   findNeighborEnd,
   placeLayout,
+  poseOf,
   type Layout,
   type SectionEnd,
 } from './layout';
@@ -94,7 +108,7 @@ describe('placeLayout', () => {
     expect(openEnds(layout)).toEqual([end('s1', 'A'), end('s1', 'B')]);
   });
 
-  it('threads a run, meeting each joined A end to the previous open end', () => {
+  it('threads a run, seating each joined A end back-to-back on the previous open end', () => {
     let layout = anchorSection(
       EMPTY_LAYOUT,
       withId('s1', straight(100)),
@@ -109,22 +123,21 @@ describe('placeLayout', () => {
       null
     );
     const placed = placeLayout(layout).sectionsById;
-    // s2's A sits exactly on s1's B.
-    expect(endPose(placed.get('s2')!, 'A')).toEqual(
-      endPose(placed.get('s1')!, 'B')
-    );
-    // The quarter turn leaves heading north at (100 + 50, 50).
+    // s2's A shares s1's B position, the poses mutually reversed.
+    const s1b = endPose(placed.get('s1')!, 'B');
+    const s2a = endPose(placed.get('s2')!, 'A');
+    expect(posesEqual(s2a, reversePose(s1b))).toBe(true);
+    // The quarter turn exits north at (100 + 50, 50); B's pose faces back south.
     const b = endPose(placed.get('s2')!, 'B');
     expect(b.position.x).toBeCloseTo(150);
     expect(b.position.y).toBeCloseTo(50);
-    expect(b.heading).toBeCloseTo(Math.PI / 2);
+    expect(normalizeAngle(b.heading)).toBeCloseTo((3 * Math.PI) / 2);
   });
 
-  it('seats a neighbor by its B end when the join names B', () => {
-    // s1 runs (0,0)→(100,0). The join meets s1's B with s2's *B*, so threading
-    // must seat s2 by its B there and carry A a length back to (40,0). A
-    // forward-only walk, always seating the neighbor by A, would instead put s2's
-    // A at (100,0) and its B out at (160,0) — the case this generalization fixes.
+  it('seats a neighbor B↔B: the tails meet, the sections extend apart', () => {
+    // s1 runs (0,0)→(100,0). The join meets s1's B with s2's *B*: the tails
+    // share (100,0) and the sections extend on opposite sides of it, so s2
+    // runs on to its A at (160,0).
     const layout: Layout = {
       sections: [withId('s1', straight(100)), withId('s2', straight(60))],
       joins: [{ends: [end('s1', 'B'), end('s2', 'B')]}],
@@ -135,13 +148,14 @@ describe('placeLayout', () => {
     expect(b.position.x).toBeCloseTo(100);
     expect(b.position.y).toBeCloseTo(0);
     const a = endPose(placed.get('s2')!, 'A');
-    expect(a.position.x).toBeCloseTo(40);
+    expect(a.position.x).toBeCloseTo(160);
     expect(a.position.y).toBeCloseTo(0);
   });
 
   it('anchors and threads a network placed by a B end', () => {
-    // Anchor s1 by its B at the origin, then join s2 onto s1's open A. Placement
-    // must seat s1 by B and still carry the join across to s2.
+    // Anchor s1 by its B at the origin: the anchor pose faces into the section,
+    // so s1 extends east, its open A at (100,0). Placement must seat s1 by B
+    // and still carry the join across to s2.
     let layout = anchorSection(
       EMPTY_LAYOUT,
       withId('s1', straight(100)),
@@ -156,13 +170,78 @@ describe('placeLayout', () => {
       null
     );
     const placed = placeLayout(layout).sectionsById;
-    // s1's B sits at the anchor; its A a length back along the heading.
-    expect(endPose(placed.get('s1')!, 'B')).toEqual(ORIGIN);
-    expect(endPose(placed.get('s1')!, 'A').position.x).toBeCloseTo(-100);
-    // s2's A meets s1's A at (-100,0); its B runs 40 forward along the heading.
-    expect(endPose(placed.get('s2')!, 'A').position.x).toBeCloseTo(-100);
-    expect(endPose(placed.get('s2')!, 'B').position.x).toBeCloseTo(-60);
+    // s1's B sits at the anchor; its A a length up the anchor's heading.
+    expect(posesEqual(endPose(placed.get('s1')!, 'B'), ORIGIN)).toBe(true);
+    expect(endPose(placed.get('s1')!, 'A').position.x).toBeCloseTo(100);
+    // s2's A meets s1's A at (100,0); s2 runs 40 beyond, away from s1.
+    expect(endPose(placed.get('s2')!, 'A').position.x).toBeCloseTo(100);
+    expect(endPose(placed.get('s2')!, 'B').position.x).toBeCloseTo(140);
   });
+
+  it('extends a section joined A↔A away from the anchored section', () => {
+    // s1, anchored by its B, runs 100 up-and-right at 30°; its open A sits at
+    // the far end, facing back down the run. s2 joined A↔A seats back-to-back
+    // there, extending the run away from s1 rather than doubling back over it —
+    // the placement growing new track out of an anchored A end needs.
+    const heading = degToRad(30);
+    const anchor: Pose = {position: {x: 3, y: -2}, heading};
+    let layout = anchorSection(
+      EMPTY_LAYOUT,
+      withId('s1', straight(100)),
+      'B',
+      anchor
+    );
+    layout = joinSection(
+      layout,
+      end('s1', 'A'),
+      withId('s2', straight(60)),
+      'A',
+      null
+    );
+    const placed = placeLayout(layout);
+    const s1a = poseOf(placed, end('s1', 'A'));
+    const s2a = poseOf(placed, end('s2', 'A'));
+    expect(posesEqual(s2a, reversePose(s1a))).toBe(true);
+    const s2b = poseOf(placed, end('s2', 'B'));
+    expect(s2b.position.x).toBeCloseTo(3 + 160 * Math.cos(heading));
+    expect(s2b.position.y).toBeCloseTo(-2 + 160 * Math.sin(heading));
+  });
+
+  for (const turn of ['ccw', 'cw'] as const) {
+    it(`seats a curve joined B↔B beyond the shared point (${turn})`, () => {
+      // s1 runs 80 up-and-left at 115°; the join meets its B with the curve's
+      // B, so the curve extends beyond the meeting point: its 90° chord carries
+      // its far end one radius ahead along the run and one radius aside. The
+      // side follows the turn presented backward — entered through B, a ccw
+      // curve bends right of the run.
+      const heading = degToRad(115);
+      let layout = anchorSection(
+        EMPTY_LAYOUT,
+        withId('s1', straight(80)),
+        'A',
+        {position: {x: -4, y: 7}, heading}
+      );
+      layout = joinSection(
+        layout,
+        end('s1', 'B'),
+        withId('s2', curve(50, 90, turn)),
+        'B',
+        null
+      );
+      const placed = placeLayout(layout);
+      const s1b = poseOf(placed, end('s1', 'B'));
+      const s2b = poseOf(placed, end('s2', 'B'));
+      expect(posesEqual(s2b, reversePose(s1b))).toBe(true);
+      const reach = subtract(
+        poseOf(placed, end('s2', 'A')).position,
+        s2b.position
+      );
+      expect(dot(unitVector(heading), reach)).toBeCloseTo(50);
+      expect(cross(unitVector(heading), reach)).toBeCloseTo(
+        turn === 'ccw' ? -50 : 50
+      );
+    });
+  }
 
   it('closes the oval into a loop with no open ends', () => {
     const layout = oval(ORIGIN, inches(48), inches(18));

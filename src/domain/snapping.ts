@@ -27,6 +27,7 @@ import {
   posesEqual,
   projectOntoLine,
   radToDeg,
+  reversePose,
   subtract,
   tangentAndNormalLines,
   unitArcChord,
@@ -69,10 +70,11 @@ export type Snap =
  * the `angle` snap, leaving the sweep to snap toward `target`.
  *
  * An end snap lands the section's end on the open end itself, so it is offered
- * only when the section reaching that end meets it tangentially — its heading
- * equal to the end's within an epsilon, so a connection never kinks. A near miss
- * declines the point and falls through to the line and angle snaps, which help
- * align the heading until the approach is tangent.
+ * only when the section reaching that end meets it tangentially back-to-back —
+ * its end pose the reverse of the open end's, the facing join threading seats —
+ * so a connection never kinks. A near miss declines the point and falls through
+ * to the line and angle snaps, which help align the heading until the approach
+ * is tangent.
  *
  * Two cases offer no alignment and are skipped:
  * - An end at `from`: a section to it would be zero-length.
@@ -103,15 +105,16 @@ export function resolveSnap(
       continue;
     }
     // An end snap lays a section straight onto the end, so only offer it when
-    // that section meets the end tangentially — otherwise the join would kink,
-    // which a run never permits. The connecting section reaches the end's
-    // position; it qualifies when its far end (B) coincides with the open end.
+    // that section meets the end tangentially back-to-back — otherwise the
+    // join would kink, which a run never permits. The connecting section
+    // reaches the end's position; it qualifies when its far end (B) seats as
+    // the reverse of the open end's pose, the facing join threading seats.
     const connector = shapeTo(from, pose.position);
     if (!connector) {
       continue;
     }
     const b = endPose(placeSection(connector, 'A', from), 'B');
-    if (posesEqual(b, pose)) {
+    if (posesEqual(b, reversePose(pose))) {
       nearest = {end: sectionEnd, pose, gap};
     }
   }
