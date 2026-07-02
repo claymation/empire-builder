@@ -48,6 +48,13 @@ const LABEL_OFFSET_PX = 18;
 const GUIDE_COLOR = '#ec4899';
 const GUIDE_DASH = [4, 4];
 const SNAP_RING_RADIUS_PX = 9;
+/** Open-end rings: quiet when merely selectable, stronger when selected. */
+const OPEN_RING_COLOR = '#9c9c9c';
+const OPEN_RING_RADIUS_PX = 6;
+const OPEN_RING_WIDTH_PX = 1.5;
+const SELECTED_RING_WIDTH_PX = 2.5;
+/** The hovered ring's halo, sized between the quiet ring and the snap ring. */
+const HOVER_RING_RADIUS_PX = 9;
 
 /** Maps a domain point (mm, y-up) to a canvas point (px, y-down). */
 type ToCanvas = (point: Point) => paper.Point;
@@ -61,11 +68,22 @@ export function sceneTransform(
   return fitTransform(space, viewWidth, viewHeight, PADDING_PX);
 }
 
-/** Renders the sheet and committed track. Redraw on commit, undo, or resize. */
+/** An open end drawn as a ring: its position, and whether it is the railhead. */
+export interface OpenEndRing {
+  readonly point: Point;
+  readonly selected: boolean;
+}
+
+/**
+ * Renders the sheet, committed track, and a ring at every open end — the
+ * clickable affordance for selecting the railhead, whose own ring reads as
+ * selected. Redraw on commit, selection, undo, or resize.
+ */
 export function renderStatic(
   transform: ViewTransform,
   space: Space,
-  placed: PlacedLayout
+  placed: PlacedLayout,
+  rings: readonly OpenEndRing[]
 ): void {
   const toCanvas = onLayer('static', transform);
   drawSheet(space, toCanvas);
@@ -74,18 +92,23 @@ export function renderStatic(
       drawGeometry(geometry, toCanvas, RAIL_COLOR, false);
     }
   }
+  for (const ring of rings) {
+    drawOpenEndRing(ring, toCanvas);
+  }
 }
 
 /**
  * Renders the pointer-follow ghost, railhead marker, and any alignment feedback.
  * The guide sits beneath the ghost; a snap ring rides on top, marking the open
- * end the target has latched onto. Redraw on every move.
+ * end the target has latched onto; a hover ring lights the open end a click
+ * would select. Redraw on every move.
  */
 export function renderOverlay(
   transform: ViewTransform,
   ghost: PlacedSection | null,
   railhead: Pose | null,
-  snap: Snap | null
+  snap: Snap | null,
+  hover: Point | null
 ): void {
   const toCanvas = onLayer('overlay', transform);
   // The guide sits under the ghost, the ring on top, so resolve both up front
@@ -108,6 +131,9 @@ export function renderOverlay(
   }
   if (ring) {
     drawSnapRing(ring, toCanvas);
+  }
+  if (hover) {
+    drawHoverRing(hover, toCanvas);
   }
 }
 
@@ -156,6 +182,27 @@ function drawSnapRing(point: Point, toCanvas: ToCanvas): void {
   const ring = new paper.Path.Circle(toCanvas(point), SNAP_RING_RADIUS_PX);
   ring.strokeColor = new paper.Color(GUIDE_COLOR);
   ring.strokeWidth = 2;
+}
+
+/** Rings an open end; the selected railhead's ring is stronger. */
+function drawOpenEndRing(ring: OpenEndRing, toCanvas: ToCanvas): void {
+  const circle = new paper.Path.Circle(
+    toCanvas(ring.point),
+    OPEN_RING_RADIUS_PX
+  );
+  circle.strokeColor = new paper.Color(
+    ring.selected ? PREVIEW_COLOR : OPEN_RING_COLOR
+  );
+  circle.strokeWidth = ring.selected
+    ? SELECTED_RING_WIDTH_PX
+    : OPEN_RING_WIDTH_PX;
+}
+
+/** Halos the open end a click would select. */
+function drawHoverRing(point: Point, toCanvas: ToCanvas): void {
+  const halo = new paper.Path.Circle(toCanvas(point), HOVER_RING_RADIUS_PX);
+  halo.strokeColor = new paper.Color(PREVIEW_COLOR);
+  halo.strokeWidth = 2;
 }
 
 /**

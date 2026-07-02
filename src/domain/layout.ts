@@ -209,7 +209,7 @@ export function joinSection(
 }
 
 /** A section's end that is not `end` — the far end of a two-ended section. */
-function otherEnd(section: Section, end: EndName): EndName {
+export function otherEnd(section: Section, end: EndName): EndName {
   const other = endsOf(section).find(candidate => candidate !== end);
   if (!other) {
     throw new RangeError(`section ${section.id} has no end besides ${end}`);
@@ -219,14 +219,17 @@ function otherEnd(section: Section, end: EndName): EndName {
 
 /**
  * Threads one network: seats the anchored section by the end its anchor names, at
- * the anchor pose, then follows each join to seat the neighbor by the end that
- * join names, at the pose carried across the join — the near end's pose
- * reversed, seating the joined ends back-to-back. A section reached again by
- * another join is not re-placed — the join is only required to align
+ * the anchor pose, then follows every end's join to seat the neighbor by the end
+ * that join names, at the pose carried across the join — the near end's pose
+ * reversed, seating the joined ends back-to-back. Each join is walked from both
+ * sides, so a join on the anchored end reaches its neighbor. A section reached
+ * again — back across the join that seated it, or by the join that closes a
+ * cycle — is not re-placed: the join is only required to align
  * ({@link posesAlign}), else the geometry is unsatisfiable.
  *
- * A placement to seat is queued per join; order of visitation does not matter,
- * since a section's placement is fixed by the anchor, shapes, and joins alone.
+ * A placement to seat is queued per join side; order of visitation does not
+ * matter, since a section's placement is fixed by the anchor, shapes, and joins
+ * alone.
  */
 function threadNetwork(
   layout: Layout,
@@ -247,7 +250,7 @@ function threadNetwork(
     const {section, end, pose} = item;
     const alreadyPlaced = placed.get(section.id);
     if (alreadyPlaced) {
-      // Reached again across another join: never re-place, only require it aligns.
+      // Reached again: never re-place, only require the arriving join aligns.
       if (!posesAlign(pose, endPose(alreadyPlaced, end))) {
         throw new RangeError(
           'a closing join does not align; geometry is unsatisfiable'
@@ -258,13 +261,13 @@ function threadNetwork(
     const placedSection = placeSection(section, end, pose);
     placed.set(section.id, placedSection);
 
-    // Carry a pose across every other end's join to the neighbor waiting
-    // there. Joined ends sit back-to-back, so the neighbor's end seats at the
-    // reverse of this end's pose.
+    // Carry a pose across every end's join to the neighbor waiting there —
+    // including the end this section was seated by, so a join on an anchored
+    // end is walked too. Joined ends sit back-to-back: the neighbor's end
+    // seats at the reverse of this end's pose. A carry back to the section
+    // that seated this one finds it already placed and only re-checks
+    // alignment.
     for (const from of endsOf(section)) {
-      if (from === end) {
-        continue;
-      }
       const neighborEnd = findNeighborEnd(layout, {
         sectionId: section.id,
         end: from,
@@ -293,6 +296,6 @@ function endKey(end: SectionEnd): string {
 }
 
 /** Whether two ends reference the same section end. */
-function sameEnd(a: SectionEnd, b: SectionEnd): boolean {
+export function sameEnd(a: SectionEnd, b: SectionEnd): boolean {
   return a.sectionId === b.sectionId && a.end === b.end;
 }
