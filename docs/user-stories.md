@@ -124,6 +124,19 @@ I want adjacent sections to snap together at their endpoints, with smooth
 (tangent) joins, so that trains have a continuous path, given that a gap or kink
 between sections is unrealistic and derails trains in the real world.
 
+**US-5-1 — Create an endpoint (drop an anchor).**
+I want to start drawing anywhere on the canvas, so that I can begin laying track,
+given that the track has to start somewhere.
+
+**US-5-2 — Select an existing endpoint.**
+I want to be able to select an open endpoint to draw from, so that I can extend
+the layout from any possible railhead, given that real railroads grow this way.
+
+**US-5-3 - Connect existing sections and networks.**
+I want to be able to draw a connection between two existing sections, so that I
+can design common layout features (ovals, reversing loops, passing sidings),
+given that track must be connected for trains to travel over it.
+
 **US-6 — Place turnouts (switches).**
 I want to place turnouts where one track diverges into two, so that I can build
 sidings, passing loops, and yards, given that a layout with no branching is just
