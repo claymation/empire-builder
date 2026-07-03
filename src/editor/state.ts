@@ -16,13 +16,15 @@
  * The railhead — the selected open end the next section grows from — is the one
  * irreducible piece of selection state the layout cannot express: a chain has
  * two open ends the moment it is drawn, and the choice between them is the
- * user's. The pending anchor — a dropped anchor awaiting its first section — is
- * a drawing transient, not a fact about the plan, so it lives here, not in the
- * layout, and is never recorded in history. At most one of the two is set: both
- * answer "where does the next section grow from".
+ * user's. The pending anchor — a dropped anchor position awaiting its first
+ * section — is a drawing transient, not a fact about the plan, so it lives
+ * here, not in the layout, and is never recorded in history. It carries no
+ * heading: the heading is aimed while the first section is previewed and fixed
+ * when {@link anchor} lays it. At most one of the two is set: both answer
+ * "where does the next section grow from".
  */
 
-import {Pose} from '../domain/geometry';
+import {Point} from '../domain/geometry';
 import {
   anchorSection,
   EMPTY_LAYOUT,
@@ -45,8 +47,9 @@ export interface EditorState {
   readonly layout: Layout;
   /** The selected open end the next section grows from; null when none. */
   readonly railhead: SectionEnd | null;
-  /** A dropped anchor awaiting its first section. Transient: never historized. */
-  readonly pendingAnchor: Pose | null;
+  /** A dropped anchor position awaiting its first section. Transient: never
+   *  historized. */
+  readonly pendingAnchor: Point | null;
   /** Past snapshots, most recent last. */
   readonly past: readonly Snapshot[];
   /** Undone snapshots available to redo, most recent last. */
@@ -63,11 +66,11 @@ export const EMPTY: EditorState = {
 };
 
 /**
- * Drop the anchor a new network grows from: set a pending anchor, clearing any
- * selected railhead. No section, no history.
+ * Drop the anchor a new network grows from: set the pending anchor position,
+ * clearing any selected railhead. No section, no history.
  */
-export function dropAnchor(state: EditorState, pose: Pose): EditorState {
-  return {...state, pendingAnchor: pose, railhead: null};
+export function dropAnchor(state: EditorState, point: Point): EditorState {
+  return {...state, pendingAnchor: point, railhead: null};
 }
 
 /**
@@ -96,18 +99,26 @@ export function selectRailhead(
 }
 
 /**
- * Lay the network's first section, anchored by its `A` end at the pending anchor
- * ({@link anchorSection}), which it clears. The railhead advances to the
- * section's far end. The prior snapshot goes to `past` — one undo step — and the
- * redo stack is dropped.
+ * Lay the network's first section, anchored by its `A` end at the pending
+ * anchor position, leaving at the given `heading` — the aim the section was
+ * previewed with ({@link anchorSection}). Clears the pending anchor; the
+ * railhead advances to the section's far end. The prior snapshot goes to
+ * `past` — one undo step — and the redo stack is dropped.
  */
-export function anchor(state: EditorState, section: Section): EditorState {
+export function anchor(
+  state: EditorState,
+  section: Section,
+  heading: number
+): EditorState {
   if (!state.pendingAnchor) {
     throw new Error('anchoring a section requires a pending anchor');
   }
   return commit(
     state,
-    anchorSection(state.layout, section, 'A', state.pendingAnchor),
+    anchorSection(state.layout, section, 'A', {
+      position: state.pendingAnchor,
+      heading,
+    }),
     {sectionId: section.id, end: otherEnd(section, 'A')}
   );
 }

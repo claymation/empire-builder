@@ -6,7 +6,7 @@
  */
 
 import paper from 'paper';
-import {Point, Pose, reversePose} from '../domain/geometry';
+import {Point, reversePose} from '../domain/geometry';
 import {
   openEnds,
   openEndPoses,
@@ -19,7 +19,7 @@ import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
 import {renderLayout, renderOverlay, sceneTransform} from '../render/scene';
 import {ViewTransform} from '../render/transform';
-import {computePreview, Preview} from './preview';
+import {computePreview, DrawOrigin, Preview} from './preview';
 import {
   anchor,
   deselect,
@@ -32,11 +32,6 @@ import {
   undo,
 } from './state';
 
-/** Heading a network's first section leaves its anchor at. An anchor carries
- *  no aim of its own, so every network starts the same way — first sections
- *  laid from two dropped anchors are parallel by construction. */
-const INITIAL_HEADING = 0;
-
 /** Wires the lay-track tool onto `canvas`, drawing within `space`. */
 export function startEditor(
   canvas: HTMLCanvasElement,
@@ -47,6 +42,10 @@ export function startEditor(
   let state = EMPTY;
   let pointer: Point | null = null;
   let suspendSnap = false;
+  // The heading a pending anchor's aim is locked to (Shift held), so the
+  // pointer can move off-axis to shape a curve; null while the aim follows
+  // the pointer. Transient interaction state, like suspendSnap.
+  let lockedHeading: number | null = null;
   // Section ids come from a monotonic counter held outside the state, so undo
   // and redo never reuse or collide ids.
   let nextSectionId = 0;
@@ -67,31 +66,41 @@ export function startEditor(
       placed = placeLayout(next.layout);
     }
     state = next;
+    // Any transition ends the aim in progress: the lock belongs to the
+    // pending anchor it was captured over.
+    lockedHeading = null;
   }
 
   /**
-   * The railhead pose — where the next section grows from — or null when there
-   * is none. Before any section it is the pending anchor (a pose, not yet an
-   * open end); otherwise it is the selected railhead, placed and reversed: an
-   * end's pose faces into its section, and drawing extends away from it.
+   * Where drawing grows from (see {@link DrawOrigin}), or null when nothing is
+   * selected. A pending anchor aims — or, with the heading locked, stands as a
+   * full pose. A selected railhead is placed and reversed: an end's pose faces
+   * into its section, and drawing extends away from it.
    */
-  function railheadPose(): Pose | null {
+  function drawOrigin(): DrawOrigin | null {
     if (state.pendingAnchor) {
-      return state.pendingAnchor;
+      return lockedHeading !== null
+        ? {
+            kind: 'pose',
+            pose: {position: state.pendingAnchor, heading: lockedHeading},
+          }
+        : {kind: 'aim', position: state.pendingAnchor};
     }
-    return state.railhead ? reversePose(poseOf(placed, state.railhead)) : null;
+    return state.railhead
+      ? {kind: 'pose', pose: reversePose(poseOf(placed, state.railhead))}
+      : null;
   }
 
   /**
    * What the next click would do (see {@link Preview}): the single funnel from
-   * the editor's context — railhead, pointer, open ends, view scale, snap
+   * the editor's context — draw origin, pointer, open ends, view scale, snap
    * suspension — into the pure {@link computePreview}. The overlay and the
    * click routing both read this one decision, which is what keeps what is
    * drawn and what a click does in agreement.
    */
   function preview(view: ViewTransform): Preview {
     return computePreview(
-      railheadPose(),
+      drawOrigin(),
       pointer,
       openEndPoses(state.layout, placed),
       view.scale,
@@ -152,23 +161,27 @@ export function startEditor(
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
     // Route the click by the same preview the overlay drew: a hovered ring
     // selects that end; a shape lays it — from the pending anchor as a new
-    // network, or extended from the railhead, a latched end snap closing the
-    // join. With nothing to select or lay, `anchorPoint` — the pointer,
-    // pulled onto any guideline — is where the click drops the anchor a new
-    // network grows from.
-    const {shape, closeOnto, hover, anchorPoint} = preview(view);
+    // network at the previewed heading, or extended from the railhead, a
+    // latched end snap closing the join. With nothing to select or lay,
+    // `anchorPoint` — the pointer, pulled onto any guideline — is where the
+    // click drops the anchor a new network grows from.
+    const {
+      shape,
+      closeOnto,
+      hover,
+      anchorPoint,
+      railhead: from,
+    } = preview(view);
     if (hover) {
       setState(selectRailhead(state, hover));
     } else if (shape) {
-      if (state.pendingAnchor) {
-        setState(anchor(state, withId(shape)));
+      if (state.pendingAnchor && from) {
+        setState(anchor(state, withId(shape), from.heading));
       } else if (state.railhead) {
         setState(extend(state, state.railhead, withId(shape), closeOnto));
       }
     } else if (anchorPoint) {
-      setState(
-        dropAnchor(state, {position: anchorPoint, heading: INITIAL_HEADING})
-      );
+      setState(dropAnchor(state, anchorPoint));
     }
     refreshAll();
   };
@@ -183,8 +196,26 @@ export function startEditor(
       paper.view.update();
     }
   };
+  // Holding Shift locks a pending anchor's aim at its previewed heading, so
+  // the pointer can move off-axis to shape the first section into a curve.
+  const setHeadingLock = (held: boolean) => {
+    if (held === (lockedHeading !== null)) {
+      return;
+    }
+    if (held) {
+      if (!state.pendingAnchor) {
+        return;
+      }
+      lockedHeading = preview(transform()).railhead?.heading ?? null;
+    } else {
+      lockedHeading = null;
+    }
+    refreshOverlay(transform());
+    paper.view.update();
+  };
   window.addEventListener('keydown', event => {
     setSuspend(event.altKey);
+    setHeadingLock(event.shiftKey);
     if (event.key === 'Escape') {
       setState(deselect(state));
       refreshAll();
@@ -196,7 +227,10 @@ export function startEditor(
       refreshAll();
     }
   });
-  window.addEventListener('keyup', event => setSuspend(event.altKey));
+  window.addEventListener('keyup', event => {
+    setSuspend(event.altKey);
+    setHeadingLock(event.shiftKey);
+  });
 
   refreshAll();
 
@@ -210,13 +244,14 @@ export function startEditor(
 // Display only — the handlers already accept both Option/Alt and Cmd/Ctrl.
 const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 const FREE_DRAW_KEY = isMac ? '⌥' : 'Alt';
+const HEADING_LOCK_KEY = isMac ? '⇧' : 'Shift';
 const UNDO_KEYS = isMac ? '⌘Z' : 'Ctrl+Z';
 
 function describe(state: EditorState): string {
   const sections = state.layout.sections;
   if (sections.length === 0) {
     return state.pendingAnchor
-      ? `Move and click to lay track. Hold ${FREE_DRAW_KEY} to draw freely. ${UNDO_KEYS} to undo.`
+      ? `Move to aim, click to lay track. Hold ${HEADING_LOCK_KEY} to lock the heading, ${FREE_DRAW_KEY} to draw freely. ${UNDO_KEYS} to undo.`
       : 'Click on the sheet to start laying track.';
   }
   const run = sections.reduce(
