@@ -57,13 +57,13 @@ export const RING_HIT_PX = 12;
 
 /**
  * Where drawing grows from. A `pose` fixes both position and heading — a
- * selected railhead, or a pending anchor whose heading has been locked. An
- * `aim` fixes only the position — a pending anchor whose heading follows the
- * pointer until it is locked or the first section is laid.
+ * selected railhead, or a pending anchor whose heading has been locked. A
+ * `point` fixes only the position — a pending anchor whose heading follows
+ * the pointer until it is locked or the first section is laid.
  */
 export type DrawOrigin =
   | {readonly kind: 'pose'; readonly pose: Pose}
-  | {readonly kind: 'aim'; readonly position: Point};
+  | {readonly kind: 'point'; readonly position: Point};
 
 /**
  * What the next click would do: the `railhead` it lays from (for an aim, the
@@ -131,7 +131,7 @@ export function computePreview(
     );
     return {...NOTHING, snap, anchorPoint: snap ? snap.point : target};
   }
-  if (origin.kind === 'aim') {
+  if (origin.kind === 'point') {
     return aimPreview(origin.position, target, openEnds, viewScale);
   }
   const railhead = origin.pose;
@@ -172,7 +172,7 @@ export function computePreview(
  * stays parallel.
  */
 function aimPreview(
-  position: Point,
+  anchor: Point,
   target: Point,
   openEnds: readonly SectionEndPose[],
   viewScale: number
@@ -181,22 +181,22 @@ function aimPreview(
   if (hover) {
     return {...NOTHING, hover};
   }
-  if (distance(position, target) < EPSILON) {
+  if (distance(anchor, target) < EPSILON) {
     return NOTHING;
   }
-  const aim = normalizeAngle(headingOf(subtract(target, position)));
+  const aim = normalizeAngle(headingOf(subtract(target, anchor)));
   const heading = normalizeAngle(
     snapToIncrement(aim, SNAP_INCREMENT, SNAP_THRESHOLD)
   );
-  const pose: Pose = {position, heading};
+  const pose: Pose = {position: anchor, heading};
   const pull = resolveAnchorSnap(target, openEnds, LINE_MAGNET_PX / viewScale);
   if (pull && pull.kind === 'line') {
     const crossing = lineIntersection(
-      {origin: position, direction: unitVector(heading)},
+      {origin: anchor, direction: unitVector(heading)},
       pull.line
     );
     const reach = crossing
-      ? dot(unitVector(heading), subtract(crossing, position))
+      ? dot(unitVector(heading), subtract(crossing, anchor))
       : 0;
     if (crossing && reach > EPSILON) {
       return lay(
@@ -209,14 +209,16 @@ function aimPreview(
   }
   // A snapped heading leaves the pointer a hair off-axis; the straight runs to
   // its forward projection, so the preview keeps tracking the pointer.
-  const reach = dot(unitVector(heading), subtract(target, position));
+  const reach = dot(unitVector(heading), subtract(target, anchor));
   return lay(pose, reach > EPSILON ? straight(reach) : null, null, null);
 }
 
 /**
- * The pose `origin` stands for with every snap suspended: an aim points its
- * raw heading at `target`; null when there is no origin or no direction to
- * point (the target on the aimed anchor itself).
+ * The pose to draw from when snapping is suspended (Option/Alt). A `pose`
+ * origin already is one. A `point` origin becomes one by pointing straight at
+ * `target` — the raw aim, no angle snap. Null when there is no origin at all,
+ * or when the pointer sits on the anchor itself and there is no direction to
+ * point yet.
  */
 function rawPose(origin: DrawOrigin | null, target: Point): Pose | null {
   if (!origin) {

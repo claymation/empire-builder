@@ -11,7 +11,7 @@ const RAILHEAD: Pose = {position: {x: 0, y: 0}, heading: 0};
 const pose = (p: Pose): DrawOrigin => ({kind: 'pose', pose: p});
 
 /** A pending anchor being aimed from `position`. */
-const aim = (position: Point): DrawOrigin => ({kind: 'aim', position});
+const aim = (position: Point): DrawOrigin => ({kind: 'point', position});
 
 const end = (sectionId: string, name: 'A' | 'B'): SectionEnd => ({
   sectionId,

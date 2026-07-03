@@ -39,12 +39,18 @@ export function startEditor(
   status: HTMLElement | null
 ): void {
   paper.setup(canvas);
+  // The editor state; every change goes through setState.
   let state = EMPTY;
+  // The pointer's last known domain position; null until it enters the canvas.
   let pointer: Point | null = null;
+  // Snapping suspended (Option/Alt held) for raw freehand placement.
   let suspendSnap = false;
   // The heading a pending anchor's aim is locked to (Shift held), so the
   // pointer can move off-axis to shape a curve; null while the aim follows
-  // the pointer. Transient interaction state, like suspendSnap.
+  // the pointer. Held-modifier state, a sibling of suspendSnap — it lives at
+  // this edge, not in EditorState, which keeps the pending anchor a bare
+  // position and records a heading only when a section commits, so every
+  // committed heading is the previewed one.
   let lockedHeading: number | null = null;
   // Section ids come from a monotonic counter held outside the state, so undo
   // and redo never reuse or collide ids.
@@ -84,7 +90,7 @@ export function startEditor(
             kind: 'pose',
             pose: {position: state.pendingAnchor, heading: lockedHeading},
           }
-        : {kind: 'aim', position: state.pendingAnchor};
+        : {kind: 'point', position: state.pendingAnchor};
     }
     return state.railhead
       ? {kind: 'pose', pose: reversePose(poseOf(placed, state.railhead))}
