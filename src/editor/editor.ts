@@ -85,9 +85,11 @@ export function startEditor(
   }
 
   /**
-   * What the next click would do (see {@link Preview}), from the current
-   * railhead, pointer, and open ends. Computed once per use, so the overlay and
-   * the commit can never disagree.
+   * What the next click would do (see {@link Preview}): the single funnel from
+   * the editor's context — railhead, pointer, open ends, view scale, snap
+   * suspension — into the pure {@link computePreview}. The overlay and the
+   * click routing both read this one decision, which is what keeps what is
+   * drawn and what a click does in agreement.
    */
   function preview(view: ViewTransform): Preview {
     return computePreview(
