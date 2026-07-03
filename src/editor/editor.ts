@@ -63,14 +63,16 @@ export function startEditor(
   const transform = (): ViewTransform =>
     sceneTransform(space, paper.view.size.width, paper.view.size.height);
 
-  // The current layout, placed. Advancing the state is the one place the layout
-  // changes, so it is the one place to re-place — paying the linear cost of
-  // placing the whole graph once per edit, never on a pointer move (which leaves
-  // the layout untouched and reuses this).
+  // The current layout, placed. Re-derived only when a transition changed the
+  // layout — the linear cost of placing the whole graph, paid once per edit.
+  // Pointer moves and the selection transitions (select, deselect, drop an
+  // anchor) leave the layout untouched and reuse this.
   let placed: PlacedLayout = placeLayout(state.layout);
   function setState(next: EditorState): void {
+    if (next.layout !== state.layout) {
+      placed = placeLayout(next.layout);
+    }
     state = next;
-    placed = placeLayout(state.layout);
   }
 
   /**

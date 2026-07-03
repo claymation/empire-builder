@@ -208,10 +208,13 @@ export function joinSection(
     joins.push({
       ends: [{sectionId: section.id, end: otherEnd(section, end)}, closeOnto],
     });
-    const absorbed = networkOf(layout, closeOnto.sectionId);
-    if (!absorbed.has(at.sectionId)) {
+    const closeOntoNetwork = networkOf(layout, closeOnto.sectionId);
+    const spansTwoNetworks = !closeOntoNetwork.has(at.sectionId);
+    if (spansTwoNetworks) {
+      // The close fuses the two networks into one, which keeps `at`'s anchor:
+      // the absorbed network's anchor is dropped, leaving one per network.
       anchors = anchors.filter(
-        anchor => !absorbed.has(anchor.sectionEnd.sectionId)
+        anchor => !closeOntoNetwork.has(anchor.sectionEnd.sectionId)
       );
     }
   }
@@ -241,18 +244,27 @@ function networkOf(
   layout: Layout,
   sectionId: SectionId
 ): ReadonlySet<SectionId> {
+  // One pass over the joins builds the adjacency, so the walk is linear in
+  // sections and joins.
+  const neighborsById = new Map<SectionId, SectionId[]>();
+  const addNeighbor = (from: SectionId, to: SectionId) => {
+    const neighbors = neighborsById.get(from);
+    if (neighbors) {
+      neighbors.push(to);
+    } else {
+      neighborsById.set(from, [to]);
+    }
+  };
+  for (const join of layout.joins) {
+    const [a, b] = join.ends;
+    addNeighbor(a.sectionId, b.sectionId);
+    addNeighbor(b.sectionId, a.sectionId);
+  }
   const members = new Set<SectionId>([sectionId]);
   const pending = [sectionId];
-  for (let id = pending.shift(); id !== undefined; id = pending.shift()) {
-    for (const join of layout.joins) {
-      const [a, b] = join.ends;
-      const neighborId =
-        a.sectionId === id
-          ? b.sectionId
-          : b.sectionId === id
-            ? a.sectionId
-            : null;
-      if (neighborId !== null && !members.has(neighborId)) {
+  for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
+    for (const neighborId of neighborsById.get(id) ?? []) {
+      if (!members.has(neighborId)) {
         members.add(neighborId);
         pending.push(neighborId);
       }
