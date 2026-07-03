@@ -18,6 +18,7 @@ import {
   distance,
   dot,
   lineIntersection,
+  nearestLineTo,
   normalize,
   normalizeAngle,
   onLine,
@@ -403,6 +404,40 @@ describe('onLine', () => {
 
   it('rejects a point a hair off the line', () => {
     expect(onLine({x: 5, y: 5.001}, tilted)).toBe(false);
+  });
+});
+
+describe('nearestLineTo', () => {
+  // A horizontal line y = 50 and a vertical line x = 100.
+  const horizontal: Line = {origin: {x: 0, y: 50}, direction: {x: 1, y: 0}};
+  const vertical: Line = {origin: {x: 100, y: 0}, direction: {x: 0, y: 1}};
+
+  it('picks the nearest line, carrying the projection onto it', () => {
+    // (103, 250): 3 from the vertical, 200 from the horizontal.
+    const found = nearestLineTo({x: 103, y: 250}, [horizontal, vertical], 6);
+    expect(found?.line).toBe(vertical);
+    expect(found?.point.x).toBeCloseTo(100);
+    expect(found?.point.y).toBeCloseTo(250);
+  });
+
+  it('picks the nearer when both are in range, regardless of order', () => {
+    // (98, 53): 2 from the vertical, 3 from the horizontal.
+    const point = {x: 98, y: 53};
+    expect(nearestLineTo(point, [horizontal, vertical], 6)?.line).toBe(
+      vertical
+    );
+    expect(nearestLineTo(point, [vertical, horizontal], 6)?.line).toBe(
+      vertical
+    );
+  });
+
+  it('takes a gap exactly at the tolerance, not one past it', () => {
+    expect(nearestLineTo({x: 300, y: 56}, [horizontal], 6)).not.toBeNull();
+    expect(nearestLineTo({x: 300, y: 56.01}, [horizontal], 6)).toBeNull();
+  });
+
+  it('finds nothing among no lines', () => {
+    expect(nearestLineTo({x: 100, y: 50}, [], 6)).toBeNull();
   });
 });
 

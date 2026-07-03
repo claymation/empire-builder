@@ -3,8 +3,9 @@
  *
  * {@link resolveSnap} reads how a section laid from a pose toward a target snaps
  * onto the layout's open ends — their points and alignment lines — from
- * proximity alone. {@link shapeForSnap} turns that snap into the section,
- * spending any freedom the snap leaves on a tidy sweep angle. An open end is a
+ * proximity alone; {@link resolveAnchorSnap} reads where a dropped anchor
+ * pulls onto those same lines. {@link shapeForSnap} turns a snap into the
+ * section, spending any freedom the snap leaves on a tidy sweep angle. An open end is a
  * {@link SectionEndPose}: the snap reads each end's pose for the geometry and
  * names the end it latched onto, so the caller can act on it (record a join).
  *
@@ -20,12 +21,12 @@ import {
   EPSILON,
   Line,
   lineIntersection,
+  nearestLineTo,
   normalizeAngle,
   onLine,
   Point,
   Pose,
   posesEqual,
-  projectOntoLine,
   radToDeg,
   reversePose,
   subtract,
@@ -123,27 +124,43 @@ export function resolveSnap(
     return {kind: 'end', point: nearest.pose.position, end: nearest.end};
   }
 
-  let nearestLine: {point: Point; line: Line; gap: number} | null = null;
   // `from` offers its own lines alongside the open ends': an anchor stands at
   // no open end, and the 180° arc back onto its start's normal must snap
   // wherever drawing starts. The tangent `from` runs along is dropped as
-  // redundant just below, like any other.
-  for (const pose of [from, ...openEnds.map(({pose}) => pose)]) {
-    for (const line of tangentAndNormalLines(pose)) {
-      if (colinear(from, line)) {
-        continue;
-      }
-      const foot = projectOntoLine(target, line);
-      const gap = distance(target, foot);
-      if (gap <= lineTolerance && (!nearestLine || gap < nearestLine.gap)) {
-        nearestLine = {point: foot, line, gap};
-      }
-    }
-  }
+  // redundant, like any other line `from` lies along.
+  const lines = [from, ...openEnds.map(({pose}) => pose)]
+    .flatMap(pose => tangentAndNormalLines(pose))
+    .filter(line => !colinear(from, line));
+  const nearestLine = nearestLineTo(target, lines, lineTolerance);
   if (nearestLine) {
     return {kind: 'line', point: nearestLine.point, line: nearestLine.line};
   }
   return {kind: 'angle', point: target};
+}
+
+/**
+ * Resolves where a dropped anchor pulls: onto the nearest of the open ends'
+ * tangent/normal lines within `tolerance`, or nowhere (null). This is the
+ * snap that aligns a new network with existing track — its anchor abreast of
+ * a straight's end, say, so the two parallel legs of an oval start exactly
+ * opposite.
+ *
+ * A separate resolver from {@link resolveSnap} because an anchor is a bare
+ * point where a section will later start, not a section being laid: no end
+ * point is on offer (a click near an open end belongs to the select gesture),
+ * and there is no sweep to angle-snap when no line is in range — the anchor
+ * simply drops where the pointer is.
+ */
+export function resolveAnchorSnap(
+  target: Point,
+  openEnds: readonly SectionEndPose[],
+  tolerance: number
+): Snap | null {
+  const lines = openEnds.flatMap(({pose}) => tangentAndNormalLines(pose));
+  const nearestLine = nearestLineTo(target, lines, tolerance);
+  return nearestLine
+    ? {kind: 'line', point: nearestLine.point, line: nearestLine.line}
+    : null;
 }
 
 /**

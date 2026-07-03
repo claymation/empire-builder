@@ -3,6 +3,7 @@ import {degToRad, radToDeg, type Point, type Pose} from './geometry';
 import {type SectionEnd, type SectionEndPose} from './layout';
 import {curve, endPose, placeSection, straight} from './section';
 import {
+  resolveAnchorSnap,
   resolveSnap,
   shapeForSnap,
   shapeOntoLine,
@@ -440,6 +441,72 @@ describe('resolveSnap', () => {
       lineTolerance
     );
     expect(snap.kind).toBe('angle');
+  });
+});
+
+describe('resolveAnchorSnap', () => {
+  // One open end at (100, 50) facing east: its heading line is y = 50, its
+  // normal line x = 100.
+  const ends = [oe({position: {x: 100, y: 50}, heading: 0})];
+  const tolerance = 6;
+
+  it("pulls onto an end's normal line", () => {
+    const snap = resolveAnchorSnap({x: 103, y: 250}, ends, tolerance);
+    expect(snap?.kind).toBe('line');
+    expect(snap?.point.x).toBeCloseTo(100);
+    expect(snap?.point.y).toBeCloseTo(250);
+  });
+
+  it("pulls onto an end's heading line", () => {
+    const snap = resolveAnchorSnap({x: 300, y: 47}, ends, tolerance);
+    expect(snap?.kind).toBe('line');
+    expect(snap?.point.x).toBeCloseTo(300);
+    expect(snap?.point.y).toBeCloseTo(50);
+  });
+
+  it('pulls onto the nearer of two lines', () => {
+    // Two normal lines, x = 100 and x = 104; the point sits 3 from the first
+    // (listed first) and 1 from the second, so the nearer must win.
+    const pair = [
+      oe({position: {x: 100, y: 50}, heading: 0}),
+      oe({position: {x: 104, y: 50}, heading: 0}),
+    ];
+    const snap = resolveAnchorSnap({x: 103, y: 250}, pair, tolerance);
+    expect(snap?.point.x).toBeCloseTo(104);
+  });
+
+  it("pulls onto an off-grid end's lines", () => {
+    // An end heading 30°: its normal runs perpendicular through (3, -2). A
+    // point 100 out along the normal, nudged 4 forward, projects back onto it.
+    const heading = degToRad(30);
+    const normal = {x: -Math.sin(heading), y: Math.cos(heading)};
+    const forward = {x: Math.cos(heading), y: Math.sin(heading)};
+    const target = {
+      x: 3 + 100 * normal.x + 4 * forward.x,
+      y: -2 + 100 * normal.y + 4 * forward.y,
+    };
+    const snap = resolveAnchorSnap(
+      target,
+      [oe({position: {x: 3, y: -2}, heading})],
+      tolerance
+    );
+    expect(snap?.kind).toBe('line');
+    expect(snap?.point.x).toBeCloseTo(3 + 100 * normal.x);
+    expect(snap?.point.y).toBeCloseTo(-2 + 100 * normal.y);
+  });
+
+  it('snaps a gap exactly at the tolerance, not one past it', () => {
+    expect(
+      resolveAnchorSnap({x: 300, y: 50 + tolerance}, ends, tolerance)
+    ).not.toBeNull();
+    expect(
+      resolveAnchorSnap({x: 300, y: 50 + tolerance + 0.01}, ends, tolerance)
+    ).toBeNull();
+  });
+
+  it('snaps nowhere when clear of every line, or with no open ends', () => {
+    expect(resolveAnchorSnap({x: 300, y: 250}, ends, tolerance)).toBeNull();
+    expect(resolveAnchorSnap({x: 100, y: 250}, [], tolerance)).toBeNull();
   });
 });
 
