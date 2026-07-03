@@ -3,10 +3,11 @@
  * here, and the domain (../domain) stays free of it. The pure coordinate math
  * lives in ./transform; this module is the thin Paper.js wrapper around it.
  *
- * The drawing is split across two layers so the frequent case is cheap: the
- * static layer (sheet and committed track) changes only when track is committed
- * or the view resizes, while the overlay (the pointer-follow preview and the
- * railhead marker) is redrawn on its own every time the pointer moves.
+ * The drawing is split across two layers, each a function of one source: the
+ * layout layer (sheet, committed track, and the open ends' rings) draws the
+ * placed layout and redraws only when it changes or the view resizes, while
+ * the overlay (the selection and the pointer-follow preview) draws the
+ * interaction state and is redrawn on its own every time the pointer moves.
  */
 
 import paper from 'paper';
@@ -68,49 +69,52 @@ export function sceneTransform(
   return fitTransform(space, viewWidth, viewHeight, PADDING_PX);
 }
 
-/** An open end drawn as a ring: its position, and whether it is the railhead. */
-export interface OpenEndRing {
-  readonly point: Point;
-  readonly selected: boolean;
-}
-
 /**
- * Renders the sheet, committed track, and a ring at every open end — the
- * clickable affordance for selecting the railhead, whose own ring reads as
- * selected. Redraw on commit, selection, undo, or resize.
+ * Renders the sheet, committed track, and a quiet ring at every open end — the
+ * clickable affordance for selecting the railhead. A function of the placed
+ * layout alone; the selection reads are the overlay's. Redraw on commit, undo,
+ * or resize.
  */
-export function renderStatic(
+export function renderLayout(
   transform: ViewTransform,
   space: Space,
   placed: PlacedLayout,
-  rings: readonly OpenEndRing[]
+  openEndPoints: readonly Point[]
 ): void {
-  const toCanvas = onLayer('static', transform);
+  const toCanvas = onLayer('layout', transform);
   drawSheet(space, toCanvas);
   for (const section of placed.sectionsById.values()) {
     for (const geometry of section.geometry) {
       drawGeometry(geometry, toCanvas, RAIL_COLOR, false);
     }
   }
-  for (const ring of rings) {
-    drawOpenEndRing(ring, toCanvas);
+  for (const point of openEndPoints) {
+    drawOpenEndRing(point, toCanvas);
   }
 }
 
 /**
- * Renders the pointer-follow ghost, railhead marker, and any alignment feedback.
- * The guide sits beneath the ghost; a snap ring rides on top, marking the open
- * end the target has latched onto; a hover ring lights the open end a click
- * would select. Redraw on every move.
+ * Renders the interaction state: the selected open end's ring and the railhead
+ * marker, the pointer-follow ghost, and any alignment feedback. The selected
+ * ring sits under the rest; the guide sits beneath the ghost; a snap ring
+ * rides on top, marking the open end the target has latched onto; a hover ring
+ * lights the open end a click would select. Redraw on every move.
+ *
+ * `selectedEnd` is the selected open end's position — null when drawing grows
+ * from a pending anchor, which is a bare `railhead` pose with no end to ring.
  */
 export function renderOverlay(
   transform: ViewTransform,
   ghost: PlacedSection | null,
   railhead: Pose | null,
+  selectedEnd: Point | null,
   snap: Snap | null,
   hover: Point | null
 ): void {
   const toCanvas = onLayer('overlay', transform);
+  if (selectedEnd) {
+    drawSelectedRing(selectedEnd, toCanvas);
+  }
   // The guide sits under the ghost, the ring on top, so resolve both up front
   // and draw them around it.
   const {guide, ring} = snapFeedback(snap);
@@ -184,18 +188,18 @@ function drawSnapRing(point: Point, toCanvas: ToCanvas): void {
   ring.strokeWidth = 2;
 }
 
-/** Rings an open end; the selected railhead's ring is stronger. */
-function drawOpenEndRing(ring: OpenEndRing, toCanvas: ToCanvas): void {
-  const circle = new paper.Path.Circle(
-    toCanvas(ring.point),
-    OPEN_RING_RADIUS_PX
-  );
-  circle.strokeColor = new paper.Color(
-    ring.selected ? PREVIEW_COLOR : OPEN_RING_COLOR
-  );
-  circle.strokeWidth = ring.selected
-    ? SELECTED_RING_WIDTH_PX
-    : OPEN_RING_WIDTH_PX;
+/** Rings an open end, quietly; the overlay marks the selected one. */
+function drawOpenEndRing(point: Point, toCanvas: ToCanvas): void {
+  const circle = new paper.Path.Circle(toCanvas(point), OPEN_RING_RADIUS_PX);
+  circle.strokeColor = new paper.Color(OPEN_RING_COLOR);
+  circle.strokeWidth = OPEN_RING_WIDTH_PX;
+}
+
+/** Rings the selected open end, covering its quiet ring. */
+function drawSelectedRing(point: Point, toCanvas: ToCanvas): void {
+  const ring = new paper.Path.Circle(toCanvas(point), OPEN_RING_RADIUS_PX);
+  ring.strokeColor = new paper.Color(PREVIEW_COLOR);
+  ring.strokeWidth = SELECTED_RING_WIDTH_PX;
 }
 
 /** Halos the open end a click would select. */
