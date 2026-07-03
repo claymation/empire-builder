@@ -260,6 +260,26 @@ export function colinear(pose: Pose, line: Line): boolean {
   );
 }
 
+/**
+ * The nearest of `lines` within `tolerance` of `point`, carrying the point's
+ * projection onto it ({@link projectOntoLine}); null when none is in range.
+ */
+export function nearestLineTo(
+  point: Point,
+  lines: readonly Line[],
+  tolerance: number
+): {point: Point; line: Line} | null {
+  let nearest: {point: Point; line: Line; gap: number} | null = null;
+  for (const line of lines) {
+    const foot = projectOntoLine(point, line);
+    const gap = distance(point, foot);
+    if (gap <= tolerance && (!nearest || gap < nearest.gap)) {
+      nearest = {point: foot, line, gap};
+    }
+  }
+  return nearest ? {point: nearest.point, line: nearest.line} : null;
+}
+
 // ── Bounds ──
 
 /** An axis-aligned bounding box. */

@@ -19,7 +19,7 @@ import {degToRad, distance, Point, Pose} from '../domain/geometry';
 import {SectionEnd, SectionEndPose} from '../domain/layout';
 import {placeSection, PlacedSection, SectionShape} from '../domain/section';
 import {
-  resolveFreeSnap,
+  resolveAnchorSnap,
   resolveSnap,
   shapeForSnap,
   shapeTo,
@@ -92,7 +92,11 @@ export function computePreview(
     if (hover) {
       return {...NOTHING, hover};
     }
-    const snap = resolveFreeSnap(target, openEnds, LINE_MAGNET_PX / viewScale);
+    const snap = resolveAnchorSnap(
+      target,
+      openEnds,
+      LINE_MAGNET_PX / viewScale
+    );
     return {...NOTHING, snap, anchorPoint: snap ? snap.point : target};
   }
   const snap = resolveSnap(

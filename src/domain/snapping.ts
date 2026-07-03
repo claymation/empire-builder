@@ -3,10 +3,9 @@
  *
  * {@link resolveSnap} reads how a section laid from a pose toward a target snaps
  * onto the layout's open ends — their points and alignment lines — from
- * proximity alone; {@link resolveFreeSnap} reads how a bare point (a pointer
- * with nothing to draw from) snaps onto those same lines. {@link shapeForSnap}
- * turns a snap into the section, spending any freedom the snap leaves on a
- * tidy sweep angle. An open end is a
+ * proximity alone; {@link resolveAnchorSnap} reads where a dropped anchor
+ * pulls onto those same lines. {@link shapeForSnap} turns a snap into the
+ * section, spending any freedom the snap leaves on a tidy sweep angle. An open end is a
  * {@link SectionEndPose}: the snap reads each end's pose for the geometry and
  * names the end it latched onto, so the caller can act on it (record a join).
  *
@@ -22,12 +21,12 @@ import {
   EPSILON,
   Line,
   lineIntersection,
+  nearestLineTo,
   normalizeAngle,
   onLine,
   Point,
   Pose,
   posesEqual,
-  projectOntoLine,
   radToDeg,
   reversePose,
   subtract,
@@ -140,14 +139,19 @@ export function resolveSnap(
 }
 
 /**
- * Resolves how a free point — a pointer with nothing selected to draw from —
- * snaps: onto the nearest of the open ends' tangent/normal lines within
- * `tolerance`, or nowhere (null). This is the pull that aligns a dropped
- * anchor with existing track — abreast of a straight's end, say, so the two
- * parallel legs of an oval start exactly opposite. Only lines are on offer:
- * clicks near an open end's point belong to the select gesture.
+ * Resolves where a dropped anchor pulls: onto the nearest of the open ends'
+ * tangent/normal lines within `tolerance`, or nowhere (null). This is the
+ * snap that aligns a new network with existing track — its anchor abreast of
+ * a straight's end, say, so the two parallel legs of an oval start exactly
+ * opposite.
+ *
+ * A separate resolver from {@link resolveSnap} because an anchor is a bare
+ * point where a section will later start, not a section being laid: no end
+ * point is on offer (a click near an open end belongs to the select gesture),
+ * and there is no sweep to angle-snap when no line is in range — the anchor
+ * simply drops where the pointer is.
  */
-export function resolveFreeSnap(
+export function resolveAnchorSnap(
   target: Point,
   openEnds: readonly SectionEndPose[],
   tolerance: number
@@ -157,26 +161,6 @@ export function resolveFreeSnap(
   return nearestLine
     ? {kind: 'line', point: nearestLine.point, line: nearestLine.line}
     : null;
-}
-
-/**
- * The nearest of `lines` within `tolerance` of `target`, carrying the target's
- * projection onto it; null when none is in range.
- */
-function nearestLineTo(
-  target: Point,
-  lines: readonly Line[],
-  tolerance: number
-): {point: Point; line: Line} | null {
-  let nearest: {point: Point; line: Line; gap: number} | null = null;
-  for (const line of lines) {
-    const foot = projectOntoLine(target, line);
-    const gap = distance(target, foot);
-    if (gap <= tolerance && (!nearest || gap < nearest.gap)) {
-      nearest = {point: foot, line, gap};
-    }
-  }
-  return nearest;
 }
 
 /**

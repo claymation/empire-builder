@@ -3,7 +3,7 @@ import {degToRad, radToDeg, type Point, type Pose} from './geometry';
 import {type SectionEnd, type SectionEndPose} from './layout';
 import {curve, endPose, placeSection, straight} from './section';
 import {
-  resolveFreeSnap,
+  resolveAnchorSnap,
   resolveSnap,
   shapeForSnap,
   shapeOntoLine,
@@ -444,21 +444,21 @@ describe('resolveSnap', () => {
   });
 });
 
-describe('resolveFreeSnap', () => {
+describe('resolveAnchorSnap', () => {
   // One open end at (100, 50) facing east: its heading line is y = 50, its
   // normal line x = 100.
   const ends = [oe({position: {x: 100, y: 50}, heading: 0})];
   const tolerance = 6;
 
   it("pulls onto an end's normal line", () => {
-    const snap = resolveFreeSnap({x: 103, y: 250}, ends, tolerance);
+    const snap = resolveAnchorSnap({x: 103, y: 250}, ends, tolerance);
     expect(snap?.kind).toBe('line');
     expect(snap?.point.x).toBeCloseTo(100);
     expect(snap?.point.y).toBeCloseTo(250);
   });
 
   it("pulls onto an end's heading line", () => {
-    const snap = resolveFreeSnap({x: 300, y: 47}, ends, tolerance);
+    const snap = resolveAnchorSnap({x: 300, y: 47}, ends, tolerance);
     expect(snap?.kind).toBe('line');
     expect(snap?.point.x).toBeCloseTo(300);
     expect(snap?.point.y).toBeCloseTo(50);
@@ -471,7 +471,7 @@ describe('resolveFreeSnap', () => {
       oe({position: {x: 100, y: 50}, heading: 0}),
       oe({position: {x: 104, y: 50}, heading: 0}),
     ];
-    const snap = resolveFreeSnap({x: 103, y: 250}, pair, tolerance);
+    const snap = resolveAnchorSnap({x: 103, y: 250}, pair, tolerance);
     expect(snap?.point.x).toBeCloseTo(104);
   });
 
@@ -485,7 +485,7 @@ describe('resolveFreeSnap', () => {
       x: 3 + 100 * normal.x + 4 * forward.x,
       y: -2 + 100 * normal.y + 4 * forward.y,
     };
-    const snap = resolveFreeSnap(
+    const snap = resolveAnchorSnap(
       target,
       [oe({position: {x: 3, y: -2}, heading})],
       tolerance
@@ -497,16 +497,16 @@ describe('resolveFreeSnap', () => {
 
   it('snaps a gap exactly at the tolerance, not one past it', () => {
     expect(
-      resolveFreeSnap({x: 300, y: 50 + tolerance}, ends, tolerance)
+      resolveAnchorSnap({x: 300, y: 50 + tolerance}, ends, tolerance)
     ).not.toBeNull();
     expect(
-      resolveFreeSnap({x: 300, y: 50 + tolerance + 0.01}, ends, tolerance)
+      resolveAnchorSnap({x: 300, y: 50 + tolerance + 0.01}, ends, tolerance)
     ).toBeNull();
   });
 
   it('snaps nowhere when clear of every line, or with no open ends', () => {
-    expect(resolveFreeSnap({x: 300, y: 250}, ends, tolerance)).toBeNull();
-    expect(resolveFreeSnap({x: 100, y: 250}, [], tolerance)).toBeNull();
+    expect(resolveAnchorSnap({x: 300, y: 250}, ends, tolerance)).toBeNull();
+    expect(resolveAnchorSnap({x: 100, y: 250}, [], tolerance)).toBeNull();
   });
 });
 
