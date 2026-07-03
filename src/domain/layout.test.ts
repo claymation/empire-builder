@@ -178,6 +178,33 @@ describe('placeLayout', () => {
     expect(endPose(placed.get('s2')!, 'B').position.x).toBeCloseTo(140);
   });
 
+  it('places a section reachable only through the anchored end’s join', () => {
+    // s1 anchored by A at the origin extends east; s2 joined A↔A onto that
+    // same anchored end hangs off it alone, so threading must walk the
+    // anchored end's join: s2 extends west, away from s1.
+    let layout = anchorSection(
+      EMPTY_LAYOUT,
+      withId('s1', straight(100)),
+      'A',
+      ORIGIN
+    );
+    layout = joinSection(
+      layout,
+      end('s1', 'A'),
+      withId('s2', straight(60)),
+      'A',
+      null
+    );
+    const placed = placeLayout(layout);
+    const s2a = poseOf(placed, end('s2', 'A'));
+    expect(posesEqual(s2a, reversePose(poseOf(placed, end('s1', 'A'))))).toBe(
+      true
+    );
+    const s2b = poseOf(placed, end('s2', 'B'));
+    expect(s2b.position.x).toBeCloseTo(-60);
+    expect(s2b.position.y).toBeCloseTo(0);
+  });
+
   it('extends a section joined A↔A away from the anchored section', () => {
     // s1, anchored by its B, runs 100 up-and-right at 30°; its open A sits at
     // the far end, facing back down the run. s2 joined A↔A seats back-to-back

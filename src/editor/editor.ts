@@ -1,38 +1,31 @@
 /**
  * The lay-track tool's edge: it owns an {@link EditorState}, translates Paper.js
  * pointer and keyboard events into pure state transitions, and redraws. All the
- * decision logic lives in ./state and ../domain; this file is the Paper.js/DOM
- * glue.
+ * decision logic lives in ./state, ./preview, and ../domain; this file is the
+ * Paper.js/DOM glue.
  */
 
 import paper from 'paper';
-import {degToRad, Point, Pose, reversePose} from '../domain/geometry';
+import {Point, Pose, reversePose} from '../domain/geometry';
 import {
   openEnds,
   openEndPoses,
   placeLayout,
   PlacedLayout,
   poseOf,
-  SectionEnd,
+  sameEnd,
 } from '../domain/layout';
-import {
-  placeSection,
-  PlacedSection,
-  Section,
-  SectionShape,
-  sectionLength,
-} from '../domain/section';
-import {
-  resolveSnap,
-  shapeForSnap,
-  shapeTo,
-  shownSnap,
-  Snap,
-} from '../domain/snapping';
+import {Section, SectionShape, sectionLength} from '../domain/section';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
-import {renderOverlay, renderStatic, sceneTransform} from '../render/scene';
+import {
+  OpenEndRing,
+  renderOverlay,
+  renderStatic,
+  sceneTransform,
+} from '../render/scene';
 import {ViewTransform} from '../render/transform';
+import {computePreview, Preview} from './preview';
 import {
   anchor,
   dropAnchor,
@@ -40,40 +33,13 @@ import {
   EMPTY,
   extend,
   redo,
+  selectRailhead,
   undo,
 } from './state';
 
 /** Heading the first section leaves the planted start at. The start carries no
  *  aim of its own, so this is fixed. */
 const INITIAL_HEADING = 0;
-/** Curve sweeps snap to multiples of this when within SNAP_THRESHOLD of one. */
-const SNAP_INCREMENT = degToRad(15);
-const SNAP_THRESHOLD = degToRad(5);
-/** Pointer pull, in px, onto an open end's point and its tangent/normal lines. */
-const POINT_MAGNET_PX = 12;
-const LINE_MAGNET_PX = 8;
-
-/**
- * What the next click would lay, computed in one place so the on-screen ghost
- * and the commit agree: the `railhead` it lays from, the section's `shape` (to
- * commit), that shape placed as a `ghost` (the dashed preview drawn under the
- * pointer), the `snap` that shaped it, and the open end it closes onto, or null.
- */
-interface Preview {
-  readonly railhead: Pose | null;
-  readonly shape: SectionShape | null;
-  readonly ghost: PlacedSection | null;
-  readonly snap: Snap | null;
-  readonly closeOnto: SectionEnd | null;
-}
-
-const NOTHING: Preview = {
-  railhead: null,
-  shape: null,
-  ghost: null,
-  snap: null,
-  closeOnto: null,
-};
 
 /** Wires the lay-track tool onto `canvas`, drawing within `space`. */
 export function startEditor(
@@ -106,74 +72,59 @@ export function startEditor(
   }
 
   /**
-   * The railhead — the pose to extend from — or null when there is none. Before
-   * any section it is the pending anchor (a pose, not yet an open end); otherwise
-   * it is the growing tail's open end ({@link railheadEnd}), placed and reversed:
-   * an end's pose faces into its section, and drawing extends away from it. A
-   * closed loop joins that end, leaving no railhead and nowhere to draw. A
-   * function of the layout, so undo/redo restore it for free.
+   * The railhead pose — where the next section grows from — or null when there
+   * is none. Before any section it is the pending anchor (a pose, not yet an
+   * open end); otherwise it is the selected railhead, placed and reversed: an
+   * end's pose faces into its section, and drawing extends away from it.
    */
-  function railhead(): Pose | null {
+  function railheadPose(): Pose | null {
     if (state.pendingAnchor) {
       return state.pendingAnchor;
     }
-    const end = railheadEnd();
-    return end ? reversePose(poseOf(placed, end)) : null;
+    return state.railhead ? reversePose(poseOf(placed, state.railhead)) : null;
   }
 
   /**
-   * What the next click would lay (see {@link Preview}); with no pointer or no
-   * railhead there is nothing to lay.
+   * What the next click would do (see {@link Preview}): the single funnel from
+   * the editor's context — railhead, pointer, open ends, view scale, snap
+   * suspension — into the pure {@link computePreview}. The overlay and the
+   * click routing both read this one decision, which is what keeps what is
+   * drawn and what a click does in agreement.
    */
   function preview(view: ViewTransform): Preview {
-    const from = railhead();
-    if (!pointer || !from) {
-      return NOTHING;
-    }
-    let shape: SectionShape | null;
-    let snap: Snap | null;
-    let closeOnto: SectionEnd | null;
-    if (suspendSnap) {
-      // Suspending snapping (Option/Alt) lays the plain section to the pointer,
-      // with no open-end snap and no guides.
-      shape = shapeTo(from, pointer);
-      snap = null;
-      closeOnto = null;
-    } else {
-      const resolved = resolveSnap(
-        from,
-        pointer,
-        openEndPoses(state.layout, placed),
-        POINT_MAGNET_PX / view.scale,
-        LINE_MAGNET_PX / view.scale
-      );
-      shape = shapeForSnap(from, resolved, SNAP_INCREMENT, SNAP_THRESHOLD);
-      // An end snap names the open end it latched onto (it is only offered when a
-      // section can reach it, so there is always a shape); closing onto it records
-      // the join.
-      closeOnto = resolved.kind === 'end' ? resolved.end : null;
-      // Show only the snap the section earns — a guide whose line the end lands on.
-      snap = shownSnap(from, resolved, shape);
-    }
-    return {
-      railhead: from,
-      shape,
-      ghost: shape ? placeSection(shape, 'A', from) : null,
-      snap,
-      closeOnto,
-    };
+    return computePreview(
+      railheadPose(),
+      pointer,
+      openEndPoses(state.layout, placed),
+      view.scale,
+      suspendSnap
+    );
+  }
+
+  /** Every open end as a ring to draw; the railhead's reads as selected. */
+  function openRings(): OpenEndRing[] {
+    return openEndPoses(state.layout, placed).map(({sectionEnd, pose}) => ({
+      point: pose.position,
+      selected: state.railhead !== null && sameEnd(sectionEnd, state.railhead),
+    }));
   }
 
   function refreshStatic(view: ViewTransform): void {
-    renderStatic(view, space, placed);
+    renderStatic(view, space, placed, openRings());
     if (status) {
       status.textContent = describe(state);
     }
   }
 
   function refreshOverlay(view: ViewTransform): void {
-    const {railhead: from, ghost, snap} = preview(view);
-    renderOverlay(view, ghost, from, snap);
+    const {railhead: from, ghost, snap, hover} = preview(view);
+    renderOverlay(
+      view,
+      ghost,
+      from,
+      snap,
+      hover ? poseOf(placed, hover).position : null
+    );
   }
 
   // refresh* build the Paper.js scene graph; flushing it to the canvas
@@ -204,18 +155,18 @@ export function startEditor(
         dropAnchor(state, {position: pointer, heading: INITIAL_HEADING})
       );
     } else {
-      // The preview lays from the railhead; a tangent end snap closes the new
-      // section's B onto an open end, recording the join. With the loop closed
-      // there is no railhead, so the preview has no shape and the click is ignored.
-      const {shape, closeOnto} = preview(view);
-      if (shape) {
+      // Route the click by the same preview the overlay drew: a hovered ring
+      // selects that end; otherwise a shape lays it — from the pending anchor
+      // as a new network, or extended from the railhead, a latched end snap
+      // closing the join.
+      const {shape, closeOnto, hover} = preview(view);
+      if (hover) {
+        setState(selectRailhead(state, hover));
+      } else if (shape) {
         if (state.pendingAnchor) {
           setState(anchor(state, withId(shape)));
-        } else {
-          const at = railheadEnd();
-          if (at) {
-            setState(extend(state, at, withId(shape), closeOnto));
-          }
+        } else if (state.railhead) {
+          setState(extend(state, state.railhead, withId(shape), closeOnto));
         }
       }
     }
@@ -244,25 +195,6 @@ export function startEditor(
 
   refreshAll();
 
-  /**
-   * The growing tail's open end — the most-recently-added section's `B` while it
-   * is unjoined — or null when there is none: no section yet, or a closed loop
-   * that joined it. Read through {@link openEnds}, the places a section can grow
-   * from, rather than asserting `B` is free.
-   */
-  function railheadEnd(): SectionEnd | null {
-    const last = state.layout.sections.at(-1);
-    if (!last) {
-      return null;
-    }
-    const tail: SectionEnd = {sectionId: last.id, end: 'B'};
-    return openEnds(state.layout).some(
-      open => open.sectionId === tail.sectionId && open.end === tail.end
-    )
-      ? tail
-      : null;
-  }
-
   /** Gives `shape` a fresh id, ready to commit into the layout. */
   function withId(shape: SectionShape): Section {
     return {...shape, id: allocateId()};
@@ -287,5 +219,11 @@ function describe(state: EditorState): string {
     0
   );
   const count = sections.length;
-  return `${count} section${count === 1 ? '' : 's'} · ${toInches(run).toFixed(1)}″ run · ${UNDO_KEYS} to undo`;
+  const summary = `${count} section${count === 1 ? '' : 's'} · ${toInches(run).toFixed(1)}″ run · ${UNDO_KEYS} to undo`;
+  // With no railhead but ends still open, point at the gesture that resumes.
+  const idle =
+    !state.railhead &&
+    !state.pendingAnchor &&
+    openEnds(state.layout).length > 0;
+  return idle ? `${summary} · Click an open end to keep drawing.` : summary;
 }
