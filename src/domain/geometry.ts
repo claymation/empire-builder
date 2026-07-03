@@ -64,6 +64,11 @@ export function scale(v: Vector, factor: number): Vector {
   return {x: v.x * factor, y: v.y * factor};
 }
 
+/** The heading `v` points along (radians, counter-clockwise from +x). */
+export function headingOf(v: Vector): number {
+  return Math.atan2(v.y, v.x);
+}
+
 /** The unit vector pointing along `heading` (radians, counter-clockwise from +x). */
 export function unitVector(heading: number): Vector {
   return {x: Math.cos(heading), y: Math.sin(heading)};

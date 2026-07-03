@@ -18,10 +18,10 @@ import {
   arcMidpoint,
   Line,
   normalize,
+  normalizeAngle,
   PlacedArc,
   PlacedSegment,
   Point,
-  Pose,
   radToDeg,
   scale,
   segmentEnd,
@@ -43,7 +43,7 @@ const PLYWOOD_EDGE = '#b9966b';
 const RAIL_COLOR = '#2b2b2b';
 const PREVIEW_COLOR = '#3b82f6';
 const RAIL_WIDTH_PX = 3;
-const RAILHEAD_RADIUS_PX = 5;
+const ORIGIN_DOT_RADIUS_PX = 5;
 const LABEL_OFFSET_PX = 18;
 /** Accent for alignment feedback: the guide line and the open-end snap ring. */
 const GUIDE_COLOR = '#ec4899';
@@ -94,19 +94,22 @@ export function renderLayout(
 }
 
 /**
- * Renders the interaction state: the selected open end's ring and the railhead
- * marker, the pointer-follow ghost, and any alignment feedback. The selected
+ * Renders the interaction state: the selected open end's ring and the origin
+ * dot, the pointer-follow ghost, and any alignment feedback. The selected
  * ring sits under the rest; the guide sits beneath the ghost; a snap ring
  * rides on top, marking the open end the target has latched onto; a hover ring
  * lights the open end a click would select. Redraw on every move.
  *
- * `selectedEnd` is the selected open end's position — null when drawing grows
- * from a pending anchor, which is a bare `railhead` pose with no end to ring.
+ * `origin` is where drawing grows from — the pending anchor or the selected
+ * railhead — marked with the filled dot. `selectedEnd` is the selected open
+ * end's position — null when drawing grows from a pending anchor, which has
+ * no end to ring. Both are selection state, drawn whether or not a pointer
+ * has produced a ghost.
  */
 export function renderOverlay(
   transform: ViewTransform,
   ghost: PlacedSection | null,
-  railhead: Pose | null,
+  origin: Point | null,
   selectedEnd: Point | null,
   snap: Snap | null,
   hover: Point | null
@@ -123,15 +126,16 @@ export function renderOverlay(
   }
   if (ghost) {
     // The ghost is one drafted shape — a single segment or arc. Draw it and
-    // label that shape (a curve shows its sweep and radius, a straight 0.0°).
+    // label that shape (a curve shows its sweep and radius, a straight its
+    // length).
     const [shape] = ghost.geometry;
     if (shape) {
       drawGeometry(shape, toCanvas, PREVIEW_COLOR, true);
-      drawAngleLabel(shape, toCanvas);
+      drawLabel(shape, toCanvas);
     }
   }
-  if (railhead) {
-    drawRailhead(railhead.position, toCanvas);
+  if (origin) {
+    drawOriginDot(origin, toCanvas);
   }
   if (ring) {
     drawSnapRing(ring, toCanvas);
@@ -210,12 +214,16 @@ function drawHoverRing(point: Point, toCanvas: ToCanvas): void {
 }
 
 /**
- * Labels the preview with its sweep (and, for a curve, radius). The label sits
- * by the preview's leading end — near the pointer, where the eye is — pushed
- * clear of the track: radially out from the arc's center for a curve, just above
- * the end for a straight. A straight reads 0.0°.
+ * Labels the preview with its dimensions: a curve its sweep and radius
+ * (`90.0° · r 15.1″`), a straight its heading and length (`∠ 30.0° · ℓ 34.1″`
+ * — the ∠ marking a direction rather than a sweep, the script ℓ keeping the
+ * prefix from reading as a digit 1). The heading is the value aiming a first
+ * section chooses, and it shows the angle snap catching a tidy multiple. The
+ * label sits by the preview's leading end — near the pointer, where the eye
+ * is — pushed clear of the track: radially out from the arc's center for a
+ * curve, square off the run for a straight.
  */
-function drawAngleLabel(
+function drawLabel(
   geometry: PlacedSegment | PlacedArc,
   toCanvas: ToCanvas
 ): void {
@@ -230,7 +238,16 @@ function drawAngleLabel(
       outward
     );
   } else {
-    placeLabel('0.0°', toCanvas(segmentEnd(geometry)), new paper.Point(0, -1));
+    const heading = radToDeg(normalizeAngle(geometry.start.heading));
+    const length = toInches(geometry.length);
+    const end = toCanvas(segmentEnd(geometry));
+    const along = end.subtract(toCanvas(geometry.start.position)).normalize();
+    const outward = new paper.Point(along.y, -along.x);
+    placeLabel(
+      `∠ ${heading.toFixed(1)}° · ℓ ${length.toFixed(1)}″`,
+      end,
+      outward
+    );
   }
 }
 
@@ -331,8 +348,9 @@ function drawGeometry(
   }
 }
 
-function drawRailhead(position: Point, toCanvas: ToCanvas): void {
-  const dot = new paper.Path.Circle(toCanvas(position), RAILHEAD_RADIUS_PX);
+/** The filled dot at the origin — where drawing grows from. */
+function drawOriginDot(position: Point, toCanvas: ToCanvas): void {
+  const dot = new paper.Path.Circle(toCanvas(position), ORIGIN_DOT_RADIUS_PX);
   dot.fillColor = new paper.Color(PREVIEW_COLOR);
 }
 

@@ -14,6 +14,7 @@ import {
   composePose,
   cross,
   degToRad,
+  headingOf,
   inversePose,
   distance,
   dot,
@@ -95,6 +96,15 @@ describe('add / subtract / scale', () => {
   it('scales by a factor, including reversal', () => {
     expect(scale({x: 3, y: -1}, 2)).toEqual({x: 6, y: -2});
     expect(scale({x: 3, y: -1}, -2)).toEqual({x: -6, y: 2});
+  });
+});
+
+describe('headingOf', () => {
+  it('reads the heading in every quadrant, inverting unitVector', () => {
+    for (const heading of [0, 0.7, 2.1, Math.PI, -2.1, -0.7]) {
+      expect(headingOf(unitVector(heading))).toBeCloseTo(heading);
+    }
+    expect(headingOf({x: 3, y: 3})).toBeCloseTo(Math.PI / 4); // any length
   });
 });
 

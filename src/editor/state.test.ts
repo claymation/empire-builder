@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {type Pose} from '../domain/geometry';
+import {degToRad, type Point} from '../domain/geometry';
 import {openEnds, placeLayout, poseOf, type SectionEnd} from '../domain/layout';
 import {
   curve,
@@ -18,7 +18,7 @@ import {
   undo,
 } from './state';
 
-const ORIGIN: Pose = {position: {x: 0, y: 0}, heading: 0};
+const ORIGIN: Point = {x: 0, y: 0};
 
 /** A shape given an id, as the editor would allocate before committing. */
 function withId(id: string, shape: SectionShape): Section {
@@ -38,11 +38,8 @@ describe('editor state', () => {
   });
 
   it('plants an anchor as a transient, recording no history', () => {
-    const planted = dropAnchor(EMPTY, {position: {x: 100, y: 50}, heading: 0});
-    expect(planted.pendingAnchor).toEqual({
-      position: {x: 100, y: 50},
-      heading: 0,
-    });
+    const planted = dropAnchor(EMPTY, {x: 100, y: 50});
+    expect(planted.pendingAnchor).toEqual({x: 100, y: 50});
     expect(planted.layout.sections).toHaveLength(0);
     expect(planted.past).toHaveLength(0); // planting is not historized
     expect(undo(planted)).toBe(planted); // nothing to undo
@@ -50,21 +47,36 @@ describe('editor state', () => {
 
   it('lays the first section as a new anchored network', () => {
     const planted = dropAnchor(EMPTY, ORIGIN);
-    const drawn = anchor(planted, withId('s1', straight(300)));
+    const drawn = anchor(planted, withId('s1', straight(300)), 0);
     expect(drawn.layout.sections.map(s => s.id)).toEqual(['s1']);
     expect(drawn.layout.anchors).toHaveLength(1);
     expect(drawn.pendingAnchor).toBeNull();
     expect(openEnds(drawn.layout)).toEqual([end('s1', 'A'), end('s1', 'B')]);
   });
 
+  it('anchors the first section at the aimed heading', () => {
+    const planted = dropAnchor(EMPTY, {x: 5, y: 7});
+    const drawn = anchor(planted, withId('s1', straight(100)), degToRad(30));
+    expect(drawn.layout.anchors).toEqual([
+      {
+        sectionEnd: end('s1', 'A'),
+        pose: {position: {x: 5, y: 7}, heading: degToRad(30)},
+      },
+    ]);
+    const b = poseOf(placeLayout(drawn.layout), end('s1', 'B'));
+    expect(b.position.x).toBeCloseTo(5 + 100 * Math.cos(degToRad(30)));
+    expect(b.position.y).toBeCloseTo(7 + 100 * Math.sin(degToRad(30)));
+  });
+
   it('anchoring without a pending anchor throws', () => {
-    expect(() => anchor(EMPTY, withId('s1', straight(300)))).toThrow();
+    expect(() => anchor(EMPTY, withId('s1', straight(300)), 0)).toThrow();
   });
 
   it('undoes the first section straight back to empty', () => {
     const drawn = anchor(
       dropAnchor(EMPTY, ORIGIN),
-      withId('s1', straight(300))
+      withId('s1', straight(300)),
+      0
     );
     const undone = undo(drawn);
     expect(undone.layout.sections).toHaveLength(0);
@@ -75,7 +87,11 @@ describe('editor state', () => {
   it('closes a loop, leaving no open ends, and reopens them on undo', () => {
     // The oval: two straights joined by two 180° curves, the last closing onto
     // the anchored A end.
-    let state = anchor(dropAnchor(EMPTY, ORIGIN), withId('s1', straight(100)));
+    let state = anchor(
+      dropAnchor(EMPTY, ORIGIN),
+      withId('s1', straight(100)),
+      0
+    );
     state = extend(
       state,
       end('s1', 'B'),
@@ -96,7 +112,8 @@ describe('editor state', () => {
   it('drops the redo stack once a new section is committed', () => {
     const anchored = anchor(
       dropAnchor(EMPTY, ORIGIN),
-      withId('s1', straight(300))
+      withId('s1', straight(300)),
+      0
     );
     const extended = extend(
       anchored,
@@ -118,7 +135,7 @@ describe('editor state', () => {
 
 /** A one-section network: s1 anchored at the origin, both ends open. */
 function anchored(): ReturnType<typeof anchor> {
-  return anchor(dropAnchor(EMPTY, ORIGIN), withId('s1', straight(100)));
+  return anchor(dropAnchor(EMPTY, ORIGIN), withId('s1', straight(100)), 0);
 }
 
 describe('selectRailhead', () => {
@@ -130,10 +147,7 @@ describe('selectRailhead', () => {
   it('clears a pending anchor, and dropping an anchor clears the selection', () => {
     // Force the two to coexist momentarily from either side; each transition
     // restores the invariant that at most one is set.
-    const planted = dropAnchor(anchored(), {
-      position: {x: 500, y: 500},
-      heading: 0,
-    });
+    const planted = dropAnchor(anchored(), {x: 500, y: 500});
     expect(planted.railhead).toBeNull();
     const selected = selectRailhead(planted, end('s1', 'A'));
     expect(selected.railhead).toEqual(end('s1', 'A'));
@@ -256,10 +270,7 @@ describe('deselect', () => {
   });
 
   it('clears a pending anchor', () => {
-    const planted = dropAnchor(anchored(), {
-      position: {x: 500, y: 500},
-      heading: 0,
-    });
+    const planted = dropAnchor(anchored(), {x: 500, y: 500});
     expect(deselect(planted).pendingAnchor).toBeNull();
   });
 });
@@ -270,11 +281,8 @@ describe('deselect', () => {
  * sits on s2's B.
  */
 function twoNetworks(): ReturnType<typeof anchor> {
-  const planted = dropAnchor(deselect(anchored()), {
-    position: {x: 0, y: 100},
-    heading: 0,
-  });
-  return anchor(planted, withId('s2', straight(100)));
+  const planted = dropAnchor(deselect(anchored()), {x: 0, y: 100});
+  return anchor(planted, withId('s2', straight(100)), 0);
 }
 
 describe('starting a second network', () => {
