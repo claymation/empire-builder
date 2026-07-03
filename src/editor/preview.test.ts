@@ -43,12 +43,41 @@ describe('computePreview', () => {
     expect(p.hover).toEqual(end('s', 'B'));
     expect(p.shape).toBeNull();
     expect(p.ghost).toBeNull();
+    expect(p.anchorPoint).toBeNull(); // the click selects, never drops
   });
 
-  it('offers neither shape nor hover with no railhead and no ring in reach', () => {
+  it('drops at the pointer with no railhead and nothing in reach', () => {
     const p = computePreview(null, {x: 300, y: 300}, [SIDE_END], 1, false);
     expect(p.hover).toBeNull();
     expect(p.shape).toBeNull();
+    expect(p.snap).toBeNull();
+    expect(p.anchorPoint).toEqual({x: 300, y: 300});
+  });
+
+  it('pulls the free pointer onto a guideline — the anchor drops aligned', () => {
+    // No railhead; the pointer rides just off the open end's normal line
+    // (x = 100), far outside its ring. The drop point is the projection, so a
+    // second network's anchor lands exactly abreast of the first's end.
+    const p = computePreview(null, {x: 104, y: 250}, [SIDE_END], 1, false);
+    expect(p.hover).toBeNull();
+    expect(p.snap?.kind).toBe('line');
+    expect(p.anchorPoint?.x).toBeCloseTo(100);
+    expect(p.anchorPoint?.y).toBeCloseTo(250);
+  });
+
+  it('a hovered ring outranks the guideline pull', () => {
+    // (100, 55) sits on the normal line and within the ring: the click
+    // selects; no anchor drop, no guide.
+    const p = computePreview(null, {x: 100, y: 55}, [SIDE_END], 1, false);
+    expect(p.hover).toEqual(end('s', 'B'));
+    expect(p.snap).toBeNull();
+    expect(p.anchorPoint).toBeNull();
+  });
+
+  it('a railhead leaves anchorPoint null: the click lays, never drops', () => {
+    const p = computePreview(RAILHEAD, {x: 100, y: 62.1}, [SIDE_END], 1, false);
+    expect(p.shape).not.toBeNull();
+    expect(p.anchorPoint).toBeNull();
   });
 
   it('hovering suppresses the ghost, exactly to the ring radius', () => {
@@ -159,9 +188,11 @@ describe('computePreview', () => {
     expect(p.shape).toEqual(shapeTo(RAILHEAD, {x: 100, y: 50}));
   });
 
-  it('suspending snapping with no railhead previews nothing', () => {
+  it('suspending snapping with no railhead drops at the raw pointer', () => {
     const p = computePreview(null, {x: 100, y: 50}, [SIDE_END], 1, true);
     expect(p.hover).toBeNull();
     expect(p.shape).toBeNull();
+    expect(p.snap).toBeNull();
+    expect(p.anchorPoint).toEqual({x: 100, y: 50});
   });
 });

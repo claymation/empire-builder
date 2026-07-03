@@ -8,8 +8,10 @@
  * The pointer means exactly one thing at a time, and the preview shows which:
  * a ghost reaching a latched ring — the click closes the join; a hovered ring
  * with no ghost — the click selects that end; a ghost alone — the click lays
- * the section. A latch outranks a hover, so the two never both claim a click;
- * a hover suppresses the ghost, so the preview never shows a section a click
+ * the section; with nothing selected to draw from, the click drops a new
+ * network's anchor at `anchorPoint`, the pointer pulled onto any guideline in
+ * range. A latch outranks a hover, so the two never both claim a click; a
+ * hover suppresses the ghost, so the preview never shows a section a click
  * would not lay.
  */
 
@@ -17,6 +19,7 @@ import {degToRad, distance, Point, Pose} from '../domain/geometry';
 import {SectionEnd, SectionEndPose} from '../domain/layout';
 import {placeSection, PlacedSection, SectionShape} from '../domain/section';
 import {
+  resolveFreeSnap,
   resolveSnap,
   shapeForSnap,
   shapeTo,
@@ -37,8 +40,10 @@ export const RING_HIT_PX = 12;
  * What the next click would do: the `railhead` it lays from, the section's
  * `shape` (to commit), that shape placed as a `ghost` (the dashed preview drawn
  * under the pointer), the `snap` that shaped it, the open end it closes onto,
- * and the open end whose ring is hovered — which the click selects instead of
- * laying anything.
+ * the open end whose ring is hovered — which the click selects instead of
+ * laying anything — and `anchorPoint`, where the click drops a new network's
+ * anchor: the pointer, pulled onto any guideline in range; null whenever the
+ * click has something to lay or select instead.
  */
 export interface Preview {
   readonly railhead: Pose | null;
@@ -47,6 +52,7 @@ export interface Preview {
   readonly snap: Snap | null;
   readonly closeOnto: SectionEnd | null;
   readonly hover: SectionEnd | null;
+  readonly anchorPoint: Point | null;
 }
 
 const NOTHING: Preview = {
@@ -56,6 +62,7 @@ const NOTHING: Preview = {
   snap: null,
   closeOnto: null,
   hover: null,
+  anchorPoint: null,
 };
 
 /**
@@ -78,13 +85,15 @@ export function computePreview(
   if (suspendSnap) {
     return railhead
       ? lay(railhead, shapeTo(railhead, target), null, null)
-      : NOTHING;
+      : {...NOTHING, anchorPoint: target};
   }
   if (!railhead) {
-    return {
-      ...NOTHING,
-      hover: hoveredEnd(target, openEnds, RING_HIT_PX / viewScale),
-    };
+    const hover = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
+    if (hover) {
+      return {...NOTHING, hover};
+    }
+    const snap = resolveFreeSnap(target, openEnds, LINE_MAGNET_PX / viewScale);
+    return {...NOTHING, snap, anchorPoint: snap ? snap.point : target};
   }
   const snap = resolveSnap(
     railhead,
@@ -125,6 +134,7 @@ function lay(
     snap,
     closeOnto,
     hover: null,
+    anchorPoint: null,
   };
 }
 

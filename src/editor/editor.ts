@@ -153,9 +153,10 @@ export function startEditor(
     // Route the click by the same preview the overlay drew: a hovered ring
     // selects that end; a shape lays it — from the pending anchor as a new
     // network, or extended from the railhead, a latched end snap closing the
-    // join. With nothing to select or lay and no railhead, the click drops
-    // the anchor a new network grows from.
-    const {shape, closeOnto, hover} = preview(view);
+    // join. With nothing to select or lay, `anchorPoint` — the pointer,
+    // pulled onto any guideline — is where the click drops the anchor a new
+    // network grows from.
+    const {shape, closeOnto, hover, anchorPoint} = preview(view);
     if (hover) {
       setState(selectRailhead(state, hover));
     } else if (shape) {
@@ -164,9 +165,9 @@ export function startEditor(
       } else if (state.railhead) {
         setState(extend(state, state.railhead, withId(shape), closeOnto));
       }
-    } else if (!state.railhead) {
+    } else if (anchorPoint) {
       setState(
-        dropAnchor(state, {position: pointer, heading: INITIAL_HEADING})
+        dropAnchor(state, {position: anchorPoint, heading: INITIAL_HEADING})
       );
     }
     refreshAll();
