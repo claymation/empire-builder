@@ -182,7 +182,14 @@ export function anchorSection(
 /**
  * Join `section` onto open end `at`, seating the section's `end` there and
  * recording that join. When the section's other end lands on an existing open end
- * `closeOnto`, record that join too — the loop close.
+ * `closeOnto`, record that join too — the close.
+ *
+ * Joins keep one anchor per network: a close that fuses two networks drops the
+ * absorbed network's anchor — the one `closeOnto`'s network carried — so the
+ * network drawn from keeps its placement authority. The absorbed sections
+ * re-derive their poses by threading through the new join. A close within one
+ * network (the loop) keeps its anchor; membership, not the presence of
+ * `closeOnto`, decides.
  *
  * Pure topology: whether a `closeOnto` actually aligns is a geometric fact,
  * surfaced where geometry is computed ({@link placeLayout}), not enforced here.
@@ -196,15 +203,25 @@ export function joinSection(
 ): Layout {
   const newEnd: SectionEnd = {sectionId: section.id, end};
   const joins: Join[] = [...layout.joins, {ends: [at, newEnd]}];
+  let anchors = layout.anchors;
   if (closeOnto) {
     joins.push({
       ends: [{sectionId: section.id, end: otherEnd(section, end)}, closeOnto],
     });
+    const closeOntoNetwork = networkOf(layout, closeOnto.sectionId);
+    const spansTwoNetworks = !closeOntoNetwork.has(at.sectionId);
+    if (spansTwoNetworks) {
+      // The close fuses the two networks into one, which keeps `at`'s anchor:
+      // the absorbed network's anchor is dropped, leaving one per network.
+      anchors = anchors.filter(
+        anchor => !closeOntoNetwork.has(anchor.sectionEnd.sectionId)
+      );
+    }
   }
   return {
     sections: [...layout.sections, section],
     joins,
-    anchors: layout.anchors,
+    anchors,
   };
 }
 
@@ -215,6 +232,45 @@ export function otherEnd(section: Section, end: EndName): EndName {
     throw new RangeError(`section ${section.id} has no end besides ${end}`);
   }
   return other;
+}
+
+/**
+ * The ids of every section in `sectionId`'s network — its connected component of
+ * the section–join graph. Computed from `joins` on demand rather than stored on
+ * sections, so there is no derived network id to keep consistent as joins
+ * accumulate.
+ */
+function networkOf(
+  layout: Layout,
+  sectionId: SectionId
+): ReadonlySet<SectionId> {
+  // One pass over the joins builds the adjacency, so the walk is linear in
+  // sections and joins.
+  const neighborsById = new Map<SectionId, SectionId[]>();
+  const addNeighbor = (from: SectionId, to: SectionId) => {
+    const neighbors = neighborsById.get(from);
+    if (neighbors) {
+      neighbors.push(to);
+    } else {
+      neighborsById.set(from, [to]);
+    }
+  };
+  for (const join of layout.joins) {
+    const [a, b] = join.ends;
+    addNeighbor(a.sectionId, b.sectionId);
+    addNeighbor(b.sectionId, a.sectionId);
+  }
+  const members = new Set<SectionId>([sectionId]);
+  const pending = [sectionId];
+  for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
+    for (const neighborId of neighborsById.get(id) ?? []) {
+      if (!members.has(neighborId)) {
+        members.add(neighborId);
+        pending.push(neighborId);
+      }
+    }
+  }
+  return members;
 }
 
 /**

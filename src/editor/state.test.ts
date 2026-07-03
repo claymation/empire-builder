@@ -9,6 +9,7 @@ import {
 } from '../domain/section';
 import {
   anchor,
+  deselect,
   EMPTY,
   extend,
   dropAnchor,
@@ -243,6 +244,103 @@ describe('undo/redo railhead', () => {
     expect(redrawn.layout.joins).toContainEqual({
       ends: [end('s1', 'A'), end('s3', 'A')],
     });
+  });
+});
+
+describe('deselect', () => {
+  it('clears the railhead, recording no history', () => {
+    const state = deselect(anchored());
+    expect(state.railhead).toBeNull();
+    expect(state.pendingAnchor).toBeNull();
+    expect(state.past).toHaveLength(1); // only the anchor commit
+  });
+
+  it('clears a pending anchor', () => {
+    const planted = dropAnchor(anchored(), {
+      position: {x: 500, y: 500},
+      heading: 0,
+    });
+    expect(deselect(planted).pendingAnchor).toBeNull();
+  });
+});
+
+/**
+ * Two parallel one-straight networks, built as the user would: s1 anchored at
+ * the origin, Esc, then s2 anchored one curve-diameter above it. The railhead
+ * sits on s2's B.
+ */
+function twoNetworks(): ReturnType<typeof anchor> {
+  const planted = dropAnchor(deselect(anchored()), {
+    position: {x: 0, y: 100},
+    heading: 0,
+  });
+  return anchor(planted, withId('s2', straight(100)));
+}
+
+describe('starting a second network', () => {
+  it('drops an anchor and lays a first section beside existing track', () => {
+    const drawn = twoNetworks();
+    expect(drawn.layout.anchors).toHaveLength(2);
+    expect(openEnds(drawn.layout)).toEqual([
+      end('s1', 'A'),
+      end('s1', 'B'),
+      end('s2', 'A'),
+      end('s2', 'B'),
+    ]);
+    expect(drawn.railhead).toEqual(end('s2', 'B'));
+  });
+
+  it('undo across a merge restores both anchors and the pre-merge railhead', () => {
+    const selected = selectRailhead(twoNetworks(), end('s1', 'B'));
+    const merged = extend(
+      selected,
+      end('s1', 'B'),
+      withId('s3', curve(50, 180, 'ccw')),
+      end('s2', 'B')
+    );
+    expect(merged.layout.anchors).toHaveLength(1);
+    expect(merged.railhead).toBeNull(); // the close consumed the far end
+    const undone = undo(merged);
+    expect(undone.layout.anchors).toHaveLength(2);
+    expect(undone.railhead).toEqual(end('s1', 'B'));
+    expect(redo(undone).layout.anchors).toHaveLength(1);
+  });
+});
+
+describe('the two-straights oval (US-5-3)', () => {
+  it('assembles two networks into one loop with one anchor and no open ends', () => {
+    // A curve from s1's B closes onto s2's B: the networks merge, s2's anchor
+    // absorbed into s1's.
+    let state = selectRailhead(twoNetworks(), end('s1', 'B'));
+    state = extend(
+      state,
+      end('s1', 'B'),
+      withId('s3', curve(50, 180, 'ccw')),
+      end('s2', 'B')
+    );
+    expect(state.layout.anchors).toHaveLength(1);
+    // The far side: a curve from s1's A closes onto s2's A — the loop close.
+    state = selectRailhead(state, end('s1', 'A'));
+    state = extend(
+      state,
+      end('s1', 'A'),
+      withId('s4', curve(50, 180, 'cw')),
+      end('s2', 'A')
+    );
+    expect(openEnds(state.layout)).toEqual([]);
+    expect(state.layout.anchors).toHaveLength(1);
+    expect(state.railhead).toBeNull();
+    // The loop places consistently — the closing joins align — with the
+    // absorbed straight where it was drawn.
+    const placed = placeLayout(state.layout);
+    expect(poseOf(placed, end('s2', 'A')).position.x).toBeCloseTo(0);
+    expect(poseOf(placed, end('s2', 'A')).position.y).toBeCloseTo(100);
+    // Undo steps back through the whole construction to the empty sheet.
+    for (let steps = 0; steps < 4; steps++) {
+      state = undo(state);
+    }
+    expect(state.layout.sections).toHaveLength(0);
+    expect(state.past).toHaveLength(0);
   });
 });
 
