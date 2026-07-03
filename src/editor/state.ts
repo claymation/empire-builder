@@ -6,11 +6,12 @@
  *
  * The state is the current {@link Layout}, the selected railhead, a transient
  * pending anchor, and the history undo/redo walk. {@link dropAnchor} drops the
- * anchor on an empty canvas; {@link anchor} lays the network's first section
- * there, {@link extend} lays one joined onto an open end, and
- * {@link selectRailhead} moves drawing to another open end. The editor picks
- * among them and computes the section (so snapping applies once); only the
- * transitions that change the layout record history.
+ * anchor a new network grows from; {@link anchor} lays that network's first
+ * section there, {@link extend} lays one joined onto an open end,
+ * {@link selectRailhead} moves drawing to another open end, and
+ * {@link deselect} clears the selection. The editor picks among them and
+ * computes the section (so snapping applies once); only the transitions that
+ * change the layout record history.
  *
  * The railhead — the selected open end the next section grows from — is the one
  * irreducible piece of selection state the layout cannot express: a chain has
@@ -62,11 +63,20 @@ export const EMPTY: EditorState = {
 };
 
 /**
- * Drop an anchor (first click): set a pending anchor, clearing any selected
- * railhead. No section, no history.
+ * Drop the anchor a new network grows from: set a pending anchor, clearing any
+ * selected railhead. No section, no history.
  */
 export function dropAnchor(state: EditorState, pose: Pose): EditorState {
   return {...state, pendingAnchor: pose, railhead: null};
+}
+
+/**
+ * Clear the selection (Esc): no railhead, no pending anchor — the state where
+ * the next click on empty canvas drops the anchor of a new network. Not an
+ * edit: no history is recorded.
+ */
+export function deselect(state: EditorState): EditorState {
+  return {...state, railhead: null, pendingAnchor: null};
 }
 
 /**

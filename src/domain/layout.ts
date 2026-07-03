@@ -182,7 +182,14 @@ export function anchorSection(
 /**
  * Join `section` onto open end `at`, seating the section's `end` there and
  * recording that join. When the section's other end lands on an existing open end
- * `closeOnto`, record that join too — the loop close.
+ * `closeOnto`, record that join too — the close.
+ *
+ * Joins keep one anchor per network: a close that fuses two networks drops the
+ * absorbed network's anchor — the one `closeOnto`'s network carried — so the
+ * network drawn from keeps its placement authority. The absorbed sections
+ * re-derive their poses by threading through the new join. A close within one
+ * network (the loop) keeps its anchor; membership, not the presence of
+ * `closeOnto`, decides.
  *
  * Pure topology: whether a `closeOnto` actually aligns is a geometric fact,
  * surfaced where geometry is computed ({@link placeLayout}), not enforced here.
@@ -196,15 +203,22 @@ export function joinSection(
 ): Layout {
   const newEnd: SectionEnd = {sectionId: section.id, end};
   const joins: Join[] = [...layout.joins, {ends: [at, newEnd]}];
+  let anchors = layout.anchors;
   if (closeOnto) {
     joins.push({
       ends: [{sectionId: section.id, end: otherEnd(section, end)}, closeOnto],
     });
+    const absorbed = networkOf(layout, closeOnto.sectionId);
+    if (!absorbed.has(at.sectionId)) {
+      anchors = anchors.filter(
+        anchor => !absorbed.has(anchor.sectionEnd.sectionId)
+      );
+    }
   }
   return {
     sections: [...layout.sections, section],
     joins,
-    anchors: layout.anchors,
+    anchors,
   };
 }
 
@@ -215,6 +229,36 @@ export function otherEnd(section: Section, end: EndName): EndName {
     throw new RangeError(`section ${section.id} has no end besides ${end}`);
   }
   return other;
+}
+
+/**
+ * The ids of every section in `sectionId`'s network — its connected component of
+ * the section–join graph. Computed from `joins` on demand rather than stored on
+ * sections, so there is no derived network id to keep consistent as joins
+ * accumulate.
+ */
+function networkOf(
+  layout: Layout,
+  sectionId: SectionId
+): ReadonlySet<SectionId> {
+  const members = new Set<SectionId>([sectionId]);
+  const pending = [sectionId];
+  for (let id = pending.shift(); id !== undefined; id = pending.shift()) {
+    for (const join of layout.joins) {
+      const [a, b] = join.ends;
+      const neighborId =
+        a.sectionId === id
+          ? b.sectionId
+          : b.sectionId === id
+            ? a.sectionId
+            : null;
+      if (neighborId !== null && !members.has(neighborId)) {
+        members.add(neighborId);
+        pending.push(neighborId);
+      }
+    }
+  }
+  return members;
 }
 
 /**

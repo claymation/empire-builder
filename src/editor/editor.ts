@@ -28,6 +28,7 @@ import {ViewTransform} from '../render/transform';
 import {computePreview, Preview} from './preview';
 import {
   anchor,
+  deselect,
   dropAnchor,
   EditorState,
   EMPTY,
@@ -37,8 +38,9 @@ import {
   undo,
 } from './state';
 
-/** Heading the first section leaves the planted start at. The start carries no
- *  aim of its own, so this is fixed. */
+/** Heading a network's first section leaves its anchor at. An anchor carries
+ *  no aim of its own, so every network starts the same way — first sections
+ *  laid from two dropped anchors are parallel by construction. */
 const INITIAL_HEADING = 0;
 
 /** Wires the lay-track tool onto `canvas`, drawing within `space`. */
@@ -149,26 +151,24 @@ export function startEditor(
   tool.onMouseUp = (event: paper.ToolEvent) => {
     const view = transform();
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
-    if (!state.pendingAnchor && state.layout.sections.length === 0) {
-      // An empty canvas: drop the anchor the first section grows from.
+    // Route the click by the same preview the overlay drew: a hovered ring
+    // selects that end; a shape lays it — from the pending anchor as a new
+    // network, or extended from the railhead, a latched end snap closing the
+    // join. With nothing to select or lay and no railhead, the click drops
+    // the anchor a new network grows from.
+    const {shape, closeOnto, hover} = preview(view);
+    if (hover) {
+      setState(selectRailhead(state, hover));
+    } else if (shape) {
+      if (state.pendingAnchor) {
+        setState(anchor(state, withId(shape)));
+      } else if (state.railhead) {
+        setState(extend(state, state.railhead, withId(shape), closeOnto));
+      }
+    } else if (!state.railhead) {
       setState(
         dropAnchor(state, {position: pointer, heading: INITIAL_HEADING})
       );
-    } else {
-      // Route the click by the same preview the overlay drew: a hovered ring
-      // selects that end; otherwise a shape lays it — from the pending anchor
-      // as a new network, or extended from the railhead, a latched end snap
-      // closing the join.
-      const {shape, closeOnto, hover} = preview(view);
-      if (hover) {
-        setState(selectRailhead(state, hover));
-      } else if (shape) {
-        if (state.pendingAnchor) {
-          setState(anchor(state, withId(shape)));
-        } else if (state.railhead) {
-          setState(extend(state, state.railhead, withId(shape), closeOnto));
-        }
-      }
     }
     refreshAll();
   };
@@ -185,6 +185,11 @@ export function startEditor(
   };
   window.addEventListener('keydown', event => {
     setSuspend(event.altKey);
+    if (event.key === 'Escape') {
+      setState(deselect(state));
+      refreshAll();
+      return;
+    }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault();
       setState(event.shiftKey ? redo(state) : undo(state));
@@ -220,10 +225,11 @@ function describe(state: EditorState): string {
   );
   const count = sections.length;
   const summary = `${count} section${count === 1 ? '' : 's'} · ${toInches(run).toFixed(1)}″ run · ${UNDO_KEYS} to undo`;
-  // With no railhead but ends still open, point at the gesture that resumes.
-  const idle =
-    !state.railhead &&
-    !state.pendingAnchor &&
-    openEnds(state.layout).length > 0;
-  return idle ? `${summary} · Click an open end to keep drawing.` : summary;
+  if (state.railhead || state.pendingAnchor) {
+    return summary;
+  }
+  // Nothing selected: point at the gestures that resume or start anew.
+  return openEnds(state.layout).length > 0
+    ? `${summary} · Click an open end to resume, or click empty space to start new track.`
+    : `${summary} · Click empty space to start new track.`;
 }

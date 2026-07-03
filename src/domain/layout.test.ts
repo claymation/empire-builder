@@ -301,6 +301,51 @@ describe('placeLayout', () => {
     expect(spaceContains(sheet, b)).toBe(false);
   });
 
+  it('places an absorbed network at the poses it had under its own anchor', () => {
+    // Two parallel straights heading 30°, each its own network; a 180° curve
+    // grown from s1's B closes B↔B onto s2's B, fusing them. s2's anchor is
+    // gone, so threading through the new joins must reproduce the poses s2
+    // had under it.
+    const heading = degToRad(30);
+    const anchor1: Pose = {position: {x: 3, y: -2}, heading};
+    // One curve-diameter to the left of s1's run.
+    const anchor2: Pose = {
+      position: {
+        x: 3 - 100 * Math.sin(heading),
+        y: -2 + 100 * Math.cos(heading),
+      },
+      heading,
+    };
+    let layout = anchorSection(
+      EMPTY_LAYOUT,
+      withId('s1', straight(100)),
+      'A',
+      anchor1
+    );
+    layout = anchorSection(layout, withId('s2', straight(100)), 'A', anchor2);
+    const separate = placeLayout(layout);
+    const merged = joinSection(
+      layout,
+      end('s1', 'B'),
+      withId('s3', curve(50, 180, 'ccw')),
+      'A',
+      end('s2', 'B')
+    );
+    expect(merged.anchors).toEqual([
+      {sectionEnd: end('s1', 'A'), pose: anchor1},
+    ]);
+    const placed = placeLayout(merged);
+    for (const name of ['A', 'B'] as const) {
+      const pose = poseOf(placed, end('s2', name));
+      const before = poseOf(separate, end('s2', name));
+      expect(pose.position.x).toBeCloseTo(before.position.x);
+      expect(pose.position.y).toBeCloseTo(before.position.y);
+      expect(normalizeAngle(pose.heading)).toBeCloseTo(
+        normalizeAngle(before.heading)
+      );
+    }
+  });
+
   it('throws when a closing join does not align', () => {
     // Two straights end to end, then a closing join asserting the second's B
     // meets the first's A — which it cannot: they sit 200 apart.
@@ -463,6 +508,54 @@ describe('joinSection', () => {
     expect(layout.joins).toContainEqual({
       ends: [end('s4', 'B'), end('s1', 'A')],
     });
+  });
+
+  /** Two parallel straights, each its own network: s1 at the origin, s2 one
+   *  curve-diameter above it, both heading east. */
+  function twoNetworks(): Layout {
+    const layout = anchorSection(
+      EMPTY_LAYOUT,
+      withId('s1', straight(100)),
+      'A',
+      ORIGIN
+    );
+    return anchorSection(layout, withId('s2', straight(100)), 'A', {
+      position: {x: 0, y: 100},
+      heading: 0,
+    });
+  }
+
+  it('a close onto another network drops the absorbed anchor and keeps at’s', () => {
+    const before = twoNetworks();
+    const merged = joinSection(
+      before,
+      end('s1', 'B'),
+      withId('s3', curve(50, 180, 'ccw')),
+      'A',
+      end('s2', 'B')
+    );
+    expect(merged.anchors).toEqual([
+      {sectionEnd: end('s1', 'A'), pose: ORIGIN},
+    ]);
+    expect(before.anchors).toHaveLength(2); // input unmutated
+  });
+
+  it('a same-network close keeps the anchor: membership decides, not closeOnto', () => {
+    const closed = oval(ORIGIN, inches(48), inches(18));
+    expect(closed.anchors).toEqual([
+      {sectionEnd: end('s1', 'A'), pose: ORIGIN},
+    ]);
+  });
+
+  it('a plain join never touches the anchors', () => {
+    const grown = joinSection(
+      twoNetworks(),
+      end('s1', 'B'),
+      withId('s3', straight(40)),
+      'A',
+      null
+    );
+    expect(grown.anchors).toHaveLength(2);
   });
 
   it('records a misaligned closeOnto; placement, not joinSection, rejects it', () => {
