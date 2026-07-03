@@ -123,11 +123,12 @@ export function renderOverlay(
   }
   if (ghost) {
     // The ghost is one drafted shape — a single segment or arc. Draw it and
-    // label that shape (a curve shows its sweep and radius, a straight 0.0°).
+    // label that shape (a curve shows its sweep and radius, a straight its
+    // length).
     const [shape] = ghost.geometry;
     if (shape) {
       drawGeometry(shape, toCanvas, PREVIEW_COLOR, true);
-      drawAngleLabel(shape, toCanvas);
+      drawDimensionsLabel(shape, toCanvas);
     }
   }
   if (railhead) {
@@ -210,12 +211,14 @@ function drawHoverRing(point: Point, toCanvas: ToCanvas): void {
 }
 
 /**
- * Labels the preview with its sweep (and, for a curve, radius). The label sits
- * by the preview's leading end — near the pointer, where the eye is — pushed
- * clear of the track: radially out from the arc's center for a curve, just above
- * the end for a straight. A straight reads 0.0°.
+ * Labels the preview with its dimensions: a curve its sweep and radius
+ * (`90.0° · r 15.1″`), a straight its zero sweep and length (`0.0° · ℓ 34.1″`
+ * — the script ℓ so the prefix cannot read as a digit 1). The label sits by
+ * the preview's leading end — near the pointer, where the eye is — pushed
+ * clear of the track: radially out from the arc's center for a curve, square
+ * off the run for a straight.
  */
-function drawAngleLabel(
+function drawDimensionsLabel(
   geometry: PlacedSegment | PlacedArc,
   toCanvas: ToCanvas
 ): void {
@@ -230,7 +233,11 @@ function drawAngleLabel(
       outward
     );
   } else {
-    placeLabel('0.0°', toCanvas(segmentEnd(geometry)), new paper.Point(0, -1));
+    const length = toInches(geometry.length);
+    const end = toCanvas(segmentEnd(geometry));
+    const along = end.subtract(toCanvas(geometry.start.position)).normalize();
+    const outward = new paper.Point(along.y, -along.x);
+    placeLabel(`0.0° · ℓ ${length.toFixed(1)}″`, end, outward);
   }
 }
 
