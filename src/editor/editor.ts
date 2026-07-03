@@ -118,12 +118,18 @@ export function startEditor(
   }
 
   function refreshOverlay(view: ViewTransform): void {
-    const {railhead: from, ghost, snap, hover} = preview(view);
+    const {ghost, snap, hover} = preview(view);
+    // The dot and the selected ring mark selection state, not the preview:
+    // they show the moment an anchor drops or an end is selected, with the
+    // pointer wherever it is.
+    const railheadPoint = state.railhead
+      ? poseOf(placed, state.railhead).position
+      : null;
     renderOverlay(
       view,
       ghost,
-      from,
-      state.railhead ? poseOf(placed, state.railhead).position : null,
+      state.pendingAnchor ?? railheadPoint,
+      railheadPoint,
       snap,
       hover ? poseOf(placed, hover).position : null
     );

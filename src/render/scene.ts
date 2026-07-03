@@ -22,7 +22,6 @@ import {
   PlacedArc,
   PlacedSegment,
   Point,
-  Pose,
   radToDeg,
   scale,
   segmentEnd,
@@ -101,13 +100,16 @@ export function renderLayout(
  * rides on top, marking the open end the target has latched onto; a hover ring
  * lights the open end a click would select. Redraw on every move.
  *
- * `selectedEnd` is the selected open end's position — null when drawing grows
- * from a pending anchor, which is a bare `railhead` pose with no end to ring.
+ * `origin` is where drawing grows from — the pending anchor or the selected
+ * railhead — marked with the filled dot. `selectedEnd` is the selected open
+ * end's position — null when drawing grows from a pending anchor, which has
+ * no end to ring. Both are selection state, drawn whether or not a pointer
+ * has produced a ghost.
  */
 export function renderOverlay(
   transform: ViewTransform,
   ghost: PlacedSection | null,
-  railhead: Pose | null,
+  origin: Point | null,
   selectedEnd: Point | null,
   snap: Snap | null,
   hover: Point | null
@@ -132,8 +134,8 @@ export function renderOverlay(
       drawDimensionsLabel(shape, toCanvas);
     }
   }
-  if (railhead) {
-    drawRailhead(railhead.position, toCanvas);
+  if (origin) {
+    drawRailhead(origin, toCanvas);
   }
   if (ring) {
     drawSnapRing(ring, toCanvas);
