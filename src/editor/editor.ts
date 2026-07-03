@@ -13,17 +13,11 @@ import {
   placeLayout,
   PlacedLayout,
   poseOf,
-  sameEnd,
 } from '../domain/layout';
 import {Section, SectionShape, sectionLength} from '../domain/section';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
-import {
-  OpenEndRing,
-  renderOverlay,
-  renderStatic,
-  sceneTransform,
-} from '../render/scene';
+import {renderLayout, renderOverlay, sceneTransform} from '../render/scene';
 import {ViewTransform} from '../render/transform';
 import {computePreview, Preview} from './preview';
 import {
@@ -105,19 +99,13 @@ export function startEditor(
     );
   }
 
-  /** Every open end as a ring to draw; the railhead's reads as selected. */
-  function openRings(): OpenEndRing[] {
-    return openEndPoses(state.layout, placed).map(({sectionEnd, pose}) => ({
-      point: pose.position,
-      selected: state.railhead !== null && sameEnd(sectionEnd, state.railhead),
-    }));
+  /** Every open end's position, each ringed as a clickable affordance. */
+  function openEndPoints(): Point[] {
+    return openEndPoses(state.layout, placed).map(({pose}) => pose.position);
   }
 
-  function refreshStatic(view: ViewTransform): void {
-    renderStatic(view, space, placed, openRings());
-    if (status) {
-      status.textContent = describe(state);
-    }
+  function refreshLayout(view: ViewTransform): void {
+    renderLayout(view, space, placed, openEndPoints());
   }
 
   function refreshOverlay(view: ViewTransform): void {
@@ -126,18 +114,27 @@ export function startEditor(
       view,
       ghost,
       from,
+      state.railhead ? poseOf(placed, state.railhead).position : null,
       snap,
       hover ? poseOf(placed, hover).position : null
     );
   }
 
-  // refresh* build the Paper.js scene graph; flushing it to the canvas
-  // (paper.view.update) is a separate step each frame ends with, so it is not
-  // tied to which layer happens to draw last.
+  function refreshStatus(): void {
+    if (status) {
+      status.textContent = describe(state);
+    }
+  }
+
+  // refresh* each re-sync one output from current state: the two canvas
+  // layers and the DOM status line. Flushing the canvas (paper.view.update)
+  // is a separate step each frame ends with, so it is not tied to which
+  // layer happens to draw last.
   function refreshAll(): void {
     const view = transform();
-    refreshStatic(view);
+    refreshLayout(view);
     refreshOverlay(view);
+    refreshStatus();
     paper.view.update();
   }
 

@@ -65,9 +65,10 @@ export type Snap =
 
 /**
  * Resolves how a section laid from `from` toward `target` snaps: onto an open
- * end's point within `pointTolerance`, else its nearest tangent/normal line
- * within `lineTolerance`, a point winning over a line. Failing both it returns
- * the `angle` snap, leaving the sweep to snap toward `target`.
+ * end's point within `pointTolerance`, else the nearest tangent/normal line —
+ * an open end's or `from`'s own — within `lineTolerance`, a point winning over
+ * a line. Failing both it returns the `angle` snap, leaving the sweep to snap
+ * toward `target`.
  *
  * An end snap lands the section's end on the open end itself, so it is offered
  * only when the section reaching that end meets it tangentially back-to-back —
@@ -123,7 +124,11 @@ export function resolveSnap(
   }
 
   let nearestLine: {point: Point; line: Line; gap: number} | null = null;
-  for (const {pose} of openEnds) {
+  // `from` offers its own lines alongside the open ends': an anchor stands at
+  // no open end, and the 180° arc back onto its start's normal must snap
+  // wherever drawing starts. The tangent `from` runs along is dropped as
+  // redundant just below, like any other.
+  for (const pose of [from, ...openEnds.map(({pose}) => pose)]) {
     for (const line of tangentAndNormalLines(pose)) {
       if (colinear(from, line)) {
         continue;

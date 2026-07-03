@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {type Pose} from '../domain/geometry';
+import {radToDeg, type Pose} from '../domain/geometry';
 import {type SectionEnd, type SectionEndPose} from '../domain/layout';
 import {shapeTo} from '../domain/snapping';
 import {computePreview} from './preview';
@@ -136,6 +136,19 @@ describe('computePreview', () => {
       false
     );
     expect(p.hover).toEqual(end('n', 'A'));
+  });
+
+  it('snaps a 180° curve from a pending anchor onto its normal guideline', () => {
+    // A network's first section: the pending anchor is the railhead pose and
+    // no open end exists. A pointer just off abreast of the anchor pulls onto
+    // the anchor's normal, so the half-circle starting a return loop is exact.
+    const p = computePreview(RAILHEAD, {x: 4, y: 100}, [], 1, false);
+    expect(p.snap?.kind).toBe('line');
+    expect(p.snap?.point.x).toBeCloseTo(0);
+    expect(p.snap?.point.y).toBeCloseTo(100);
+    if (p.shape?.kind !== 'curved') throw new Error('expected a curve');
+    expect(radToDeg(p.shape.arc.sweep)).toBeCloseTo(180);
+    expect(p.shape.arc.radius).toBeCloseTo(50);
   });
 
   it('suspending snapping lays the plain section, hovering nothing', () => {
