@@ -18,6 +18,7 @@ import {
   arcMidpoint,
   Line,
   normalize,
+  normalizeAngle,
   PlacedArc,
   PlacedSegment,
   Point,
@@ -212,11 +213,13 @@ function drawHoverRing(point: Point, toCanvas: ToCanvas): void {
 
 /**
  * Labels the preview with its dimensions: a curve its sweep and radius
- * (`90.0° · r 15.1″`), a straight its zero sweep and length (`0.0° · ℓ 34.1″`
- * — the script ℓ so the prefix cannot read as a digit 1). The label sits by
- * the preview's leading end — near the pointer, where the eye is — pushed
- * clear of the track: radially out from the arc's center for a curve, square
- * off the run for a straight.
+ * (`90.0° · r 15.1″`), a straight its heading and length (`∠ 30.0° · ℓ 34.1″`
+ * — the ∠ marking a direction rather than a sweep, the script ℓ keeping the
+ * prefix from reading as a digit 1). The heading is the value aiming a first
+ * section chooses, and it shows the angle snap catching a tidy multiple. The
+ * label sits by the preview's leading end — near the pointer, where the eye
+ * is — pushed clear of the track: radially out from the arc's center for a
+ * curve, square off the run for a straight.
  */
 function drawDimensionsLabel(
   geometry: PlacedSegment | PlacedArc,
@@ -233,11 +236,16 @@ function drawDimensionsLabel(
       outward
     );
   } else {
+    const heading = radToDeg(normalizeAngle(geometry.start.heading));
     const length = toInches(geometry.length);
     const end = toCanvas(segmentEnd(geometry));
     const along = end.subtract(toCanvas(geometry.start.position)).normalize();
     const outward = new paper.Point(along.y, -along.x);
-    placeLabel(`0.0° · ℓ ${length.toFixed(1)}″`, end, outward);
+    placeLabel(
+      `∠ ${heading.toFixed(1)}° · ℓ ${length.toFixed(1)}″`,
+      end,
+      outward
+    );
   }
 }
 
