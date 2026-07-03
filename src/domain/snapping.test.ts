@@ -377,6 +377,56 @@ describe('resolveSnap', () => {
     ).toBe('angle');
   });
 
+  it("offers `from`'s own normal: the 180° arc from an anchor snaps", () => {
+    // Drawing from a bare anchor — no open end anywhere. A target just off
+    // abreast of the anchor projects onto the anchor's normal line (x = 0),
+    // and the section built onto it is the exact half-circle.
+    const snap = resolveSnap(
+      from,
+      {x: 4, y: 200},
+      [],
+      pointTolerance,
+      lineTolerance
+    );
+    expect(snap.kind).toBe('line');
+    expect(snap.point.x).toBeCloseTo(0);
+    expect(snap.point.y).toBeCloseTo(200);
+    const section = shapeForSnap(from, snap, degToRad(15), degToRad(5));
+    if (section?.kind !== 'curved') throw new Error('expected a curve');
+    expect(radToDeg(section.arc.sweep)).toBeCloseTo(180);
+    expect(section.arc.radius).toBeCloseTo(100);
+    expect(shownSnap(from, snap, section)).toEqual(snap); // guide is drawn
+  });
+
+  it("offers `from`'s normal at an off-grid pose", () => {
+    const heading = degToRad(30);
+    const anchor: Pose = {position: {x: 3, y: -2}, heading};
+    const normal = {x: -Math.sin(heading), y: Math.cos(heading)};
+    const forward = {x: Math.cos(heading), y: Math.sin(heading)};
+    // 100 out along the normal, nudged 4 forward — inside the line magnet.
+    const target = {
+      x: 3 + 100 * normal.x + 4 * forward.x,
+      y: -2 + 100 * normal.y + 4 * forward.y,
+    };
+    const snap = resolveSnap(anchor, target, [], pointTolerance, lineTolerance);
+    expect(snap.kind).toBe('line');
+    expect(snap.point.x).toBeCloseTo(3 + 100 * normal.x);
+    expect(snap.point.y).toBeCloseTo(-2 + 100 * normal.y);
+  });
+
+  it('does not offer the tangent `from` runs along', () => {
+    // The anchor's own heading line would pull on every dead-ahead target —
+    // a guide with nothing to align. A target alongside it stays unsnapped.
+    const snap = resolveSnap(
+      from,
+      {x: 200, y: 4},
+      [],
+      pointTolerance,
+      lineTolerance
+    );
+    expect(snap.kind).toBe('angle');
+  });
+
   it('skips the zero-length point on an end at the railhead', () => {
     // Drawing from the anchor itself: a target within the point magnet but off
     // its lines must not latch the end (that section would be zero-length); it
