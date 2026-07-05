@@ -9,6 +9,7 @@ import {
 } from '../domain/section';
 import {
   startNetwork,
+  tieInSection,
   deselect,
   EMPTY_STATE,
   extend,
@@ -142,6 +143,57 @@ function anchored(): ReturnType<typeof startNetwork> {
     0
   );
 }
+
+describe('tieInSection', () => {
+  /** s1 anchored, plus an anchor aimed from (250, 0) at s1's open B end. */
+  function aimedAtB(): ReturnType<typeof dropAnchor> {
+    return dropAnchor(anchored(), {x: 250, y: 0});
+  }
+
+  it('joins the aimed section by its far end, recording no anchor', () => {
+    // The section runs A (the aim) → B (the latched end), so the join names
+    // its B end; the plan keeps s1's single anchor.
+    const tiedIn = tieInSection(
+      aimedAtB(),
+      withId('s2', straight(150)),
+      end('s1', 'B')
+    );
+    expect(tiedIn.layout.joins).toEqual([
+      {ends: [end('s1', 'B'), end('s2', 'B')]},
+    ]);
+    expect(tiedIn.layout.anchors).toHaveLength(1);
+    expect(tiedIn.pendingAnchor).toBeNull();
+  });
+
+  it('places the tiedIn section with its A end at the aim', () => {
+    const tiedIn = tieInSection(
+      aimedAtB(),
+      withId('s2', straight(150)),
+      end('s1', 'B')
+    );
+    const a = poseOf(placeLayout(tiedIn.layout), end('s2', 'A'));
+    expect(a.position.x).toBeCloseTo(250);
+    expect(a.position.y).toBeCloseTo(0);
+  });
+
+  it('advances the railhead to the open A end, one undo step back', () => {
+    const tiedIn = tieInSection(
+      aimedAtB(),
+      withId('s2', straight(150)),
+      end('s1', 'B')
+    );
+    expect(tiedIn.railhead).toEqual(end('s2', 'A'));
+    const undone = undo(tiedIn);
+    expect(undone.layout.sections.map(s => s.id)).toEqual(['s1']);
+    expect(undone.railhead).toBeNull(); // the aim had cleared the selection
+  });
+
+  it('tying in without a pending anchor throws', () => {
+    expect(() =>
+      tieInSection(anchored(), withId('s2', straight(150)), end('s1', 'B'))
+    ).toThrow();
+  });
+});
 
 describe('selectRailhead', () => {
   it('selects an open end', () => {

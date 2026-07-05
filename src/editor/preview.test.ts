@@ -2,7 +2,12 @@ import {describe, it, expect} from 'vitest';
 import {degToRad, radToDeg, type Point, type Pose} from '../domain/geometry';
 import {type SectionEnd, type SectionEndPose} from '../domain/layout';
 import {shapeTo} from '../domain/snapping';
-import {computePreview, type DrawOrigin, type Preview} from './preview';
+import {
+  computePreview,
+  overlayFeatures,
+  type DrawOrigin,
+  type Preview,
+} from './preview';
 
 /** The railhead's outward pose: at the origin, facing east (+x). */
 const RAILHEAD: Pose = {position: {x: 0, y: 0}, heading: 0};
@@ -61,6 +66,10 @@ const FACING_END = oe(end('f', 'B'), {
   position: {x: 100, y: 100},
   heading: Math.PI / 2,
 });
+
+// An open end dead ahead of the east-facing railhead, its section beyond, so
+// the plain straight to its point meets it back-to-back.
+const AHEAD_END = oe(end('a', 'B'), {position: {x: 150, y: 0}, heading: 0});
 
 describe('computePreview', () => {
   it('previews nothing without a pointer', () => {
@@ -199,6 +208,24 @@ describe('computePreview', () => {
     expect(select.end).toEqual(end('n', 'A'));
   });
 
+  it('ties a locked aim into an open end its arc latches', () => {
+    // The quarter-turn arc from the locked east aim reaches FACING_END
+    // tangentially, so its point latches. The click must join the section
+    // onto that end, not anchor a separate network over it.
+    const p = computePreview(
+      locked(RAILHEAD),
+      {x: 104, y: 103},
+      [FACING_END],
+      1,
+      false
+    );
+    const tieIn = expectKind(p, 'tieIn');
+    expect(tieIn.onto).toEqual(end('f', 'B'));
+    expect(tieIn.shape.kind).toBe('curved');
+    // The ghost reaches the latched ring exactly.
+    expect(tieIn.snap).toMatchObject({kind: 'end', point: {x: 100, y: 100}});
+  });
+
   it('snaps a 180° curve from a locked heading onto its normal guideline', () => {
     // A network's first section with the aim locked: the anchor stands as a
     // full pose and no open end exists. A pointer just off abreast pulls onto
@@ -213,7 +240,71 @@ describe('computePreview', () => {
     expect(start.shape.arc.radius).toBeCloseTo(50);
   });
 
-  it('suspending snapping lays the plain section, hovering nothing', () => {
+  it('suspending snapping lays the plain section: nothing pulls', () => {
+    // The pointer sits near — but not exactly on — the open end and its
+    // lines, so with the magnets shrunk to exactness nothing reads as
+    // aligned: no guide, no seat, and the raw section to the pointer.
+    const p = computePreview(
+      railhead(RAILHEAD),
+      {x: 100.3, y: 49.2},
+      [SIDE_END],
+      1,
+      true
+    );
+    const extend = expectKind(p, 'extend');
+    expect(overlayFeatures(p).guide).toBeNull();
+    expect(extend.closeOnto).toBeNull();
+    expect(extend.shape).toEqual(shapeTo(RAILHEAD, {x: 100.3, y: 49.2}));
+  });
+
+  it('suspending snapping still reads a guideline the pointer sits exactly on', () => {
+    // (100, 200) lies exactly on SIDE_END's normal (x = 100): the zero-size
+    // magnet cannot pull, but exact alignment still reads, so the guide is
+    // shown and the section's end lands on the line.
+    const p = computePreview(
+      railhead(RAILHEAD),
+      {x: 100, y: 200},
+      [SIDE_END],
+      1,
+      true
+    );
+    const extend = expectKind(p, 'extend');
+    expect(extend.snap?.kind).toBe('line');
+    expect(extend.closeOnto).toBeNull();
+  });
+
+  it('suspending snapping still closes a join the drawn track seats on', () => {
+    // The raw straight to the pointer — exactly on AHEAD_END's point — meets
+    // it back-to-back: the seating is a fact of the geometry, so the end
+    // still latches and the click still records the join.
+    const p = computePreview(
+      railhead(RAILHEAD),
+      {x: 150, y: 0},
+      [AHEAD_END],
+      1,
+      true
+    );
+    const extend = expectKind(p, 'extend');
+    expect(extend.closeOnto).toEqual(end('a', 'B'));
+    expect(extend.snap?.kind).toBe('end');
+  });
+
+  it('suspending snapping still ties a locked aim into a seated end', () => {
+    const p = computePreview(
+      locked(RAILHEAD),
+      {x: 150, y: 0},
+      [AHEAD_END],
+      1,
+      true
+    );
+    const tieIn = expectKind(p, 'tieIn');
+    expect(tieIn.onto).toEqual(end('a', 'B'));
+  });
+
+  it('suspending snapping selects an unlatchable end the pointer sits exactly on', () => {
+    // The pointer is exactly on SIDE_END's point, which no tangent section
+    // can reach back-to-back: the end cannot latch, so the exact hit hovers
+    // and the click selects rather than laying a kinked, unjoinable end.
     const p = computePreview(
       railhead(RAILHEAD),
       {x: 100, y: 50},
@@ -221,17 +312,15 @@ describe('computePreview', () => {
       1,
       true
     );
-    const extend = expectKind(p, 'extend');
-    expect(extend.snap).toBeNull();
-    expect(extend.closeOnto).toBeNull();
-    expect(extend.shape).toEqual(shapeTo(RAILHEAD, {x: 100, y: 50}));
+    const select = expectKind(p, 'select');
+    expect(select.end).toEqual(end('s', 'B'));
   });
 
   it('suspending snapping with no railhead drops at the raw pointer', () => {
-    const p = computePreview(null, {x: 100, y: 50}, [SIDE_END], 1, true);
+    const p = computePreview(null, {x: 101, y: 49}, [SIDE_END], 1, true);
     const drop = expectKind(p, 'dropAnchor');
     expect(drop.snap).toBeNull();
-    expect(drop.point).toEqual({x: 100, y: 50});
+    expect(drop.point).toEqual({x: 101, y: 49});
   });
 });
 
@@ -292,6 +381,30 @@ describe('aiming a pending anchor', () => {
     expect(start.snap?.point.y).toBeCloseTo(200);
   });
 
+  it('ties in when a guideline slide seats the aim on the open end', () => {
+    // The end faces west at (100, 50); the anchor stands collinear at
+    // (250, 50). The pointer rides the end's normal (x = 100) just outside
+    // the ring, a shade off level: the aim snaps level and the slide lands
+    // the straight exactly on the end — a join the click must record even
+    // though the pointer never latched the end's point.
+    const westEnd = oe(end('w', 'B'), {
+      position: {x: 100, y: 50},
+      heading: Math.PI,
+    });
+    const p = computePreview(
+      aim({x: 250, y: 50}),
+      {x: 100.5, y: 62.7},
+      [westEnd],
+      1,
+      false
+    );
+    const tieIn = expectKind(p, 'tieIn');
+    expect(tieIn.onto).toEqual(end('w', 'B'));
+    expect(tieIn.snap?.kind).toBe('line');
+    if (tieIn.shape.kind !== 'straight') throw new Error('expected a straight');
+    expect(tieIn.shape.length).toBeCloseTo(150);
+  });
+
   it('a hovered ring outranks the aim', () => {
     const p = computePreview(
       aim({x: 0, y: 0}),
@@ -320,5 +433,35 @@ describe('aiming a pending anchor', () => {
   it('previews nothing from a degenerate aim', () => {
     const p = computePreview(aim({x: 3, y: 4}), {x: 3, y: 4}, [], 1, false);
     expect(p.kind).toBe('nothing');
+  });
+});
+
+describe('overlayFeatures', () => {
+  it('a tie-in draws its ghost, its guideline, and the seat it will join', () => {
+    const westEnd = oe(end('w', 'B'), {
+      position: {x: 100, y: 50},
+      heading: Math.PI,
+    });
+    const p = computePreview(
+      aim({x: 250, y: 50}),
+      {x: 100.5, y: 62.7},
+      [westEnd],
+      1,
+      false
+    );
+    const {ghost, guide, seat, hoveredEnd} = overlayFeatures(p);
+    expect(ghost).not.toBeNull();
+    expect(guide).not.toBeNull();
+    expect(seat).toEqual(end('w', 'B'));
+    expect(hoveredEnd).toBeNull();
+  });
+
+  it('a hover draws only the end a click would select', () => {
+    const p = computePreview(null, {x: 100, y: 55}, [SIDE_END], 1, false);
+    const {ghost, guide, seat, hoveredEnd} = overlayFeatures(p);
+    expect(ghost).toBeNull();
+    expect(guide).toBeNull();
+    expect(seat).toBeNull();
+    expect(hoveredEnd).toEqual(end('s', 'B'));
   });
 });

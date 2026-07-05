@@ -36,6 +36,7 @@ import {
   startNetwork,
   redo,
   selectRailhead,
+  tieInSection,
   undo,
 } from './state';
 
@@ -134,7 +135,9 @@ export function startEditor(
   }
 
   function refreshOverlay(view: ViewTransform): void {
-    const {ghost, snap, hoveredEnd} = overlayFeatures(previewClick(view));
+    const {ghost, guide, seat, hoveredEnd} = overlayFeatures(
+      previewClick(view)
+    );
     // The start's dot and ring mark selection state, not the preview: they
     // show the moment an anchor drops or an end is selected, with the pointer
     // wherever it is.
@@ -143,7 +146,8 @@ export function startEditor(
       start:
         state.pendingAnchor ??
         (state.railhead ? poseOf(placed, state.railhead).position : null),
-      snap,
+      guide,
+      seat: seat ? poseOf(placed, seat).position : null,
       halo: hoveredEnd ? poseOf(placed, hoveredEnd).position : null,
     });
   }
@@ -189,6 +193,9 @@ export function startEditor(
         setState(
           startNetwork(state, withId(preview.shape), preview.origin.heading)
         );
+        break;
+      case 'tieIn':
+        setState(tieInSection(state, withId(preview.shape), preview.onto));
         break;
       case 'extend':
         setState(

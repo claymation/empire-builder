@@ -163,6 +163,30 @@ export function resolveAnchorSnap(
 }
 
 /**
+ * The open end that `shape`, laid from `from`, seats on: the shape's far (`B`)
+ * end poses as the reverse of the open end's — one place, opposite facings,
+ * the back-to-back join threading seats — or null when it seats on none. This
+ * is a fact of the laid geometry, not a snap: whatever shaped the section —
+ * an end latch, a slide onto a guideline, or freehand placement — a far end
+ * seated on an open end is a join, and the caller records it. The tolerance
+ * is {@link posesEqual}'s ({@link EPSILON}): a near miss or a kinked meeting
+ * seats on nothing, since a join demands tangency.
+ */
+export function findSeatedEnd(
+  from: Pose,
+  shape: SectionShape,
+  openEnds: readonly SectionEndPose[]
+): SectionEnd | null {
+  const far = endPose(placeSection(shape, 'A', from), 'B');
+  for (const {sectionEnd, pose} of openEnds) {
+    if (posesEqual(far, reversePose(pose))) {
+      return sectionEnd;
+    }
+  }
+  return null;
+}
+
+/**
  * Builds the section a {@link Snap} calls for. The snap decides *what* to aim at
  * from pointer proximity alone; turning that into a section — which needs the
  * angle `increment` and `threshold` (radians) — lives here, so {@link resolveSnap}
