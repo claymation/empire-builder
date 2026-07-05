@@ -2,18 +2,14 @@
  * What the next click would do, computed in one place so the on-screen feedback
  * and the commit agree — the lay-track tool's pure decision core, free of
  * Paper.js and the DOM. The editor edge (./editor) feeds it the pointer and the
- * current open ends, draws what it returns, and routes the click by the same
- * value.
+ * current open ends, draws what it returns ({@link overlayFeatures}), and
+ * routes the click by its kind.
  *
- * The pointer means exactly one thing at a time, and the preview shows which:
- * a ghost reaching a latched ring — the click closes the join; a hovered ring
- * with no ghost — the click selects that end; a ghost alone — the click lays
- * the section; with nothing selected to draw from, the click drops a new
- * network's anchor at `anchorPoint`, the pointer pulled onto any guideline in
- * range. A pending anchor aims ({@link DrawOrigin}): its ghost is the straight
- * toward the pointer, and curves wait for the heading to be locked. A latch
- * outranks a hover, so the two never both claim a click; a hover suppresses
- * the ghost, so the preview never shows a section a click would not lay.
+ * The pointer means exactly one thing at a time, and the {@link Preview}'s kind
+ * names which. A latch outranks a hover, so the two never both claim a click;
+ * a hover suppresses the ghost, so the preview never shows a section a click
+ * would not lay. A pending anchor aims ({@link DrawOrigin}): its ghost is the
+ * straight toward the pointer, and curves wait for the heading to be locked.
  */
 
 import {
@@ -46,6 +42,7 @@ import {
   snapToIncrement,
   straightOntoLine,
 } from '../domain/snapping';
+import {assertNever} from '../domain/validate';
 
 /** Curve sweeps snap to multiples of this when within SNAP_THRESHOLD of one. */
 const SNAP_INCREMENT = degToRad(15);
@@ -57,44 +54,63 @@ const LINE_MAGNET_PX = 8;
 export const RING_HIT_PX = 12;
 
 /**
- * Where drawing grows from. A `pose` fixes both position and heading — a
- * selected railhead, or a pending anchor whose heading has been locked. A
- * `point` fixes only the position — a pending anchor whose heading follows
- * the pointer until it is locked or the first section is laid.
+ * Where drawing grows from. A selected `railhead` fixes both position and
+ * heading: `at` names the open end, and `pose` faces away from its section,
+ * the direction track extends. A pending `anchor` fixes only the position;
+ * its `heading` is the locked aim, or null while the aim follows the pointer.
  */
 export type DrawOrigin =
-  | {readonly kind: 'pose'; readonly pose: Pose}
-  | {readonly kind: 'point'; readonly position: Point};
+  | {readonly kind: 'railhead'; readonly at: SectionEnd; readonly pose: Pose}
+  | {
+      readonly kind: 'anchor';
+      readonly position: Point;
+      readonly heading: number | null;
+    };
 
 /**
- * What the next click would do: the `railhead` it lays from (for an aim, the
- * pose the aim resolved to — its heading is the one to commit), the section's
- * `shape` (to commit), that shape placed as a `ghost` (the dashed preview drawn
- * under the pointer), the `snap` that shaped it, the open end it closes onto,
- * the open end whose ring is hovered — which the click selects instead of
- * laying anything — and `anchorPoint`, where the click drops a new network's
- * anchor: the pointer, pulled onto any guideline in range; null whenever the
- * click has something to lay or select instead.
+ * What the next click would do, one kind per meaning:
+ *
+ * - `select`: the pointer hovers an open end's ring; the click selects it.
+ * - `startNetwork`: a ghost grows from a pending anchor; the click starts a
+ *   new network, laying its first section and leaving `origin` at its aimed
+ *   heading.
+ * - `extend`: a ghost grows from the railhead `at`; the click lays it, closing
+ *   a join onto `closeOnto` when the target latched an open end.
+ * - `dropAnchor`: nothing is selected; the click drops a new network's anchor
+ *   at `point` — the pointer, pulled onto any guideline in range (`snap`).
+ * - `aim`: drawing grows from `origin`, but the pointer offers no section to
+ *   lay — it sits on the origin, or behind a fixed heading.
+ * - `nothing`: no pointer on the canvas, or nothing for a click to do.
+ *
+ * The laying kinds carry the `shape` to commit, that shape placed as a `ghost`
+ * (the dashed preview drawn under the pointer), and the `snap` that shaped it.
  */
-export interface Preview {
-  readonly railhead: Pose | null;
-  readonly shape: SectionShape | null;
-  readonly ghost: PlacedSection | null;
-  readonly snap: Snap | null;
-  readonly closeOnto: SectionEnd | null;
-  readonly hover: SectionEnd | null;
-  readonly anchorPoint: Point | null;
-}
+export type Preview =
+  | {readonly kind: 'nothing'}
+  | {readonly kind: 'select'; readonly end: SectionEnd}
+  | {
+      readonly kind: 'dropAnchor';
+      readonly point: Point;
+      readonly snap: Snap | null;
+    }
+  | {readonly kind: 'aim'; readonly origin: Pose}
+  | {
+      readonly kind: 'startNetwork';
+      readonly origin: Pose;
+      readonly shape: SectionShape;
+      readonly ghost: PlacedSection;
+      readonly snap: Snap | null;
+    }
+  | {
+      readonly kind: 'extend';
+      readonly at: SectionEnd;
+      readonly shape: SectionShape;
+      readonly ghost: PlacedSection;
+      readonly snap: Snap | null;
+      readonly closeOnto: SectionEnd | null;
+    };
 
-const NOTHING: Preview = {
-  railhead: null,
-  shape: null,
-  ghost: null,
-  snap: null,
-  closeOnto: null,
-  hover: null,
-  anchorPoint: null,
-};
+const NOTHING: Preview = {kind: 'nothing'};
 
 /**
  * Computes the {@link Preview} for a pointer at `target`. `origin` is where
@@ -115,29 +131,94 @@ export function computePreview(
     return NOTHING;
   }
   if (suspendSnap) {
+    if (!origin) {
+      return {kind: 'dropAnchor', point: target, snap: null};
+    }
     const pose = rawPose(origin, target);
     return pose
-      ? lay(pose, shapeTo(pose, target), null, null)
-      : {...NOTHING, anchorPoint: target};
+      ? lay(origin, pose, shapeTo(pose, target), null, null)
+      : NOTHING;
   }
   if (!origin) {
     const hover = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
     if (hover) {
-      return {...NOTHING, hover};
+      return {kind: 'select', end: hover};
     }
     const snap = resolveAnchorSnap(
       target,
       openEnds,
       LINE_MAGNET_PX / viewScale
     );
-    return {...NOTHING, snap, anchorPoint: snap ? snap.point : target};
+    return {kind: 'dropAnchor', point: snap ? snap.point : target, snap};
   }
-  if (origin.kind === 'point') {
-    return aimPreview(origin.position, target, openEnds, viewScale);
+  switch (origin.kind) {
+    case 'anchor':
+      return origin.heading === null
+        ? aimPreview(origin.position, target, openEnds, viewScale)
+        : snappedPreview(
+            origin,
+            {position: origin.position, heading: origin.heading},
+            target,
+            openEnds,
+            viewScale
+          );
+    case 'railhead':
+      return snappedPreview(origin, origin.pose, target, openEnds, viewScale);
+    default:
+      return assertNever(origin);
   }
-  const railhead = origin.pose;
+}
+
+/**
+ * The features of a preview the overlay draws: the ghost under the pointer,
+ * the snap feedback (guide line or latch ring) that shaped it, and the open
+ * end a click would select.
+ */
+export function overlayFeatures(preview: Preview): {
+  ghost: PlacedSection | null;
+  snap: Snap | null;
+  hoveredEnd: SectionEnd | null;
+} {
+  switch (preview.kind) {
+    case 'startNetwork':
+    case 'extend':
+      return {ghost: preview.ghost, snap: preview.snap, hoveredEnd: null};
+    case 'dropAnchor':
+      return {ghost: null, snap: preview.snap, hoveredEnd: null};
+    case 'select':
+      return {ghost: null, snap: null, hoveredEnd: preview.end};
+    case 'aim':
+    case 'nothing':
+      return {ghost: null, snap: null, hoveredEnd: null};
+    default:
+      return assertNever(preview);
+  }
+}
+
+/**
+ * The heading an aim in progress points along — the value locking captures —
+ * or null when nothing is aimed.
+ */
+export function aimedHeading(preview: Preview): number | null {
+  return preview.kind === 'startNetwork' || preview.kind === 'aim'
+    ? preview.origin.heading
+    : null;
+}
+
+/**
+ * The preview when drawing grows from a full pose — a railhead, or a pending
+ * anchor whose heading is locked: the ordinary snapped drawing path, where the
+ * pointer's target resolves against the open ends' points and lines.
+ */
+function snappedPreview(
+  origin: DrawOrigin,
+  from: Pose,
+  target: Point,
+  openEnds: readonly SectionEndPose[],
+  viewScale: number
+): Preview {
   const snap = resolveSnap(
-    railhead,
+    from,
     target,
     openEnds,
     POINT_MAGNET_PX / viewScale,
@@ -149,14 +230,15 @@ export function computePreview(
   if (snap.kind !== 'end') {
     const hover = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
     if (hover) {
-      return {...NOTHING, railhead, hover};
+      return {kind: 'select', end: hover};
     }
   }
-  const shape = shapeForSnap(railhead, snap, SNAP_INCREMENT, SNAP_THRESHOLD);
+  const shape = shapeForSnap(from, snap, SNAP_INCREMENT, SNAP_THRESHOLD);
   return lay(
-    railhead,
+    origin,
+    from,
     shape,
-    shownSnap(railhead, snap, shape),
+    shownSnap(from, snap, shape),
     snap.kind === 'end' ? snap.end : null
   );
 }
@@ -180,7 +262,7 @@ function aimPreview(
 ): Preview {
   const hover = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
   if (hover) {
-    return {...NOTHING, hover};
+    return {kind: 'select', end: hover};
   }
   const aim = headingToward(anchor, target);
   if (aim === null) {
@@ -197,58 +279,86 @@ function aimPreview(
   if (pull && pull.kind === 'line') {
     const alignedStraight = straightOntoLine(pose, pull.line);
     if (alignedStraight) {
-      return lay(
-        pose,
-        alignedStraight,
-        {
-          kind: 'line',
-          point: endPose(placeSection(alignedStraight, 'A', pose), 'B')
-            .position,
-          line: pull.line,
-        },
-        null
-      );
+      return layFromAnchor(pose, alignedStraight, {
+        kind: 'line',
+        point: endPose(placeSection(alignedStraight, 'A', pose), 'B').position,
+        line: pull.line,
+      });
     }
   }
   // A snapped heading leaves the pointer a hair off-axis; the straight runs to
   // its forward projection, so the preview keeps tracking the pointer.
   const reach = dot(unitVector(heading), subtract(target, anchor));
-  return lay(pose, reach > EPSILON ? straight(reach) : null, null, null);
+  return reach > EPSILON
+    ? layFromAnchor(pose, straight(reach), null)
+    : {kind: 'aim', origin: pose};
 }
 
 /**
- * The pose to draw from when snapping is suspended (Option/Alt). A `pose`
- * origin already is one. A `point` origin becomes one by pointing straight at
- * `target` — the raw aim, no angle snap. Null when there is no origin at all,
- * or when the pointer sits on the anchor itself and there is no direction to
- * point yet.
+ * The pose to draw from when snapping is suspended (Option/Alt). A railhead,
+ * or a locked anchor, already fixes one. An aiming anchor points straight at
+ * `target` — the raw aim, no angle snap — and fixes none while the pointer
+ * sits on the anchor itself, leaving no direction to point.
  */
-function rawPose(origin: DrawOrigin | null, target: Point): Pose | null {
-  if (!origin) {
-    return null;
+function rawPose(origin: DrawOrigin, target: Point): Pose | null {
+  switch (origin.kind) {
+    case 'railhead':
+      return origin.pose;
+    case 'anchor': {
+      if (origin.heading !== null) {
+        return {position: origin.position, heading: origin.heading};
+      }
+      const aim = headingToward(origin.position, target);
+      return aim === null ? null : {position: origin.position, heading: aim};
+    }
+    default:
+      return assertNever(origin);
   }
-  if (origin.kind === 'pose') {
-    return origin.pose;
-  }
-  const aim = headingToward(origin.position, target);
-  return aim === null ? null : {position: origin.position, heading: aim};
 }
 
-/** A preview that lays `shape` from `railhead` — the ghost placed to match. */
+/**
+ * A preview that lays `shape` from `pose` — an `extend` from a railhead, a
+ * `startNetwork` from a pending anchor — or, with no shape to lay, the bare
+ * aim.
+ */
 function lay(
-  railhead: Pose,
+  origin: DrawOrigin,
+  pose: Pose,
   shape: SectionShape | null,
   snap: Snap | null,
   closeOnto: SectionEnd | null
 ): Preview {
+  if (!shape) {
+    return {kind: 'aim', origin: pose};
+  }
+  if (origin.kind === 'railhead') {
+    return {
+      kind: 'extend',
+      at: origin.at,
+      shape,
+      ghost: placeSection(shape, 'A', pose),
+      snap,
+      closeOnto,
+    };
+  }
+  return layFromAnchor(pose, shape, snap);
+}
+
+/**
+ * The preview laying `shape` from a pending anchor at `pose`: a
+ * `startNetwork`, the ghost placed to match.
+ */
+function layFromAnchor(
+  pose: Pose,
+  shape: SectionShape,
+  snap: Snap | null
+): Preview {
   return {
-    railhead,
+    kind: 'startNetwork',
+    origin: pose,
     shape,
-    ghost: shape ? placeSection(shape, 'A', railhead) : null,
+    ghost: placeSection(shape, 'A', pose),
     snap,
-    closeOnto,
-    hover: null,
-    anchorPoint: null,
   };
 }
 

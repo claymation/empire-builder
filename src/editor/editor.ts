@@ -17,9 +17,16 @@ import {
 import {Section, SectionShape, sectionLength} from '../domain/section';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
+import {assertNever} from '../domain/validate';
 import {renderLayout, renderOverlay, sceneTransform} from '../render/scene';
 import {ViewTransform} from '../render/transform';
-import {computePreview, DrawOrigin, Preview} from './preview';
+import {
+  aimedHeading,
+  computePreview,
+  DrawOrigin,
+  overlayFeatures,
+  Preview,
+} from './preview';
 import {
   deselect,
   dropAnchor,
@@ -79,32 +86,35 @@ export function startEditor(
 
   /**
    * Where drawing grows from (see {@link DrawOrigin}), or null when nothing is
-   * selected. A pending anchor aims — or, with the heading locked, stands as a
-   * full pose. A selected railhead is placed and reversed: an end's pose faces
-   * into its section, and drawing extends away from it.
+   * selected. A pending anchor carries any locked heading. A selected railhead
+   * is placed and reversed: an end's pose faces into its section, and drawing
+   * extends away from it.
    */
   function drawOrigin(): DrawOrigin | null {
     if (state.pendingAnchor) {
-      return lockedHeading !== null
-        ? {
-            kind: 'pose',
-            pose: {position: state.pendingAnchor, heading: lockedHeading},
-          }
-        : {kind: 'point', position: state.pendingAnchor};
+      return {
+        kind: 'anchor',
+        position: state.pendingAnchor,
+        heading: lockedHeading,
+      };
     }
     return state.railhead
-      ? {kind: 'pose', pose: reversePose(poseOf(placed, state.railhead))}
+      ? {
+          kind: 'railhead',
+          at: state.railhead,
+          pose: reversePose(poseOf(placed, state.railhead)),
+        }
       : null;
   }
 
   /**
-   * What the next click would do (see {@link Preview}): the single funnel from
-   * the editor's context — draw origin, pointer, open ends, view scale, snap
-   * suspension — into the pure {@link computePreview}. The overlay and the
-   * click routing both read this one decision, which is what keeps what is
-   * drawn and what a click does in agreement.
+   * Previews what the next click would do (see {@link Preview}): the single
+   * funnel from the editor's context — draw origin, pointer, open ends, view
+   * scale, snap suspension — into the pure {@link computePreview}. The overlay
+   * and the click routing both read this one decision, which is what keeps
+   * what is drawn and what a click does in agreement.
    */
-  function preview(view: ViewTransform): Preview {
+  function previewClick(view: ViewTransform): Preview {
     return computePreview(
       drawOrigin(),
       pointer,
@@ -124,7 +134,7 @@ export function startEditor(
   }
 
   function refreshOverlay(view: ViewTransform): void {
-    const {ghost, snap, hover: hoveredEnd} = preview(view);
+    const {ghost, snap, hoveredEnd} = overlayFeatures(previewClick(view));
     // The start's dot and ring mark selection state, not the preview: they
     // show the moment an anchor drops or an end is selected, with the pointer
     // wherever it is.
@@ -168,29 +178,31 @@ export function startEditor(
   tool.onMouseUp = (event: paper.ToolEvent) => {
     const view = transform();
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
-    // Route the click by the same preview the overlay drew: a hovered ring
-    // selects that end; a shape lays it — from the pending anchor as a new
-    // network at the previewed heading, or extended from the railhead, a
-    // latched end snap closing the join. With nothing to select or lay,
-    // `anchorPoint` — the pointer, pulled onto any guideline — is where the
-    // click drops the anchor a new network grows from.
-    const {
-      shape,
-      closeOnto,
-      hover,
-      anchorPoint,
-      railhead: from,
-    } = preview(view);
-    if (hover) {
-      setState(selectRailhead(state, hover));
-    } else if (shape) {
-      if (state.pendingAnchor && from) {
-        setState(startNetwork(state, withId(shape), from.heading));
-      } else if (state.railhead) {
-        setState(extend(state, state.railhead, withId(shape), closeOnto));
-      }
-    } else if (anchorPoint) {
-      setState(dropAnchor(state, anchorPoint));
+    // Route the click by the same preview the overlay drew: its kind is the
+    // click's meaning, and it carries everything the transition needs.
+    const preview = previewClick(view);
+    switch (preview.kind) {
+      case 'select':
+        setState(selectRailhead(state, preview.end));
+        break;
+      case 'startNetwork':
+        setState(
+          startNetwork(state, withId(preview.shape), preview.origin.heading)
+        );
+        break;
+      case 'extend':
+        setState(
+          extend(state, preview.at, withId(preview.shape), preview.closeOnto)
+        );
+        break;
+      case 'dropAnchor':
+        setState(dropAnchor(state, preview.point));
+        break;
+      case 'aim':
+      case 'nothing':
+        break;
+      default:
+        assertNever(preview);
     }
     refreshAll();
   };
@@ -215,7 +227,7 @@ export function startEditor(
       if (!state.pendingAnchor) {
         return;
       }
-      lockedHeading = preview(transform()).railhead?.heading ?? null;
+      lockedHeading = aimedHeading(previewClick(transform()));
     } else {
       lockedHeading = null;
     }
