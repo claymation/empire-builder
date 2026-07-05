@@ -1,10 +1,9 @@
 /**
  * The mapping between domain coordinates (millimeters, +y up) and canvas
  * coordinates (pixels, +y down). Pure math, no Paper.js, so it can be unit
- * tested; the scene module wraps the results in Paper.js points.
- *
- * The inverse (`toDomain`) is what pointer-driven editing will need to turn a
- * click into a position on the layout.
+ * tested; the scene module wraps the results in Paper.js points. `toCanvas`
+ * places domain geometry on screen; the inverse (`toDomain`) turns a click
+ * into a position on the layout.
  */
 
 import {Point} from '../domain/geometry';

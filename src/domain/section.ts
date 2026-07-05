@@ -57,15 +57,28 @@ export function turnSign(turn: Turn): number {
   return turn === 'ccw' ? 1 : -1;
 }
 
+/** A straight run of the given length (mm). */
+export interface Straight {
+  readonly kind: 'straight';
+  readonly length: number;
+}
+
 /**
- * The intrinsic form of a section: a straight of a given length, or a curve of a
- * given arc with the way it bends (its {@link Turn}). The bend rides on the shape
- * while the arc holds only radius and sweep. No identity, no placement — the
- * shape both {@link Section} and {@link PlacedSection} are built over.
+ * A curve of the given arc with the way it bends (its {@link Turn}). The bend
+ * rides on the shape while the arc holds only radius and sweep.
  */
-export type SectionShape =
-  | {readonly kind: 'straight'; readonly length: number}
-  | {readonly kind: 'curved'; readonly arc: Arc; readonly turn: Turn};
+export interface Curved {
+  readonly kind: 'curved';
+  readonly arc: Arc;
+  readonly turn: Turn;
+}
+
+/**
+ * The intrinsic form of a section: a {@link Straight} or a {@link Curved}. No
+ * identity, no placement — the shape both {@link Section} and
+ * {@link PlacedSection} are built over.
+ */
+export type SectionShape = Straight | Curved;
 
 /** A {@link SectionShape} given an identity, so the layout can join and reference it. */
 export type Section = SectionShape & {readonly id: SectionId};
@@ -84,7 +97,7 @@ export interface PlacedSection {
 }
 
 /** Builds a straight section shape of the given length. */
-export function straight(length: number): SectionShape {
+export function straight(length: number): Straight {
   return {kind: 'straight', length: requirePositive(length, 'length')};
 }
 
@@ -96,7 +109,7 @@ export function curve(
   radius: number,
   sweepDegrees: number,
   turn: Turn
-): SectionShape {
+): Curved {
   return {kind: 'curved', arc: arc(radius, degToRad(sweepDegrees)), turn};
 }
 
@@ -104,7 +117,7 @@ export function curve(
 export function sectionLength(shape: SectionShape): number {
   switch (shape.kind) {
     case 'straight':
-      return requirePositive(shape.length, 'length');
+      return shape.length;
     case 'curved':
       return arcLength(shape.arc);
     default:

@@ -6,9 +6,10 @@
  *
  * The state is the current {@link Layout}, the selected railhead, a transient
  * pending anchor, and the history undo/redo walk. {@link dropAnchor} drops the
- * anchor a new network grows from; {@link anchor} lays that network's first
- * section there, {@link extend} lays one joined onto an open end,
- * {@link selectRailhead} moves drawing to another open end, and
+ * anchor a new network grows from; {@link layFirstSection} lays that network's
+ * first section there — or {@link tieInSection} ties it into an existing
+ * network when it seats on an open end — {@link extend} lays one joined onto
+ * an open end, {@link selectRailhead} moves drawing to another open end, and
  * {@link deselect} clears the selection. The editor picks among them and
  * computes the section (so snapping applies once); only the transitions that
  * change the layout record history.
@@ -20,8 +21,8 @@
  * section — is a drawing transient, not a fact about the plan, so it lives
  * here, not in the layout, and is never recorded in history. It carries no
  * heading: the heading is aimed while the first section is previewed and fixed
- * when {@link anchor} lays it. At most one of the two is set: both answer
- * "where does the next section grow from".
+ * when {@link layFirstSection} lays it. At most one of the two is set: both
+ * answer "where does the next section grow from".
  */
 
 import {Point} from '../domain/geometry';
@@ -57,7 +58,7 @@ export interface EditorState {
 }
 
 /** The editor before the first click. */
-export const EMPTY: EditorState = {
+export const EMPTY_STATE: EditorState = {
   layout: EMPTY_LAYOUT,
   railhead: null,
   pendingAnchor: null,
@@ -105,13 +106,13 @@ export function selectRailhead(
  * railhead advances to the section's far end. The prior snapshot goes to
  * `past` — one undo step — and the redo stack is dropped.
  */
-export function anchor(
+export function layFirstSection(
   state: EditorState,
   section: Section,
   heading: number
 ): EditorState {
   if (!state.pendingAnchor) {
-    throw new Error('anchoring a section requires a pending anchor');
+    throw new Error('laying a first section requires a pending anchor');
   }
   return commit(
     state,
@@ -121,6 +122,30 @@ export function anchor(
     }),
     {sectionId: section.id, end: otherEnd(section, 'A')}
   );
+}
+
+/**
+ * Lay the aimed first section by tying it into an existing network: the
+ * section's far (`B`) end seats on open end `onto` ({@link joinSection}), and
+ * its `A` end — standing open at the pending anchor position — becomes the
+ * railhead. No anchor is recorded: the section's placement derives from
+ * `onto`'s network through the join, keeping one anchor per network. Clears
+ * the pending anchor; the prior snapshot goes to `past` — one undo step — and
+ * the redo stack is dropped. Throws without a pending anchor — the tie-in
+ * gesture only arises mid-aim, so the guard is a backstop.
+ */
+export function tieInSection(
+  state: EditorState,
+  section: Section,
+  onto: SectionEnd
+): EditorState {
+  if (!state.pendingAnchor) {
+    throw new Error('tying in a first section requires a pending anchor');
+  }
+  return commit(state, joinSection(state.layout, onto, section, 'B', null), {
+    sectionId: section.id,
+    end: otherEnd(section, 'B'),
+  });
 }
 
 /**

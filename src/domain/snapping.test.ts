@@ -3,6 +3,7 @@ import {degToRad, radToDeg, type Point, type Pose} from './geometry';
 import {type SectionEnd, type SectionEndPose} from './layout';
 import {curve, endPose, placeSection, straight} from './section';
 import {
+  findSeatedEnd,
   resolveAnchorSnap,
   resolveSnap,
   shapeForSnap,
@@ -693,5 +694,36 @@ describe('shownSnap', () => {
 
   it('shows nothing when there is no section', () => {
     expect(shownSnap(ORIGIN, lineSnap, null)).toBeNull();
+  });
+});
+
+describe('findSeatedEnd', () => {
+  const from: Pose = {position: {x: 20, y: 30}, heading: 0};
+
+  it('finds the end a straight seats on back-to-back', () => {
+    // The end faces east at (170, 30) — its section lies beyond — and the
+    // 150 straight from the west arrives facing it exactly.
+    const ahead = oe({position: {x: 170, y: 30}, heading: 0});
+    expect(findSeatedEnd(from, straight(150), [ahead])).toEqual(SOME_END);
+  });
+
+  it('finds the end a curve seats on', () => {
+    // The quarter-turn left arc exits north at (120, 130); the end there
+    // faces north into its own section, so the meeting is back-to-back.
+    const above = oe({position: {x: 120, y: 130}, heading: Math.PI / 2});
+    expect(findSeatedEnd(from, curve(100, 90, 'ccw'), [above])).toEqual(
+      SOME_END
+    );
+  });
+
+  it('seats on nothing when the far end misses the position', () => {
+    const shy = oe({position: {x: 170, y: 30.001}, heading: 0});
+    expect(findSeatedEnd(from, straight(150), [shy])).toBeNull();
+  });
+
+  it('seats on nothing when the meeting kinks', () => {
+    // Right position, but the end's line is a degree off the straight's.
+    const kinked = oe({position: {x: 170, y: 30}, heading: degToRad(1)});
+    expect(findSeatedEnd(from, straight(150), [kinked])).toBeNull();
   });
 });

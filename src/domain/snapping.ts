@@ -37,10 +37,12 @@ import {
 } from './geometry';
 import {SectionEnd, SectionEndPose} from './layout';
 import {
+  Curved,
   curve,
   endPose,
   placeSection,
   SectionShape,
+  Straight,
   straight,
   Turn,
   turnSign,
@@ -161,6 +163,30 @@ export function resolveAnchorSnap(
   return nearestLine
     ? {kind: 'line', point: nearestLine.point, line: nearestLine.line}
     : null;
+}
+
+/**
+ * The open end that `shape`, laid from `from`, seats on: the shape's far (`B`)
+ * end poses as the reverse of the open end's — one place, opposite facings,
+ * the back-to-back join threading seats — or null when it seats on none. This
+ * is a fact of the laid geometry, not a snap: whatever shaped the section —
+ * an end latch, a slide onto a guideline, or freehand placement — a far end
+ * seated on an open end is a join, and the caller records it. The tolerance
+ * is {@link posesEqual}'s ({@link EPSILON}): a near miss or a kinked meeting
+ * seats on nothing, since a join demands tangency.
+ */
+export function findSeatedEnd(
+  from: Pose,
+  shape: SectionShape,
+  openEnds: readonly SectionEndPose[]
+): SectionEnd | null {
+  const far = endPose(placeSection(shape, 'A', from), 'B');
+  for (const {sectionEnd, pose} of openEnds) {
+    if (posesEqual(far, reversePose(pose))) {
+      return sectionEnd;
+    }
+  }
+  return null;
 }
 
 /**
@@ -366,16 +392,11 @@ export function shapeOntoLine(
 }
 
 /**
- * The straight start→end of the unit-radius `sweep`/`turn` arc leaving `from`:
- * the direction the placed arc's end rides out along as its radius grows.
- * Vanishes (length ~0) only for a full-circle sweep.
+ * The straight from `from` ending where its heading line crosses `line` — the
+ * length that lands the end exactly on the line while the heading stands.
+ * Null when the crossing lies behind `from` or the lines are parallel.
  */
-function arcChord(from: Pose, sweep: number, turn: Turn): Vector {
-  return unitArcChord(from.heading, turnSign(turn) * sweep);
-}
-
-// A straight from `from` ending where its heading line crosses `line`, or null.
-function straightOntoLine(from: Pose, line: Line): SectionShape | null {
+export function straightOntoLine(from: Pose, line: Line): Straight | null {
   const forward = unitVector(from.heading);
   const meeting = lineIntersection(
     {origin: from.position, direction: forward},
@@ -388,6 +409,15 @@ function straightOntoLine(from: Pose, line: Line): SectionShape | null {
   return reach > EPSILON ? straight(reach) : null;
 }
 
+/**
+ * The straight start→end of the unit-radius `sweep`/`turn` arc leaving `from`:
+ * the direction the placed arc's end rides out along as its radius grows.
+ * Vanishes (length ~0) only for a full-circle sweep.
+ */
+function arcChord(from: Pose, sweep: number, turn: Turn): Vector {
+  return unitArcChord(from.heading, turnSign(turn) * sweep);
+}
+
 // A `sweep`/`turn` curve from `from` whose end meets `line`, or null. The end
 // rides the ray `from + radius·chord`, so the radius that lands it on the line is
 // where that ray crosses the line.
@@ -396,7 +426,7 @@ function curveOntoLine(
   line: Line,
   sweep: number,
   turn: Turn
-): SectionShape | null {
+): Curved | null {
   const chord = arcChord(from, sweep, turn);
   const meeting = lineIntersection(
     {origin: from.position, direction: chord},

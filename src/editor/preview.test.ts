@@ -2,21 +2,47 @@ import {describe, it, expect} from 'vitest';
 import {degToRad, radToDeg, type Point, type Pose} from '../domain/geometry';
 import {type SectionEnd, type SectionEndPose} from '../domain/layout';
 import {shapeTo} from '../domain/snapping';
-import {computePreview, type DrawOrigin} from './preview';
+import {computePreview, type DrawOrigin, type Preview} from './preview';
 
 /** The railhead's outward pose: at the origin, facing east (+x). */
 const RAILHEAD: Pose = {position: {x: 0, y: 0}, heading: 0};
-
-/** A fixed-pose origin, as the editor passes a railhead or a locked anchor. */
-const pose = (p: Pose): DrawOrigin => ({kind: 'pose', pose: p});
-
-/** A pending anchor being aimed from `position`. */
-const aim = (position: Point): DrawOrigin => ({kind: 'point', position});
 
 const end = (sectionId: string, name: 'A' | 'B'): SectionEnd => ({
   sectionId,
   end: name,
 });
+
+/** A selected railhead origin, as the editor passes one. */
+const railhead = (p: Pose): DrawOrigin => ({
+  kind: 'railhead',
+  at: end('rh', 'B'),
+  pose: p,
+});
+
+/** A pending anchor with its aim locked to the pose's heading. */
+const locked = (p: Pose): DrawOrigin => ({
+  kind: 'anchor',
+  position: p.position,
+  heading: p.heading,
+});
+
+/** A pending anchor being aimed from `position`. */
+const aim = (position: Point): DrawOrigin => ({
+  kind: 'anchor',
+  position,
+  heading: null,
+});
+
+/** Narrows a preview to the expected kind, failing the test otherwise. */
+function expectKind<K extends Preview['kind']>(
+  preview: Preview,
+  kind: K
+): Extract<Preview, {kind: K}> {
+  if (preview.kind !== kind) {
+    throw new Error(`expected a ${kind} preview, got ${preview.kind}`);
+  }
+  return preview as Extract<Preview, {kind: K}>;
+}
 
 /** Pairs an open end with its stored (inward-facing) pose. */
 const oe = (sectionEnd: SectionEnd, pose: Pose): SectionEndPose => ({
@@ -38,26 +64,21 @@ const FACING_END = oe(end('f', 'B'), {
 
 describe('computePreview', () => {
   it('previews nothing without a pointer', () => {
-    const p = computePreview(pose(RAILHEAD), null, [SIDE_END], 1, false);
-    expect(p.railhead).toBeNull();
-    expect(p.shape).toBeNull();
-    expect(p.hover).toBeNull();
+    const p = computePreview(railhead(RAILHEAD), null, [SIDE_END], 1, false);
+    expect(p.kind).toBe('nothing');
   });
 
   it('hovers an open end with no railhead — the click can still select', () => {
     const p = computePreview(null, {x: 104, y: 53}, [SIDE_END], 1, false);
-    expect(p.hover).toEqual(end('s', 'B'));
-    expect(p.shape).toBeNull();
-    expect(p.ghost).toBeNull();
-    expect(p.anchorPoint).toBeNull(); // the click selects, never drops
+    const select = expectKind(p, 'select'); // the click selects, never drops
+    expect(select.end).toEqual(end('s', 'B'));
   });
 
   it('drops at the pointer with no railhead and nothing in reach', () => {
     const p = computePreview(null, {x: 300, y: 300}, [SIDE_END], 1, false);
-    expect(p.hover).toBeNull();
-    expect(p.shape).toBeNull();
-    expect(p.snap).toBeNull();
-    expect(p.anchorPoint).toEqual({x: 300, y: 300});
+    const drop = expectKind(p, 'dropAnchor');
+    expect(drop.snap).toBeNull();
+    expect(drop.point).toEqual({x: 300, y: 300});
   });
 
   it('pulls the free pointer onto a guideline — the anchor drops aligned', () => {
@@ -65,31 +86,31 @@ describe('computePreview', () => {
     // (x = 100), far outside its ring. The drop point is the projection, so a
     // second network's anchor lands exactly abreast of the first's end.
     const p = computePreview(null, {x: 104, y: 250}, [SIDE_END], 1, false);
-    expect(p.hover).toBeNull();
-    expect(p.snap?.kind).toBe('line');
-    expect(p.anchorPoint?.x).toBeCloseTo(100);
-    expect(p.anchorPoint?.y).toBeCloseTo(250);
+    const drop = expectKind(p, 'dropAnchor');
+    expect(drop.snap?.kind).toBe('line');
+    expect(drop.point.x).toBeCloseTo(100);
+    expect(drop.point.y).toBeCloseTo(250);
   });
 
   it('a hovered ring outranks the guideline pull', () => {
     // (100, 55) sits on the normal line and within the ring: the click
     // selects; no anchor drop, no guide.
     const p = computePreview(null, {x: 100, y: 55}, [SIDE_END], 1, false);
-    expect(p.hover).toEqual(end('s', 'B'));
-    expect(p.snap).toBeNull();
-    expect(p.anchorPoint).toBeNull();
+    const select = expectKind(p, 'select');
+    expect(select.end).toEqual(end('s', 'B'));
   });
 
-  it('a railhead leaves anchorPoint null: the click lays, never drops', () => {
+  it('a railhead extends: the click lays, never drops', () => {
     const p = computePreview(
-      pose(RAILHEAD),
+      railhead(RAILHEAD),
       {x: 100, y: 62.1},
       [SIDE_END],
       1,
       false
     );
-    expect(p.shape).not.toBeNull();
-    expect(p.anchorPoint).toBeNull();
+    const extend = expectKind(p, 'extend');
+    expect(extend.at).toEqual(end('rh', 'B'));
+    expect(extend.shape).not.toBeNull();
   });
 
   it('hovering suppresses the ghost, exactly to the ring radius', () => {
@@ -97,64 +118,62 @@ describe('computePreview', () => {
     // preview would offer a line-snapped section; inside the ring radius the
     // hover claims the click instead. Pin the boundary: 12 px in, 12.1 px out.
     const inside = computePreview(
-      pose(RAILHEAD),
+      railhead(RAILHEAD),
       {x: 100, y: 62},
       [SIDE_END],
       1,
       false
     );
-    expect(inside.hover).toEqual(end('s', 'B'));
-    expect(inside.shape).toBeNull();
-    expect(inside.ghost).toBeNull();
-    expect(inside.snap).toBeNull();
-    expect(inside.railhead).toEqual(RAILHEAD);
+    const select = expectKind(inside, 'select');
+    expect(select.end).toEqual(end('s', 'B'));
 
     const outside = computePreview(
-      pose(RAILHEAD),
+      railhead(RAILHEAD),
       {x: 100, y: 62.1},
       [SIDE_END],
       1,
       false
     );
-    expect(outside.hover).toBeNull();
-    expect(outside.shape).not.toBeNull();
-    expect(outside.ghost).not.toBeNull();
+    const extend = expectKind(outside, 'extend');
+    expect(extend.shape).not.toBeNull();
+    expect(extend.ghost).not.toBeNull();
   });
 
   it('scales the ring radius with the view', () => {
     // At double scale the 12 px ring is 6 domain units: 5.9 hovers, 6.1 lays.
     const inside = computePreview(
-      pose(RAILHEAD),
+      railhead(RAILHEAD),
       {x: 100, y: 55.9},
       [SIDE_END],
       2,
       false
     );
-    expect(inside.hover).toEqual(end('s', 'B'));
+    const select = expectKind(inside, 'select');
+    expect(select.end).toEqual(end('s', 'B'));
     const outside = computePreview(
-      pose(RAILHEAD),
+      railhead(RAILHEAD),
       {x: 100, y: 56.1},
       [SIDE_END],
       2,
       false
     );
-    expect(outside.hover).toBeNull();
-    expect(outside.shape).not.toBeNull();
+    const extend = expectKind(outside, 'extend');
+    expect(extend.shape).not.toBeNull();
   });
 
   it('a latched end outranks the hover: the click closes, not selects', () => {
     const p = computePreview(
-      pose(RAILHEAD),
+      railhead(RAILHEAD),
       {x: 104, y: 103},
       [FACING_END],
       1,
       false
     );
-    expect(p.hover).toBeNull();
-    expect(p.closeOnto).toEqual(end('f', 'B'));
-    expect(p.shape).not.toBeNull();
+    const extend = expectKind(p, 'extend');
+    expect(extend.closeOnto).toEqual(end('f', 'B'));
+    expect(extend.shape).not.toBeNull();
     // The ghost reaches the latched ring exactly.
-    expect(p.snap).toMatchObject({kind: 'end', point: {x: 100, y: 100}});
+    expect(extend.snap).toMatchObject({kind: 'end', point: {x: 100, y: 100}});
   });
 
   it('hovers the railhead’s own ring, laying nothing', () => {
@@ -162,56 +181,106 @@ describe('computePreview', () => {
     // facing back into the section. Hovering it suppresses the ghost, so a
     // near-zero section can't be laid by accident; the click re-selects it.
     const own = oe(end('r', 'B'), {position: {x: 0, y: 0}, heading: Math.PI});
-    const p = computePreview(pose(RAILHEAD), {x: 5, y: 5}, [own], 1, false);
-    expect(p.hover).toEqual(end('r', 'B'));
-    expect(p.shape).toBeNull();
+    const p = computePreview(railhead(RAILHEAD), {x: 5, y: 5}, [own], 1, false);
+    const select = expectKind(p, 'select');
+    expect(select.end).toEqual(end('r', 'B'));
   });
 
   it('hovers the nearest of two rings in reach', () => {
     const near = oe(end('n', 'A'), {position: {x: 100, y: 54}, heading: 0});
     const p = computePreview(
-      pose(RAILHEAD),
+      railhead(RAILHEAD),
       {x: 100, y: 53},
       [SIDE_END, near],
       1,
       false
     );
-    expect(p.hover).toEqual(end('n', 'A'));
+    const select = expectKind(p, 'select');
+    expect(select.end).toEqual(end('n', 'A'));
+  });
+
+  it('ties a locked aim into an open end its arc latches', () => {
+    // The quarter-turn arc from the locked east aim reaches FACING_END
+    // tangentially, so its point latches. The click must join the section
+    // onto that end, not anchor a separate network over it.
+    const p = computePreview(
+      locked(RAILHEAD),
+      {x: 104, y: 103},
+      [FACING_END],
+      1,
+      false
+    );
+    const tieIn = expectKind(p, 'tieIn');
+    expect(tieIn.onto).toEqual(end('f', 'B'));
+    expect(tieIn.shape.kind).toBe('curved');
+    // The ghost reaches the latched ring exactly.
+    expect(tieIn.snap).toMatchObject({kind: 'end', point: {x: 100, y: 100}});
   });
 
   it('snaps a 180° curve from a locked heading onto its normal guideline', () => {
     // A network's first section with the aim locked: the anchor stands as a
     // full pose and no open end exists. A pointer just off abreast pulls onto
     // the pose's normal, so the half-circle starting a return loop is exact.
-    const p = computePreview(pose(RAILHEAD), {x: 4, y: 100}, [], 1, false);
-    expect(p.snap?.kind).toBe('line');
-    expect(p.snap?.point.x).toBeCloseTo(0);
-    expect(p.snap?.point.y).toBeCloseTo(100);
-    if (p.shape?.kind !== 'curved') throw new Error('expected a curve');
-    expect(radToDeg(p.shape.arc.sweep)).toBeCloseTo(180);
-    expect(p.shape.arc.radius).toBeCloseTo(50);
+    const p = computePreview(locked(RAILHEAD), {x: 4, y: 100}, [], 1, false);
+    const first = expectKind(p, 'layFirst');
+    expect(first.snap?.kind).toBe('line');
+    expect(first.snap?.point.x).toBeCloseTo(0);
+    expect(first.snap?.point.y).toBeCloseTo(100);
+    if (first.shape.kind !== 'curved') throw new Error('expected a curve');
+    expect(radToDeg(first.shape.arc.sweep)).toBeCloseTo(180);
+    expect(first.shape.arc.radius).toBeCloseTo(50);
   });
 
   it('suspending snapping lays the plain section, hovering nothing', () => {
     const p = computePreview(
-      pose(RAILHEAD),
+      railhead(RAILHEAD),
       {x: 100, y: 50},
       [SIDE_END],
       1,
       true
     );
-    expect(p.hover).toBeNull();
-    expect(p.snap).toBeNull();
-    expect(p.closeOnto).toBeNull();
-    expect(p.shape).toEqual(shapeTo(RAILHEAD, {x: 100, y: 50}));
+    const extend = expectKind(p, 'extend');
+    expect(extend.snap).toBeNull();
+    expect(extend.closeOnto).toBeNull();
+    expect(extend.shape).toEqual(shapeTo(RAILHEAD, {x: 100, y: 50}));
+  });
+
+  it('suspending snapping still closes a join the drawn track seats on', () => {
+    // Dead ahead at (150, 0) an end faces east, its section beyond: the raw
+    // straight to the pointer meets it back-to-back. No snap shaped the
+    // section, but the seating is a fact of the geometry, so the click must
+    // still record the join.
+    const ahead = oe(end('a', 'B'), {position: {x: 150, y: 0}, heading: 0});
+    const p = computePreview(
+      railhead(RAILHEAD),
+      {x: 150, y: 0},
+      [ahead],
+      1,
+      true
+    );
+    const extend = expectKind(p, 'extend');
+    expect(extend.closeOnto).toEqual(end('a', 'B'));
+    expect(extend.snap).toBeNull();
+  });
+
+  it('suspending snapping still ties a locked aim into a seated end', () => {
+    const ahead = oe(end('a', 'B'), {position: {x: 150, y: 0}, heading: 0});
+    const p = computePreview(
+      locked(RAILHEAD),
+      {x: 150, y: 0},
+      [ahead],
+      1,
+      true
+    );
+    const tieIn = expectKind(p, 'tieIn');
+    expect(tieIn.onto).toEqual(end('a', 'B'));
   });
 
   it('suspending snapping with no railhead drops at the raw pointer', () => {
     const p = computePreview(null, {x: 100, y: 50}, [SIDE_END], 1, true);
-    expect(p.hover).toBeNull();
-    expect(p.shape).toBeNull();
-    expect(p.snap).toBeNull();
-    expect(p.anchorPoint).toEqual({x: 100, y: 50});
+    const drop = expectKind(p, 'dropAnchor');
+    expect(drop.snap).toBeNull();
+    expect(drop.point).toEqual({x: 100, y: 50});
   });
 });
 
@@ -224,9 +293,10 @@ describe('aiming a pending anchor', () => {
       y: 100 * Math.sin(degToRad(43)),
     };
     const p = computePreview(aim({x: 0, y: 0}), target, [], 1, false);
-    expect(p.railhead?.heading).toBeCloseTo(Math.PI / 4);
-    if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
-    expect(p.shape.length).toBeCloseTo(100 * Math.cos(degToRad(2)));
+    const first = expectKind(p, 'layFirst');
+    expect(first.origin.heading).toBeCloseTo(Math.PI / 4);
+    if (first.shape.kind !== 'straight') throw new Error('expected a straight');
+    expect(first.shape.length).toBeCloseTo(100 * Math.cos(degToRad(2)));
   });
 
   it('keeps a deliberate off-grid aim', () => {
@@ -236,17 +306,18 @@ describe('aiming a pending anchor', () => {
       y: 100 * Math.sin(degToRad(38)),
     };
     const p = computePreview(aim({x: 0, y: 0}), target, [], 1, false);
-    expect(p.railhead?.heading).toBeCloseTo(degToRad(38));
-    if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
-    expect(p.shape.length).toBeCloseTo(100);
+    const first = expectKind(p, 'layFirst');
+    expect(first.origin.heading).toBeCloseTo(degToRad(38));
+    if (first.shape.kind !== 'straight') throw new Error('expected a straight');
+    expect(first.shape.length).toBeCloseTo(100);
   });
 
   it('offers only straights while aiming; the same pointer curves a locked pose', () => {
     const offAxis = {x: 100, y: 100};
     const aimed = computePreview(aim({x: 0, y: 0}), offAxis, [], 1, false);
-    expect(aimed.shape?.kind).toBe('straight');
-    const locked = computePreview(pose(RAILHEAD), offAxis, [], 1, false);
-    expect(locked.shape?.kind).toBe('curved');
+    expect(expectKind(aimed, 'layFirst').shape.kind).toBe('straight');
+    const fixed = computePreview(locked(RAILHEAD), offAxis, [], 1, false);
+    expect(expectKind(fixed, 'layFirst').shape.kind).toBe('curved');
   });
 
   it('slides the straight onto a guideline, keeping the snapped aim', () => {
@@ -261,12 +332,37 @@ describe('aiming a pending anchor', () => {
       1,
       false
     );
-    expect(p.railhead?.heading).toBeCloseTo(0);
-    if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
-    expect(p.shape.length).toBeCloseTo(100);
-    expect(p.snap?.kind).toBe('line');
-    expect(p.snap?.point.x).toBeCloseTo(100);
-    expect(p.snap?.point.y).toBeCloseTo(200);
+    const first = expectKind(p, 'layFirst');
+    expect(first.origin.heading).toBeCloseTo(0);
+    if (first.shape.kind !== 'straight') throw new Error('expected a straight');
+    expect(first.shape.length).toBeCloseTo(100);
+    expect(first.snap?.kind).toBe('line');
+    expect(first.snap?.point.x).toBeCloseTo(100);
+    expect(first.snap?.point.y).toBeCloseTo(200);
+  });
+
+  it('ties in when a guideline slide seats the aim on the open end', () => {
+    // The end faces west at (100, 50); the anchor stands collinear at
+    // (250, 50). The pointer rides the end's normal (x = 100) just outside
+    // the ring, a shade off level: the aim snaps level and the slide lands
+    // the straight exactly on the end — a join the click must record even
+    // though the pointer never latched the end's point.
+    const westEnd = oe(end('w', 'B'), {
+      position: {x: 100, y: 50},
+      heading: Math.PI,
+    });
+    const p = computePreview(
+      aim({x: 250, y: 50}),
+      {x: 100.5, y: 62.7},
+      [westEnd],
+      1,
+      false
+    );
+    const tieIn = expectKind(p, 'tieIn');
+    expect(tieIn.onto).toEqual(end('w', 'B'));
+    expect(tieIn.snap?.kind).toBe('line');
+    if (tieIn.shape.kind !== 'straight') throw new Error('expected a straight');
+    expect(tieIn.shape.length).toBeCloseTo(150);
   });
 
   it('a hovered ring outranks the aim', () => {
@@ -277,8 +373,8 @@ describe('aiming a pending anchor', () => {
       1,
       false
     );
-    expect(p.hover).toEqual(end('s', 'B'));
-    expect(p.shape).toBeNull();
+    const select = expectKind(p, 'select');
+    expect(select.end).toEqual(end('s', 'B'));
   });
 
   it('suspending snapping aims raw at the pointer', () => {
@@ -287,15 +383,15 @@ describe('aiming a pending anchor', () => {
       y: 100 * Math.sin(degToRad(43)),
     };
     const p = computePreview(aim({x: 0, y: 0}), target, [], 1, true);
-    expect(p.railhead?.heading).toBeCloseTo(degToRad(43));
-    if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
-    expect(p.shape.length).toBeCloseTo(100);
-    expect(p.snap).toBeNull();
+    const first = expectKind(p, 'layFirst');
+    expect(first.origin.heading).toBeCloseTo(degToRad(43));
+    if (first.shape.kind !== 'straight') throw new Error('expected a straight');
+    expect(first.shape.length).toBeCloseTo(100);
+    expect(first.snap).toBeNull();
   });
 
   it('previews nothing from a degenerate aim', () => {
     const p = computePreview(aim({x: 3, y: 4}), {x: 3, y: 4}, [], 1, false);
-    expect(p.shape).toBeNull();
-    expect(p.railhead).toBeNull();
+    expect(p.kind).toBe('nothing');
   });
 });

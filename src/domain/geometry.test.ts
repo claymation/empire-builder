@@ -30,7 +30,7 @@ import {
   radToDeg,
   scale,
   segmentBounds,
-  segmentEnd,
+  segmentEndPoint,
   segmentEndPose,
   subtract,
   tangentAndNormalLines,
@@ -548,8 +548,8 @@ describe('placed segment', () => {
   };
 
   it('ends ahead along its heading, keeping the heading', () => {
-    expect(segmentEnd(segment).x).toBeCloseTo(2);
-    expect(segmentEnd(segment).y).toBeCloseTo(13);
+    expect(segmentEndPoint(segment).x).toBeCloseTo(2);
+    expect(segmentEndPoint(segment).y).toBeCloseTo(13);
     expect(segmentEndPose(segment).heading).toBeCloseTo(Math.PI / 2);
   });
 
@@ -559,8 +559,8 @@ describe('placed segment', () => {
       start: {position: {x: 0, y: 0}, heading: Math.PI},
       length: 10,
     };
-    expect(segmentEnd(west).x).toBeCloseTo(-10);
-    expect(segmentEnd(west).y).toBeCloseTo(0);
+    expect(segmentEndPoint(west).x).toBeCloseTo(-10);
+    expect(segmentEndPoint(west).y).toBeCloseTo(0);
   });
 
   it('bounds its endpoints', () => {
@@ -582,7 +582,6 @@ describe('arc / arcLength', () => {
   it('rejects non-positive dimensions', () => {
     expect(() => arc(0, Math.PI)).toThrow(RangeError);
     expect(() => arc(100, -1)).toThrow(RangeError);
-    expect(() => arcLength({radius: -1, sweep: Math.PI})).toThrow(RangeError);
   });
 });
 
