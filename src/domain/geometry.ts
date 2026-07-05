@@ -339,18 +339,18 @@ export interface PlacedSegment {
 }
 
 /** Where a placed segment ends. */
-export function segmentEnd(segment: PlacedSegment): Point {
+export function segmentEndPoint(segment: PlacedSegment): Point {
   return advance(segment.start.position, segment.start.heading, segment.length);
 }
 
 /** The exit pose of a placed segment: its end point, heading unchanged. */
 export function segmentEndPose(segment: PlacedSegment): Pose {
-  return {position: segmentEnd(segment), heading: segment.start.heading};
+  return {position: segmentEndPoint(segment), heading: segment.start.heading};
 }
 
 /** The bounding box of a placed segment. */
 export function segmentBounds(segment: PlacedSegment): Bounds {
-  return boundsOfPoints([segment.start.position, segmentEnd(segment)]);
+  return boundsOfPoints([segment.start.position, segmentEndPoint(segment)]);
 }
 
 // ── Arcs ──
@@ -372,11 +372,8 @@ export function arc(radius: number, sweep: number): Arc {
 }
 
 /** The running length of an arc: radius × sweep. */
-export function arcLength(shape: Arc): number {
-  return (
-    requirePositive(shape.radius, 'radius') *
-    requirePositive(shape.sweep, 'sweep')
-  );
+export function arcLength(arc: Arc): number {
+  return arc.radius * arc.sweep;
 }
 
 /**

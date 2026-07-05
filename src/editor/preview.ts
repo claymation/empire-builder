@@ -17,12 +17,12 @@
  */
 
 import {
+  advance,
   degToRad,
   distance,
   dot,
   EPSILON,
   headingOf,
-  lineIntersection,
   normalizeAngle,
   Point,
   Pose,
@@ -44,6 +44,7 @@ import {
   shownSnap,
   Snap,
   snapToIncrement,
+  straightOntoLine,
 } from '../domain/snapping';
 
 /** Curve sweeps snap to multiples of this when within SNAP_THRESHOLD of one. */
@@ -181,28 +182,26 @@ function aimPreview(
   if (hover) {
     return {...NOTHING, hover};
   }
-  if (distance(anchor, target) < EPSILON) {
+  const aim = aimAt(anchor, target);
+  if (aim === null) {
     return NOTHING;
   }
-  const aim = normalizeAngle(headingOf(subtract(target, anchor)));
   const heading = normalizeAngle(
-    snapToIncrement(aim, SNAP_INCREMENT, SNAP_THRESHOLD)
+    snapToIncrement(normalizeAngle(aim), SNAP_INCREMENT, SNAP_THRESHOLD)
   );
   const pose: Pose = {position: anchor, heading};
   const pull = resolveAnchorSnap(target, openEnds, LINE_MAGNET_PX / viewScale);
   if (pull && pull.kind === 'line') {
-    const crossing = lineIntersection(
-      {origin: anchor, direction: unitVector(heading)},
-      pull.line
-    );
-    const reach = crossing
-      ? dot(unitVector(heading), subtract(crossing, anchor))
-      : 0;
-    if (crossing && reach > EPSILON) {
+    const aligned = straightOntoLine(pose, pull.line);
+    if (aligned) {
       return lay(
         pose,
-        straight(reach),
-        {kind: 'line', point: crossing, line: pull.line},
+        aligned,
+        {
+          kind: 'line',
+          point: advance(anchor, heading, aligned.length),
+          line: pull.line,
+        },
         null
       );
     }
@@ -227,13 +226,18 @@ function rawPose(origin: DrawOrigin | null, target: Point): Pose | null {
   if (origin.kind === 'pose') {
     return origin.pose;
   }
-  if (distance(origin.position, target) < EPSILON) {
-    return null;
-  }
-  return {
-    position: origin.position,
-    heading: headingOf(subtract(target, origin.position)),
-  };
+  const aim = aimAt(origin.position, target);
+  return aim === null ? null : {position: origin.position, heading: aim};
+}
+
+/**
+ * The heading from `from` toward `target`, or null when the two coincide and
+ * leave no direction to aim.
+ */
+function aimAt(from: Point, target: Point): number | null {
+  return distance(from, target) < EPSILON
+    ? null
+    : headingOf(subtract(target, from));
 }
 
 /** A preview that lays `shape` from `railhead` — the ghost placed to match. */

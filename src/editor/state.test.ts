@@ -8,9 +8,9 @@ import {
   type SectionShape,
 } from '../domain/section';
 import {
-  anchor,
+  layFirstSection,
   deselect,
-  EMPTY,
+  EMPTY_STATE,
   extend,
   dropAnchor,
   redo,
@@ -32,13 +32,13 @@ const end = (sectionId: string, name: 'A' | 'B'): SectionEnd => ({
 
 describe('editor state', () => {
   it('starts empty, with no layout, railhead, or pending anchor', () => {
-    expect(EMPTY.layout.sections).toHaveLength(0);
-    expect(EMPTY.railhead).toBeNull();
-    expect(EMPTY.pendingAnchor).toBeNull();
+    expect(EMPTY_STATE.layout.sections).toHaveLength(0);
+    expect(EMPTY_STATE.railhead).toBeNull();
+    expect(EMPTY_STATE.pendingAnchor).toBeNull();
   });
 
   it('plants an anchor as a transient, recording no history', () => {
-    const planted = dropAnchor(EMPTY, {x: 100, y: 50});
+    const planted = dropAnchor(EMPTY_STATE, {x: 100, y: 50});
     expect(planted.pendingAnchor).toEqual({x: 100, y: 50});
     expect(planted.layout.sections).toHaveLength(0);
     expect(planted.past).toHaveLength(0); // planting is not historized
@@ -46,8 +46,8 @@ describe('editor state', () => {
   });
 
   it('lays the first section as a new anchored network', () => {
-    const planted = dropAnchor(EMPTY, ORIGIN);
-    const drawn = anchor(planted, withId('s1', straight(300)), 0);
+    const planted = dropAnchor(EMPTY_STATE, ORIGIN);
+    const drawn = layFirstSection(planted, withId('s1', straight(300)), 0);
     expect(drawn.layout.sections.map(s => s.id)).toEqual(['s1']);
     expect(drawn.layout.anchors).toHaveLength(1);
     expect(drawn.pendingAnchor).toBeNull();
@@ -55,8 +55,12 @@ describe('editor state', () => {
   });
 
   it('anchors the first section at the aimed heading', () => {
-    const planted = dropAnchor(EMPTY, {x: 5, y: 7});
-    const drawn = anchor(planted, withId('s1', straight(100)), degToRad(30));
+    const planted = dropAnchor(EMPTY_STATE, {x: 5, y: 7});
+    const drawn = layFirstSection(
+      planted,
+      withId('s1', straight(100)),
+      degToRad(30)
+    );
     expect(drawn.layout.anchors).toEqual([
       {
         sectionEnd: end('s1', 'A'),
@@ -69,12 +73,14 @@ describe('editor state', () => {
   });
 
   it('anchoring without a pending anchor throws', () => {
-    expect(() => anchor(EMPTY, withId('s1', straight(300)), 0)).toThrow();
+    expect(() =>
+      layFirstSection(EMPTY_STATE, withId('s1', straight(300)), 0)
+    ).toThrow();
   });
 
   it('undoes the first section straight back to empty', () => {
-    const drawn = anchor(
-      dropAnchor(EMPTY, ORIGIN),
+    const drawn = layFirstSection(
+      dropAnchor(EMPTY_STATE, ORIGIN),
       withId('s1', straight(300)),
       0
     );
@@ -87,8 +93,8 @@ describe('editor state', () => {
   it('closes a loop, leaving no open ends, and reopens them on undo', () => {
     // The oval: two straights joined by two 180° curves, the last closing onto
     // the anchored A end.
-    let state = anchor(
-      dropAnchor(EMPTY, ORIGIN),
+    let state = layFirstSection(
+      dropAnchor(EMPTY_STATE, ORIGIN),
       withId('s1', straight(100)),
       0
     );
@@ -110,8 +116,8 @@ describe('editor state', () => {
   });
 
   it('drops the redo stack once a new section is committed', () => {
-    const anchored = anchor(
-      dropAnchor(EMPTY, ORIGIN),
+    const anchored = layFirstSection(
+      dropAnchor(EMPTY_STATE, ORIGIN),
       withId('s1', straight(300)),
       0
     );
@@ -134,8 +140,12 @@ describe('editor state', () => {
 });
 
 /** A one-section network: s1 anchored at the origin, both ends open. */
-function anchored(): ReturnType<typeof anchor> {
-  return anchor(dropAnchor(EMPTY, ORIGIN), withId('s1', straight(100)), 0);
+function anchored(): ReturnType<typeof layFirstSection> {
+  return layFirstSection(
+    dropAnchor(EMPTY_STATE, ORIGIN),
+    withId('s1', straight(100)),
+    0
+  );
 }
 
 describe('selectRailhead', () => {
@@ -280,9 +290,9 @@ describe('deselect', () => {
  * the origin, Esc, then s2 anchored one curve-diameter above it. The railhead
  * sits on s2's B.
  */
-function twoNetworks(): ReturnType<typeof anchor> {
+function twoNetworks(): ReturnType<typeof layFirstSection> {
   const planted = dropAnchor(deselect(anchored()), {x: 0, y: 100});
-  return anchor(planted, withId('s2', straight(100)), 0);
+  return layFirstSection(planted, withId('s2', straight(100)), 0);
 }
 
 describe('starting a second network', () => {

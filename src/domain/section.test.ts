@@ -35,10 +35,9 @@ describe('sectionLength', () => {
     expect(sectionLength(curve(360, 90, 'cw'))).toBeCloseTo(expected);
   });
 
-  it('rejects a non-positive length', () => {
-    expect(() => sectionLength({kind: 'straight', length: 0})).toThrow(
-      RangeError
-    );
+  it('rejects a non-positive length at build time', () => {
+    expect(() => straight(0)).toThrow(RangeError);
+    expect(() => straight(-5)).toThrow(RangeError);
   });
 });
 

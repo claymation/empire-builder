@@ -21,12 +21,12 @@ import {renderLayout, renderOverlay, sceneTransform} from '../render/scene';
 import {ViewTransform} from '../render/transform';
 import {computePreview, DrawOrigin, Preview} from './preview';
 import {
-  anchor,
   deselect,
   dropAnchor,
   EditorState,
-  EMPTY,
+  EMPTY_STATE,
   extend,
+  layFirstSection,
   redo,
   selectRailhead,
   undo,
@@ -40,7 +40,7 @@ export function startEditor(
 ): void {
   paper.setup(canvas);
   // The editor state; every change goes through setState.
-  let state = EMPTY;
+  let state = EMPTY_STATE;
   // The pointer's last known domain position; null until it enters the canvas.
   let pointer: Point | null = null;
   // Snapping suspended (Option/Alt held) for raw freehand placement.
@@ -131,14 +131,13 @@ export function startEditor(
     const railheadPoint = state.railhead
       ? poseOf(placed, state.railhead).position
       : null;
-    renderOverlay(
-      view,
+    renderOverlay(view, {
       ghost,
-      state.pendingAnchor ?? railheadPoint,
-      railheadPoint,
+      origin: state.pendingAnchor ?? railheadPoint,
+      selectedEnd: railheadPoint,
       snap,
-      hover ? poseOf(placed, hover).position : null
-    );
+      hover: hover ? poseOf(placed, hover).position : null,
+    });
   }
 
   function refreshStatus(): void {
@@ -188,7 +187,7 @@ export function startEditor(
       setState(selectRailhead(state, hover));
     } else if (shape) {
       if (state.pendingAnchor && from) {
-        setState(anchor(state, withId(shape), from.heading));
+        setState(layFirstSection(state, withId(shape), from.heading));
       } else if (state.railhead) {
         setState(extend(state, state.railhead, withId(shape), closeOnto));
       }

@@ -6,8 +6,8 @@
  *
  * The state is the current {@link Layout}, the selected railhead, a transient
  * pending anchor, and the history undo/redo walk. {@link dropAnchor} drops the
- * anchor a new network grows from; {@link anchor} lays that network's first
- * section there, {@link extend} lays one joined onto an open end,
+ * anchor a new network grows from; {@link layFirstSection} lays that network's
+ * first section there, {@link extend} lays one joined onto an open end,
  * {@link selectRailhead} moves drawing to another open end, and
  * {@link deselect} clears the selection. The editor picks among them and
  * computes the section (so snapping applies once); only the transitions that
@@ -20,8 +20,8 @@
  * section — is a drawing transient, not a fact about the plan, so it lives
  * here, not in the layout, and is never recorded in history. It carries no
  * heading: the heading is aimed while the first section is previewed and fixed
- * when {@link anchor} lays it. At most one of the two is set: both answer
- * "where does the next section grow from".
+ * when {@link layFirstSection} lays it. At most one of the two is set: both
+ * answer "where does the next section grow from".
  */
 
 import {Point} from '../domain/geometry';
@@ -57,7 +57,7 @@ export interface EditorState {
 }
 
 /** The editor before the first click. */
-export const EMPTY: EditorState = {
+export const EMPTY_STATE: EditorState = {
   layout: EMPTY_LAYOUT,
   railhead: null,
   pendingAnchor: null,
@@ -105,13 +105,13 @@ export function selectRailhead(
  * railhead advances to the section's far end. The prior snapshot goes to
  * `past` — one undo step — and the redo stack is dropped.
  */
-export function anchor(
+export function layFirstSection(
   state: EditorState,
   section: Section,
   heading: number
 ): EditorState {
   if (!state.pendingAnchor) {
-    throw new Error('anchoring a section requires a pending anchor');
+    throw new Error('laying a first section requires a pending anchor');
   }
   return commit(
     state,

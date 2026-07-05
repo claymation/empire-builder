@@ -24,7 +24,7 @@ import {
   Point,
   radToDeg,
   scale,
-  segmentEnd,
+  segmentEndPoint,
   subtract,
 } from '../domain/geometry';
 import {PlacedLayout} from '../domain/layout';
@@ -48,7 +48,10 @@ const LABEL_OFFSET_PX = 18;
 /** Accent for alignment feedback: the guide line and the open-end snap ring. */
 const GUIDE_COLOR = '#ec4899';
 const GUIDE_DASH = [4, 4];
+/** The ghost's dashes, marking track on offer rather than laid. */
+const GHOST_DASH = [8, 6];
 const SNAP_RING_RADIUS_PX = 9;
+const SNAP_RING_WIDTH_PX = 2;
 /** Open-end rings: quiet when merely selectable, stronger when selected. */
 const OPEN_RING_COLOR = '#9c9c9c';
 const OPEN_RING_RADIUS_PX = 6;
@@ -56,6 +59,7 @@ const OPEN_RING_WIDTH_PX = 1.5;
 const SELECTED_RING_WIDTH_PX = 2.5;
 /** The hovered ring's halo, sized between the quiet ring and the snap ring. */
 const HOVER_RING_RADIUS_PX = 9;
+const HOVER_RING_WIDTH_PX = 2;
 
 /** Maps a domain point (mm, y-up) to a canvas point (px, y-down). */
 type ToCanvas = (point: Point) => paper.Point;
@@ -85,12 +89,33 @@ export function renderLayout(
   drawSheet(space, toCanvas);
   for (const section of placed.sectionsById.values()) {
     for (const geometry of section.geometry) {
-      drawGeometry(geometry, toCanvas, RAIL_COLOR, false);
+      drawGeometry(geometry, toCanvas, RAIL_COLOR);
     }
   }
   for (const point of openEndPoints) {
     drawOpenEndRing(point, toCanvas);
   }
+}
+
+/** The interaction state {@link renderOverlay} draws, all positions in domain units. */
+export interface Overlay {
+  /** The pointer-follow preview of the section a click would lay. */
+  readonly ghost: PlacedSection | null;
+  /**
+   * Where drawing grows from — the pending anchor or the selected railhead —
+   * marked with the filled dot, drawn whether or not the pointer has produced
+   * a ghost.
+   */
+  readonly origin: Point | null;
+  /**
+   * The selected open end's position, ringed; null when drawing grows from a
+   * pending anchor, which has no end to ring.
+   */
+  readonly selectedEnd: Point | null;
+  /** The alignment feedback that shaped the ghost: a guide line or a latch ring. */
+  readonly snap: Snap | null;
+  /** The open end a click would select, haloed. */
+  readonly hover: Point | null;
 }
 
 /**
@@ -99,21 +124,12 @@ export function renderLayout(
  * ring sits under the rest; the guide sits beneath the ghost; a snap ring
  * rides on top, marking the open end the target has latched onto; a hover ring
  * lights the open end a click would select. Redraw on every move.
- *
- * `origin` is where drawing grows from — the pending anchor or the selected
- * railhead — marked with the filled dot. `selectedEnd` is the selected open
- * end's position — null when drawing grows from a pending anchor, which has
- * no end to ring. Both are selection state, drawn whether or not a pointer
- * has produced a ghost.
  */
 export function renderOverlay(
   transform: ViewTransform,
-  ghost: PlacedSection | null,
-  origin: Point | null,
-  selectedEnd: Point | null,
-  snap: Snap | null,
-  hover: Point | null
+  overlay: Overlay
 ): void {
+  const {ghost, origin, selectedEnd, snap, hover} = overlay;
   const toCanvas = onLayer('overlay', transform);
   if (selectedEnd) {
     drawSelectedRing(selectedEnd, toCanvas);
@@ -130,7 +146,7 @@ export function renderOverlay(
     // length).
     const [shape] = ghost.geometry;
     if (shape) {
-      drawGeometry(shape, toCanvas, PREVIEW_COLOR, true);
+      drawGeometry(shape, toCanvas, PREVIEW_COLOR, GHOST_DASH);
       drawLabel(shape, toCanvas);
     }
   }
@@ -187,30 +203,59 @@ function drawGuide(line: Line, toCanvas: ToCanvas, viewScale: number): void {
 
 /** Rings the open end a target has latched onto. */
 function drawSnapRing(point: Point, toCanvas: ToCanvas): void {
-  const ring = new paper.Path.Circle(toCanvas(point), SNAP_RING_RADIUS_PX);
-  ring.strokeColor = new paper.Color(GUIDE_COLOR);
-  ring.strokeWidth = 2;
+  drawRing(
+    point,
+    toCanvas,
+    SNAP_RING_RADIUS_PX,
+    GUIDE_COLOR,
+    SNAP_RING_WIDTH_PX
+  );
 }
 
 /** Rings an open end, quietly; the overlay marks the selected one. */
 function drawOpenEndRing(point: Point, toCanvas: ToCanvas): void {
-  const circle = new paper.Path.Circle(toCanvas(point), OPEN_RING_RADIUS_PX);
-  circle.strokeColor = new paper.Color(OPEN_RING_COLOR);
-  circle.strokeWidth = OPEN_RING_WIDTH_PX;
+  drawRing(
+    point,
+    toCanvas,
+    OPEN_RING_RADIUS_PX,
+    OPEN_RING_COLOR,
+    OPEN_RING_WIDTH_PX
+  );
 }
 
 /** Rings the selected open end, covering its quiet ring. */
 function drawSelectedRing(point: Point, toCanvas: ToCanvas): void {
-  const ring = new paper.Path.Circle(toCanvas(point), OPEN_RING_RADIUS_PX);
-  ring.strokeColor = new paper.Color(PREVIEW_COLOR);
-  ring.strokeWidth = SELECTED_RING_WIDTH_PX;
+  drawRing(
+    point,
+    toCanvas,
+    OPEN_RING_RADIUS_PX,
+    PREVIEW_COLOR,
+    SELECTED_RING_WIDTH_PX
+  );
 }
 
 /** Halos the open end a click would select. */
 function drawHoverRing(point: Point, toCanvas: ToCanvas): void {
-  const halo = new paper.Path.Circle(toCanvas(point), HOVER_RING_RADIUS_PX);
-  halo.strokeColor = new paper.Color(PREVIEW_COLOR);
-  halo.strokeWidth = 2;
+  drawRing(
+    point,
+    toCanvas,
+    HOVER_RING_RADIUS_PX,
+    PREVIEW_COLOR,
+    HOVER_RING_WIDTH_PX
+  );
+}
+
+/** Strokes a circle of `radiusPx` around a domain point — every ring's one form. */
+function drawRing(
+  point: Point,
+  toCanvas: ToCanvas,
+  radiusPx: number,
+  color: string,
+  widthPx: number
+): void {
+  const ring = new paper.Path.Circle(toCanvas(point), radiusPx);
+  ring.strokeColor = new paper.Color(color);
+  ring.strokeWidth = widthPx;
 }
 
 /**
@@ -240,7 +285,7 @@ function drawLabel(
   } else {
     const heading = radToDeg(normalizeAngle(geometry.start.heading));
     const length = toInches(geometry.length);
-    const end = toCanvas(segmentEnd(geometry));
+    const end = toCanvas(segmentEndPoint(geometry));
     const along = end.subtract(toCanvas(geometry.start.position)).normalize();
     const outward = new paper.Point(along.y, -along.x);
     placeLabel(
@@ -331,20 +376,20 @@ function drawGeometry(
   geometry: PlacedSegment | PlacedArc,
   toCanvas: ToCanvas,
   color: string,
-  preview: boolean
+  dashArray?: number[]
 ): void {
   const path =
     geometry.kind === 'segment'
       ? new paper.Path.Line(
           toCanvas(geometry.start.position),
-          toCanvas(segmentEnd(geometry))
+          toCanvas(segmentEndPoint(geometry))
         )
       : arcPath(geometry, toCanvas);
   path.strokeColor = new paper.Color(color);
   path.strokeWidth = RAIL_WIDTH_PX;
   path.strokeCap = 'round';
-  if (preview) {
-    path.dashArray = [8, 6];
+  if (dashArray) {
+    path.dashArray = dashArray;
   }
 }
 
