@@ -38,18 +38,16 @@ describe('shapeTo', () => {
   });
 
   it('curves left toward a point off to the left', () => {
-    expect(shapeTo(ORIGIN, {x: 100, y: 100})).toMatchObject({
-      kind: 'curved',
-      turn: 'ccw',
-    });
+    const section = shapeTo(ORIGIN, {x: 100, y: 100});
+    if (section?.kind !== 'curved') throw new Error('expected a curve');
+    expect(section.arc.sweep).toBeGreaterThan(0); // counter-clockwise
     reaches(ORIGIN, {x: 100, y: 100});
   });
 
   it('curves right toward a point off to the right', () => {
-    expect(shapeTo(ORIGIN, {x: 100, y: -100})).toMatchObject({
-      kind: 'curved',
-      turn: 'cw',
-    });
+    const section = shapeTo(ORIGIN, {x: 100, y: -100});
+    if (section?.kind !== 'curved') throw new Error('expected a curve');
+    expect(section.arc.sweep).toBeLessThan(0); // clockwise
     reaches(ORIGIN, {x: 100, y: -100});
   });
 
@@ -602,8 +600,7 @@ describe('shapeOntoLine', () => {
       threshold
     );
     if (section?.kind !== 'curved') throw new Error('expected a curve');
-    expect(section.turn).toBe('cw');
-    expect(radToDeg(section.arc.sweep)).toBeCloseTo(90);
+    expect(radToDeg(section.arc.sweep)).toBeCloseTo(-90); // clockwise
     const b = endPose(placeSection(section, 'A', from), 'B');
     expect(b.position.x).toBeCloseTo(100);
     expect(b.position.y).toBeCloseTo(-100);
@@ -673,13 +670,13 @@ describe('shownSnap', () => {
 
   it('keeps a line guide the section ends on', () => {
     // A 180° curve from the origin ends on the start's normal (x = 0).
-    const half = curve(50, 180, 'ccw');
+    const half = curve(50, 180);
     expect(shownSnap(ORIGIN, lineSnap, half)).toEqual(lineSnap);
   });
 
   it('drops a line guide the section does not end on', () => {
     // A 90° curve ends at (100, 100), off x = 0 — the guide would be idle.
-    const quarter = curve(100, 90, 'ccw');
+    const quarter = curve(100, 90);
     expect(shownSnap(ORIGIN, lineSnap, quarter)).toBeNull();
   });
 

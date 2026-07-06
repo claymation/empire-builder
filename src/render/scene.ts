@@ -43,7 +43,7 @@ const PLYWOOD_EDGE = '#b9966b';
 const RAIL_COLOR = '#2b2b2b';
 const PREVIEW_COLOR = '#3b82f6';
 const RAIL_WIDTH_PX = 3;
-const ORIGIN_DOT_RADIUS_PX = 5;
+const START_DOT_RADIUS_PX = 5;
 const LABEL_OFFSET_PX = 18;
 /** Accent for alignment feedback: the guide line and the open-end snap ring. */
 const GUIDE_COLOR = '#ec4899';
@@ -52,14 +52,14 @@ const GUIDE_DASH = [4, 4];
 const GHOST_DASH = [8, 6];
 const SNAP_RING_RADIUS_PX = 9;
 const SNAP_RING_WIDTH_PX = 2;
-/** Open-end rings: quiet when merely selectable, stronger when selected. */
+/** Open-end rings: quiet when merely selectable, stronger at the start. */
 const OPEN_RING_COLOR = '#9c9c9c';
 const OPEN_RING_RADIUS_PX = 6;
 const OPEN_RING_WIDTH_PX = 1.5;
-const SELECTED_RING_WIDTH_PX = 2.5;
-/** The hovered ring's halo, sized between the quiet ring and the snap ring. */
-const HOVER_RING_RADIUS_PX = 9;
-const HOVER_RING_WIDTH_PX = 2;
+const START_RING_WIDTH_PX = 2.5;
+/** The halo of the open end a click would select, wider than the quiet ring. */
+const HALO_RADIUS_PX = 9;
+const HALO_WIDTH_PX = 2;
 
 /** Maps a domain point (mm, y-up) to a canvas point (px, y-down). */
 type ToCanvas = (point: Point) => paper.Point;
@@ -99,65 +99,58 @@ export function renderLayout(
 
 /** The interaction state {@link renderOverlay} draws, all positions in domain units. */
 export interface Overlay {
-  /** The pointer-follow preview of the section a click would lay. */
+  /** The ghost of the section a click would lay, dashed under the pointer. */
   readonly ghost: PlacedSection | null;
   /**
-   * Where drawing grows from — the pending anchor or the selected railhead —
-   * marked with the filled dot, drawn whether or not the pointer has produced
-   * a ghost.
+   * Where the next section grows from — the pending anchor or the selected
+   * railhead — marked with a dot and ring, drawn whether or not the pointer
+   * has produced a ghost.
    */
-  readonly origin: Point | null;
-  /**
-   * The selected open end's position, ringed; null when drawing grows from a
-   * pending anchor, which has no end to ring.
-   */
-  readonly selectedEnd: Point | null;
+  readonly start: Point | null;
   /** The alignment feedback that shaped the ghost: a guide line or a latch ring. */
   readonly snap: Snap | null;
   /** The open end a click would select, haloed. */
-  readonly hover: Point | null;
+  readonly halo: Point | null;
 }
 
 /**
- * Renders the interaction state: the selected open end's ring and the origin
- * dot, the pointer-follow ghost, and any alignment feedback. The selected
- * ring sits under the rest; the guide sits beneath the ghost; a snap ring
- * rides on top, marking the open end the target has latched onto; a hover ring
- * lights the open end a click would select. Redraw on every move.
+ * Renders the interaction state: the start's ring and dot, the ghost, and any
+ * alignment feedback. The start's ring sits under the rest; the guide sits
+ * beneath the ghost; a snap ring rides on top, marking the open end the
+ * target has latched onto; a halo lights the open end a click would select.
+ * Redraw on every move.
  */
 export function renderOverlay(
   transform: ViewTransform,
   overlay: Overlay
 ): void {
-  const {ghost, origin, selectedEnd, snap, hover} = overlay;
   const toCanvas = onLayer('overlay', transform);
-  if (selectedEnd) {
-    drawSelectedRing(selectedEnd, toCanvas);
+  if (overlay.start) {
+    drawStartRing(overlay.start, toCanvas);
   }
   // The guide sits under the ghost, the ring on top, so resolve both up front
   // and draw them around it.
-  const {guide, ring} = snapFeedback(snap);
+  const {guide, ring} = snapFeedback(overlay.snap);
   if (guide) {
     drawGuide(guide, toCanvas, transform.scale);
   }
-  if (ghost) {
-    // The ghost is one drafted shape — a single segment or arc. Draw it and
-    // label that shape (a curve shows its sweep and radius, a straight its
-    // length).
-    const [shape] = ghost.geometry;
-    if (shape) {
-      drawGeometry(shape, toCanvas, PREVIEW_COLOR, GHOST_DASH);
-      drawLabel(shape, toCanvas);
+  if (overlay.ghost) {
+    // The ghost is one drafted element — a single segment or arc. Draw it and
+    // label it (a curve shows its sweep and radius, a straight its length).
+    const [ghost] = overlay.ghost.geometry;
+    if (ghost) {
+      drawGeometry(ghost, toCanvas, PREVIEW_COLOR, GHOST_DASH);
+      drawLabel(ghost, toCanvas);
     }
   }
-  if (origin) {
-    drawOriginDot(origin, toCanvas);
+  if (overlay.start) {
+    drawStartDot(overlay.start, toCanvas);
   }
   if (ring) {
     drawSnapRing(ring, toCanvas);
   }
-  if (hover) {
-    drawHoverRing(hover, toCanvas);
+  if (overlay.halo) {
+    drawHaloRing(overlay.halo, toCanvas);
   }
 }
 
@@ -202,58 +195,52 @@ function drawGuide(line: Line, toCanvas: ToCanvas, viewScale: number): void {
 }
 
 /** Rings the open end a target has latched onto. */
-function drawSnapRing(point: Point, toCanvas: ToCanvas): void {
+function drawSnapRing(center: Point, toCanvas: ToCanvas): void {
   drawRing(
-    point,
+    center,
     toCanvas,
     SNAP_RING_RADIUS_PX,
-    GUIDE_COLOR,
-    SNAP_RING_WIDTH_PX
+    SNAP_RING_WIDTH_PX,
+    GUIDE_COLOR
   );
 }
 
-/** Rings an open end, quietly; the overlay marks the selected one. */
-function drawOpenEndRing(point: Point, toCanvas: ToCanvas): void {
+/** Rings an open end, quietly; the overlay marks the start. */
+function drawOpenEndRing(center: Point, toCanvas: ToCanvas): void {
   drawRing(
-    point,
+    center,
     toCanvas,
     OPEN_RING_RADIUS_PX,
-    OPEN_RING_COLOR,
-    OPEN_RING_WIDTH_PX
+    OPEN_RING_WIDTH_PX,
+    OPEN_RING_COLOR
   );
 }
 
-/** Rings the selected open end, covering its quiet ring. */
-function drawSelectedRing(point: Point, toCanvas: ToCanvas): void {
+/** Rings the start, covering its open end's quiet ring when it has one. */
+function drawStartRing(center: Point, toCanvas: ToCanvas): void {
   drawRing(
-    point,
+    center,
     toCanvas,
     OPEN_RING_RADIUS_PX,
-    PREVIEW_COLOR,
-    SELECTED_RING_WIDTH_PX
+    START_RING_WIDTH_PX,
+    PREVIEW_COLOR
   );
 }
 
 /** Halos the open end a click would select. */
-function drawHoverRing(point: Point, toCanvas: ToCanvas): void {
-  drawRing(
-    point,
-    toCanvas,
-    HOVER_RING_RADIUS_PX,
-    PREVIEW_COLOR,
-    HOVER_RING_WIDTH_PX
-  );
+function drawHaloRing(center: Point, toCanvas: ToCanvas): void {
+  drawRing(center, toCanvas, HALO_RADIUS_PX, HALO_WIDTH_PX, PREVIEW_COLOR);
 }
 
-/** Strokes a circle of `radiusPx` around a domain point — every ring's one form. */
+/** Strokes a circle of `radiusPx` around `center`. */
 function drawRing(
-  point: Point,
+  center: Point,
   toCanvas: ToCanvas,
   radiusPx: number,
-  color: string,
-  widthPx: number
+  widthPx: number,
+  color: string
 ): void {
-  const ring = new paper.Path.Circle(toCanvas(point), radiusPx);
+  const ring = new paper.Path.Circle(toCanvas(center), radiusPx);
   ring.strokeColor = new paper.Color(color);
   ring.strokeWidth = widthPx;
 }
@@ -393,9 +380,9 @@ function drawGeometry(
   }
 }
 
-/** The filled dot at the origin — where drawing grows from. */
-function drawOriginDot(position: Point, toCanvas: ToCanvas): void {
-  const dot = new paper.Path.Circle(toCanvas(position), ORIGIN_DOT_RADIUS_PX);
+/** The filled dot at the start — where the next section grows from. */
+function drawStartDot(center: Point, toCanvas: ToCanvas): void {
+  const dot = new paper.Path.Circle(toCanvas(center), START_DOT_RADIUS_PX);
   dot.fillColor = new paper.Color(PREVIEW_COLOR);
 }
 

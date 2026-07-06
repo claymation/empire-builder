@@ -17,12 +17,11 @@
  */
 
 import {
-  advance,
   degToRad,
   distance,
   dot,
   EPSILON,
-  headingOf,
+  headingToward,
   normalizeAngle,
   Point,
   Pose,
@@ -31,6 +30,7 @@ import {
 } from '../domain/geometry';
 import {SectionEnd, SectionEndPose} from '../domain/layout';
 import {
+  endPose,
   placeSection,
   PlacedSection,
   SectionShape,
@@ -182,24 +182,28 @@ function aimPreview(
   if (hover) {
     return {...NOTHING, hover};
   }
-  const aim = aimAt(anchor, target);
+  const aim = headingToward(anchor, target);
   if (aim === null) {
     return NOTHING;
   }
+  // Normalized once, after snapping: the multiples divide the full turn
+  // evenly, so snapping commutes with wrapping, and the one wrap also folds a
+  // snap to 2π back to 0.
   const heading = normalizeAngle(
-    snapToIncrement(normalizeAngle(aim), SNAP_INCREMENT, SNAP_THRESHOLD)
+    snapToIncrement(aim, SNAP_INCREMENT, SNAP_THRESHOLD)
   );
   const pose: Pose = {position: anchor, heading};
   const pull = resolveAnchorSnap(target, openEnds, LINE_MAGNET_PX / viewScale);
   if (pull && pull.kind === 'line') {
-    const aligned = straightOntoLine(pose, pull.line);
-    if (aligned) {
+    const alignedStraight = straightOntoLine(pose, pull.line);
+    if (alignedStraight) {
       return lay(
         pose,
-        aligned,
+        alignedStraight,
         {
           kind: 'line',
-          point: advance(anchor, heading, aligned.length),
+          point: endPose(placeSection(alignedStraight, 'A', pose), 'B')
+            .position,
           line: pull.line,
         },
         null
@@ -226,18 +230,8 @@ function rawPose(origin: DrawOrigin | null, target: Point): Pose | null {
   if (origin.kind === 'pose') {
     return origin.pose;
   }
-  const aim = aimAt(origin.position, target);
+  const aim = headingToward(origin.position, target);
   return aim === null ? null : {position: origin.position, heading: aim};
-}
-
-/**
- * The heading from `from` toward `target`, or null when the two coincide and
- * leave no direction to aim.
- */
-function aimAt(from: Point, target: Point): number | null {
-  return distance(from, target) < EPSILON
-    ? null
-    : headingOf(subtract(target, from));
 }
 
 /** A preview that lays `shape` from `railhead` — the ghost placed to match. */

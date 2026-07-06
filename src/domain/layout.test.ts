@@ -69,7 +69,7 @@ function oval(anchor: Pose, straightLength: number, radius: number): Layout {
   layout = joinSection(
     layout,
     end('s1', 'B'),
-    withId('s2', curve(radius, 180, 'ccw')),
+    withId('s2', curve(radius, 180)),
     'A',
     null
   );
@@ -83,7 +83,7 @@ function oval(anchor: Pose, straightLength: number, radius: number): Layout {
   return joinSection(
     layout,
     end('s3', 'B'),
-    withId('s4', curve(radius, 180, 'ccw')),
+    withId('s4', curve(radius, 180)),
     'A',
     end('s1', 'A')
   );
@@ -118,7 +118,7 @@ describe('placeLayout', () => {
     layout = joinSection(
       layout,
       end('s1', 'B'),
-      withId('s2', curve(50, 90, 'ccw')),
+      withId('s2', curve(50, 90)),
       'A',
       null
     );
@@ -234,13 +234,13 @@ describe('placeLayout', () => {
     expect(s2b.position.y).toBeCloseTo(-2 + 160 * Math.sin(heading));
   });
 
-  for (const turn of ['ccw', 'cw'] as const) {
-    it(`seats a curve joined B↔B beyond the shared point (${turn})`, () => {
+  for (const sweepDeg of [90, -90]) {
+    it(`seats a curve joined B↔B beyond the shared point (${sweepDeg}°)`, () => {
       // s1 runs 80 up-and-left at 115°; the join meets its B with the curve's
       // B, so the curve extends beyond the meeting point: its 90° chord carries
       // its far end one radius ahead along the run and one radius aside. The
-      // side follows the turn presented backward — entered through B, a ccw
-      // curve bends right of the run.
+      // side follows the sweep presented backward — entered through B, a
+      // counter-clockwise curve bends right of the run.
       const heading = degToRad(115);
       let layout = anchorSection(
         EMPTY_LAYOUT,
@@ -251,7 +251,7 @@ describe('placeLayout', () => {
       layout = joinSection(
         layout,
         end('s1', 'B'),
-        withId('s2', curve(50, 90, turn)),
+        withId('s2', curve(50, sweepDeg)),
         'B',
         null
       );
@@ -265,7 +265,7 @@ describe('placeLayout', () => {
       );
       expect(dot(unitVector(heading), reach)).toBeCloseTo(50);
       expect(cross(unitVector(heading), reach)).toBeCloseTo(
-        turn === 'ccw' ? -50 : 50
+        sweepDeg > 0 ? -50 : 50
       );
     });
   }
@@ -327,7 +327,7 @@ describe('placeLayout', () => {
     const merged = joinSection(
       layout,
       end('s1', 'B'),
-      withId('s3', curve(50, 180, 'ccw')),
+      withId('s3', curve(50, 180)),
       'A',
       end('s2', 'B')
     );
@@ -530,7 +530,7 @@ describe('joinSection', () => {
     const merged = joinSection(
       before,
       end('s1', 'B'),
-      withId('s3', curve(50, 180, 'ccw')),
+      withId('s3', curve(50, 180)),
       'A',
       end('s2', 'B')
     );

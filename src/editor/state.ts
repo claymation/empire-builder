@@ -6,7 +6,7 @@
  *
  * The state is the current {@link Layout}, the selected railhead, a transient
  * pending anchor, and the history undo/redo walk. {@link dropAnchor} drops the
- * anchor a new network grows from; {@link layFirstSection} lays that network's
+ * anchor a new network grows from; {@link startNetwork} lays that network's
  * first section there, {@link extend} lays one joined onto an open end,
  * {@link selectRailhead} moves drawing to another open end, and
  * {@link deselect} clears the selection. The editor picks among them and
@@ -20,7 +20,7 @@
  * section — is a drawing transient, not a fact about the plan, so it lives
  * here, not in the layout, and is never recorded in history. It carries no
  * heading: the heading is aimed while the first section is previewed and fixed
- * when {@link layFirstSection} lays it. At most one of the two is set: both
+ * when {@link startNetwork} lays it. At most one of the two is set: both
  * answer "where does the next section grow from".
  */
 
@@ -99,19 +99,19 @@ export function selectRailhead(
 }
 
 /**
- * Lay the network's first section, anchored by its `A` end at the pending
- * anchor position, leaving at the given `heading` — the aim the section was
- * previewed with ({@link anchorSection}). Clears the pending anchor; the
- * railhead advances to the section's far end. The prior snapshot goes to
- * `past` — one undo step — and the redo stack is dropped.
+ * Start a new network: lay its first section, anchored by its `A` end at the
+ * pending anchor position, leaving at the given `heading` — the aim the
+ * section was previewed with ({@link anchorSection}). Clears the pending
+ * anchor; the railhead advances to the section's far end. The prior snapshot
+ * goes to `past` — one undo step — and the redo stack is dropped.
  */
-export function layFirstSection(
+export function startNetwork(
   state: EditorState,
   section: Section,
   heading: number
 ): EditorState {
   if (!state.pendingAnchor) {
-    throw new Error('laying a first section requires a pending anchor');
+    throw new Error('starting a network requires a pending anchor');
   }
   return commit(
     state,

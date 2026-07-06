@@ -26,7 +26,7 @@ import {
   EditorState,
   EMPTY_STATE,
   extend,
-  layFirstSection,
+  startNetwork,
   redo,
   selectRailhead,
   undo,
@@ -124,19 +124,17 @@ export function startEditor(
   }
 
   function refreshOverlay(view: ViewTransform): void {
-    const {ghost, snap, hover} = preview(view);
-    // The dot and the selected ring mark selection state, not the preview:
-    // they show the moment an anchor drops or an end is selected, with the
-    // pointer wherever it is.
-    const railheadPoint = state.railhead
-      ? poseOf(placed, state.railhead).position
-      : null;
+    const {ghost, snap, hover: hoveredEnd} = preview(view);
+    // The start's dot and ring mark selection state, not the preview: they
+    // show the moment an anchor drops or an end is selected, with the pointer
+    // wherever it is.
     renderOverlay(view, {
       ghost,
-      origin: state.pendingAnchor ?? railheadPoint,
-      selectedEnd: railheadPoint,
+      start:
+        state.pendingAnchor ??
+        (state.railhead ? poseOf(placed, state.railhead).position : null),
       snap,
-      hover: hover ? poseOf(placed, hover).position : null,
+      halo: hoveredEnd ? poseOf(placed, hoveredEnd).position : null,
     });
   }
 
@@ -187,7 +185,7 @@ export function startEditor(
       setState(selectRailhead(state, hover));
     } else if (shape) {
       if (state.pendingAnchor && from) {
-        setState(layFirstSection(state, withId(shape), from.heading));
+        setState(startNetwork(state, withId(shape), from.heading));
       } else if (state.railhead) {
         setState(extend(state, state.railhead, withId(shape), closeOnto));
       }

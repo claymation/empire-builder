@@ -33,7 +33,6 @@ import {
   tangentAndNormalLines,
   unitArcChord,
   unitVector,
-  Vector,
 } from './geometry';
 import {SectionEnd, SectionEndPose} from './layout';
 import {
@@ -44,8 +43,6 @@ import {
   SectionShape,
   Straight,
   straight,
-  Turn,
-  turnSign,
 } from './section';
 import {assertNever} from './validate';
 
@@ -271,9 +268,11 @@ export function shapeTo(from: Pose, target: Point): SectionShape | null {
   const endAngle = Math.atan2(target.y - center.y, target.x - center.x);
 
   // A center to the left of travel bends the track counter-clockwise.
-  return offset > 0
-    ? curve(radius, radToDeg(normalizeAngle(endAngle - startAngle)), 'ccw')
-    : curve(radius, radToDeg(normalizeAngle(startAngle - endAngle)), 'cw');
+  const sweep =
+    offset > 0
+      ? normalizeAngle(endAngle - startAngle)
+      : -normalizeAngle(startAngle - endAngle);
+  return curve(radius, radToDeg(sweep));
 }
 
 /**
@@ -323,20 +322,18 @@ export function snappedShapeTo(
   }
 
   // With the sweep fixed, the arc's end rides a ray out of `from`: it is
-  // `from + radius·chord`, where `chord` is the unit-radius arc's straight
-  // start→end (see {@link arcChord}). The end slides out along that ray as the
+  // `from + radius·chord`, where `chord` is the unit-radius arc's start→end
+  // vector ({@link unitArcChord}). The end slides out along that ray as the
   // radius grows, so the radius whose end is nearest the pointer is the
   // pointer's projection onto the ray; a negative projection means the pointer
   // is behind `from`, so leave the curve raw.
-  const chord = arcChord(from, sweep, raw.turn);
+  const chord = unitArcChord(from.heading, sweep);
   const chordLengthSquared = dot(chord, chord); // ~0 only for a full-circle sweep
   const radius =
     chordLengthSquared > EPSILON
       ? dot(toTarget, chord) / chordLengthSquared
       : 0;
-  return radius > 0
-    ? {kind: 'curved', arc: arc(radius, sweep), turn: raw.turn}
-    : raw;
+  return radius > 0 ? {kind: 'curved', arc: arc(radius, sweep)} : raw;
 }
 
 /**
@@ -360,11 +357,11 @@ export function shapeOntoLine(
   if (!shaped) {
     return null;
   }
-  const aligned =
+  const alignedShape =
     shaped.kind === 'straight'
       ? straightOntoLine(from, line)
-      : curveOntoLine(from, line, shaped.arc.sweep, shaped.turn);
-  return aligned ?? shaped;
+      : curveOntoLine(from, line, shaped.arc.sweep);
+  return alignedShape ?? shaped;
 }
 
 /**
@@ -385,25 +382,11 @@ export function straightOntoLine(from: Pose, line: Line): Straight | null {
   return reach > EPSILON ? straight(reach) : null;
 }
 
-/**
- * The straight start→end of the unit-radius `sweep`/`turn` arc leaving `from`:
- * the direction the placed arc's end rides out along as its radius grows.
- * Vanishes (length ~0) only for a full-circle sweep.
- */
-function arcChord(from: Pose, sweep: number, turn: Turn): Vector {
-  return unitArcChord(from.heading, turnSign(turn) * sweep);
-}
-
-// A `sweep`/`turn` curve from `from` whose end meets `line`, or null. The end
-// rides the ray `from + radius·chord`, so the radius that lands it on the line is
-// where that ray crosses the line.
-function curveOntoLine(
-  from: Pose,
-  line: Line,
-  sweep: number,
-  turn: Turn
-): Curved | null {
-  const chord = arcChord(from, sweep, turn);
+// A curve of the signed `sweep` from `from` whose end meets `line`, or null.
+// The end rides the ray `from + radius·chord`, so the radius that lands it on
+// the line is where that ray crosses the line.
+function curveOntoLine(from: Pose, line: Line, sweep: number): Curved | null {
+  const chord = unitArcChord(from.heading, sweep);
   const meeting = lineIntersection(
     {origin: from.position, direction: chord},
     line
@@ -413,7 +396,5 @@ function curveOntoLine(
   }
   const radius =
     dot(subtract(meeting, from.position), chord) / dot(chord, chord);
-  return radius > EPSILON
-    ? {kind: 'curved', arc: arc(radius, sweep), turn}
-    : null;
+  return radius > EPSILON ? {kind: 'curved', arc: arc(radius, sweep)} : null;
 }

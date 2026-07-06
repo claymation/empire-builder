@@ -8,7 +8,7 @@ import {
   type SectionShape,
 } from '../domain/section';
 import {
-  layFirstSection,
+  startNetwork,
   deselect,
   EMPTY_STATE,
   extend,
@@ -47,7 +47,7 @@ describe('editor state', () => {
 
   it('lays the first section as a new anchored network', () => {
     const planted = dropAnchor(EMPTY_STATE, ORIGIN);
-    const drawn = layFirstSection(planted, withId('s1', straight(300)), 0);
+    const drawn = startNetwork(planted, withId('s1', straight(300)), 0);
     expect(drawn.layout.sections.map(s => s.id)).toEqual(['s1']);
     expect(drawn.layout.anchors).toHaveLength(1);
     expect(drawn.pendingAnchor).toBeNull();
@@ -56,7 +56,7 @@ describe('editor state', () => {
 
   it('anchors the first section at the aimed heading', () => {
     const planted = dropAnchor(EMPTY_STATE, {x: 5, y: 7});
-    const drawn = layFirstSection(
+    const drawn = startNetwork(
       planted,
       withId('s1', straight(100)),
       degToRad(30)
@@ -74,12 +74,12 @@ describe('editor state', () => {
 
   it('anchoring without a pending anchor throws', () => {
     expect(() =>
-      layFirstSection(EMPTY_STATE, withId('s1', straight(300)), 0)
+      startNetwork(EMPTY_STATE, withId('s1', straight(300)), 0)
     ).toThrow();
   });
 
   it('undoes the first section straight back to empty', () => {
-    const drawn = layFirstSection(
+    const drawn = startNetwork(
       dropAnchor(EMPTY_STATE, ORIGIN),
       withId('s1', straight(300)),
       0
@@ -93,22 +93,17 @@ describe('editor state', () => {
   it('closes a loop, leaving no open ends, and reopens them on undo', () => {
     // The oval: two straights joined by two 180° curves, the last closing onto
     // the anchored A end.
-    let state = layFirstSection(
+    let state = startNetwork(
       dropAnchor(EMPTY_STATE, ORIGIN),
       withId('s1', straight(100)),
       0
     );
-    state = extend(
-      state,
-      end('s1', 'B'),
-      withId('s2', curve(50, 180, 'ccw')),
-      null
-    );
+    state = extend(state, end('s1', 'B'), withId('s2', curve(50, 180)), null);
     state = extend(state, end('s2', 'B'), withId('s3', straight(100)), null);
     const closed = extend(
       state,
       end('s3', 'B'),
-      withId('s4', curve(50, 180, 'ccw')),
+      withId('s4', curve(50, 180)),
       end('s1', 'A')
     );
     expect(openEnds(closed.layout)).toEqual([]);
@@ -116,7 +111,7 @@ describe('editor state', () => {
   });
 
   it('drops the redo stack once a new section is committed', () => {
-    const anchored = layFirstSection(
+    const anchored = startNetwork(
       dropAnchor(EMPTY_STATE, ORIGIN),
       withId('s1', straight(300)),
       0
@@ -140,8 +135,8 @@ describe('editor state', () => {
 });
 
 /** A one-section network: s1 anchored at the origin, both ends open. */
-function anchored(): ReturnType<typeof layFirstSection> {
-  return layFirstSection(
+function anchored(): ReturnType<typeof startNetwork> {
+  return startNetwork(
     dropAnchor(EMPTY_STATE, ORIGIN),
     withId('s1', straight(100)),
     0
@@ -204,17 +199,12 @@ describe('commit railhead', () => {
 
   it('extend with closeOnto nulls it — the loop consumed the far end', () => {
     let state = anchored();
-    state = extend(
-      state,
-      end('s1', 'B'),
-      withId('s2', curve(50, 180, 'ccw')),
-      null
-    );
+    state = extend(state, end('s1', 'B'), withId('s2', curve(50, 180)), null);
     state = extend(state, end('s2', 'B'), withId('s3', straight(100)), null);
     const closed = extend(
       state,
       end('s3', 'B'),
-      withId('s4', curve(50, 180, 'ccw')),
+      withId('s4', curve(50, 180)),
       end('s1', 'A')
     );
     expect(closed.railhead).toBeNull();
@@ -290,9 +280,9 @@ describe('deselect', () => {
  * the origin, Esc, then s2 anchored one curve-diameter above it. The railhead
  * sits on s2's B.
  */
-function twoNetworks(): ReturnType<typeof layFirstSection> {
+function twoNetworks(): ReturnType<typeof startNetwork> {
   const planted = dropAnchor(deselect(anchored()), {x: 0, y: 100});
-  return layFirstSection(planted, withId('s2', straight(100)), 0);
+  return startNetwork(planted, withId('s2', straight(100)), 0);
 }
 
 describe('starting a second network', () => {
@@ -313,7 +303,7 @@ describe('starting a second network', () => {
     const merged = extend(
       selected,
       end('s1', 'B'),
-      withId('s3', curve(50, 180, 'ccw')),
+      withId('s3', curve(50, 180)),
       end('s2', 'B')
     );
     expect(merged.layout.anchors).toHaveLength(1);
@@ -333,7 +323,7 @@ describe('the two-straights oval (US-5-3)', () => {
     state = extend(
       state,
       end('s1', 'B'),
-      withId('s3', curve(50, 180, 'ccw')),
+      withId('s3', curve(50, 180)),
       end('s2', 'B')
     );
     expect(state.layout.anchors).toHaveLength(1);
@@ -342,7 +332,7 @@ describe('the two-straights oval (US-5-3)', () => {
     state = extend(
       state,
       end('s1', 'A'),
-      withId('s4', curve(50, 180, 'cw')),
+      withId('s4', curve(50, -180)),
       end('s2', 'A')
     );
     expect(openEnds(state.layout)).toEqual([]);
