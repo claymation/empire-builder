@@ -15,6 +15,7 @@ import {
   cross,
   degToRad,
   headingOf,
+  headingToward,
   inversePose,
   distance,
   dot,
@@ -30,7 +31,7 @@ import {
   radToDeg,
   scale,
   segmentBounds,
-  segmentEnd,
+  segmentEndPoint,
   segmentEndPose,
   subtract,
   tangentAndNormalLines,
@@ -548,8 +549,8 @@ describe('placed segment', () => {
   };
 
   it('ends ahead along its heading, keeping the heading', () => {
-    expect(segmentEnd(segment).x).toBeCloseTo(2);
-    expect(segmentEnd(segment).y).toBeCloseTo(13);
+    expect(segmentEndPoint(segment).x).toBeCloseTo(2);
+    expect(segmentEndPoint(segment).y).toBeCloseTo(13);
     expect(segmentEndPose(segment).heading).toBeCloseTo(Math.PI / 2);
   });
 
@@ -559,8 +560,8 @@ describe('placed segment', () => {
       start: {position: {x: 0, y: 0}, heading: Math.PI},
       length: 10,
     };
-    expect(segmentEnd(west).x).toBeCloseTo(-10);
-    expect(segmentEnd(west).y).toBeCloseTo(0);
+    expect(segmentEndPoint(west).x).toBeCloseTo(-10);
+    expect(segmentEndPoint(west).y).toBeCloseTo(0);
   });
 
   it('bounds its endpoints', () => {
@@ -579,10 +580,28 @@ describe('arc / arcLength', () => {
     expect(arcLength(arc(100, Math.PI / 2))).toBeCloseTo((100 * Math.PI) / 2);
   });
 
-  it('rejects non-positive dimensions', () => {
+  it('measures a clockwise arc by the same positive length', () => {
+    expect(arcLength(arc(100, -Math.PI / 2))).toBeCloseTo((100 * Math.PI) / 2);
+  });
+
+  it('rejects a non-positive radius and a zero sweep', () => {
     expect(() => arc(0, Math.PI)).toThrow(RangeError);
-    expect(() => arc(100, -1)).toThrow(RangeError);
-    expect(() => arcLength({radius: -1, sweep: Math.PI})).toThrow(RangeError);
+    expect(() => arc(100, 0)).toThrow(RangeError);
+    expect(arc(100, -1).sweep).toBe(-1); // clockwise sweeps are valid
+  });
+});
+
+describe('headingToward', () => {
+  it('points from one point toward another, in every quadrant', () => {
+    const from = {x: 3, y: -2};
+    expect(headingToward(from, {x: 8, y: 3})).toBeCloseTo(Math.PI / 4);
+    expect(headingToward(from, {x: -2, y: 3})).toBeCloseTo((3 * Math.PI) / 4);
+    expect(headingToward(from, {x: -2, y: -7})).toBeCloseTo((-3 * Math.PI) / 4);
+    expect(headingToward(from, {x: 8, y: -7})).toBeCloseTo(-Math.PI / 4);
+  });
+
+  it('has no heading between coincident points', () => {
+    expect(headingToward({x: 3, y: -2}, {x: 3, y: -2})).toBeNull();
   });
 });
 

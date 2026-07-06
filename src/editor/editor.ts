@@ -21,12 +21,12 @@ import {renderLayout, renderOverlay, sceneTransform} from '../render/scene';
 import {ViewTransform} from '../render/transform';
 import {computePreview, DrawOrigin, Preview} from './preview';
 import {
-  anchor,
   deselect,
   dropAnchor,
   EditorState,
-  EMPTY,
+  EMPTY_STATE,
   extend,
+  startNetwork,
   redo,
   selectRailhead,
   undo,
@@ -40,7 +40,7 @@ export function startEditor(
 ): void {
   paper.setup(canvas);
   // The editor state; every change goes through setState.
-  let state = EMPTY;
+  let state = EMPTY_STATE;
   // The pointer's last known domain position; null until it enters the canvas.
   let pointer: Point | null = null;
   // Snapping suspended (Option/Alt held) for raw freehand placement.
@@ -124,21 +124,18 @@ export function startEditor(
   }
 
   function refreshOverlay(view: ViewTransform): void {
-    const {ghost, snap, hover} = preview(view);
-    // The dot and the selected ring mark selection state, not the preview:
-    // they show the moment an anchor drops or an end is selected, with the
-    // pointer wherever it is.
-    const railheadPoint = state.railhead
-      ? poseOf(placed, state.railhead).position
-      : null;
-    renderOverlay(
-      view,
+    const {ghost, snap, hover: hoveredEnd} = preview(view);
+    // The start's dot and ring mark selection state, not the preview: they
+    // show the moment an anchor drops or an end is selected, with the pointer
+    // wherever it is.
+    renderOverlay(view, {
       ghost,
-      state.pendingAnchor ?? railheadPoint,
-      railheadPoint,
+      start:
+        state.pendingAnchor ??
+        (state.railhead ? poseOf(placed, state.railhead).position : null),
       snap,
-      hover ? poseOf(placed, hover).position : null
-    );
+      halo: hoveredEnd ? poseOf(placed, hoveredEnd).position : null,
+    });
   }
 
   function refreshStatus(): void {
@@ -188,7 +185,7 @@ export function startEditor(
       setState(selectRailhead(state, hover));
     } else if (shape) {
       if (state.pendingAnchor && from) {
-        setState(anchor(state, withId(shape), from.heading));
+        setState(startNetwork(state, withId(shape), from.heading));
       } else if (state.railhead) {
         setState(extend(state, state.railhead, withId(shape), closeOnto));
       }

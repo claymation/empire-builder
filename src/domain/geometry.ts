@@ -69,6 +69,16 @@ export function headingOf(v: Vector): number {
   return Math.atan2(v.y, v.x);
 }
 
+/**
+ * The heading from `from` toward `target`, or null when the two coincide and
+ * no direction exists between them.
+ */
+export function headingToward(from: Point, target: Point): number | null {
+  return distance(from, target) < EPSILON
+    ? null
+    : headingOf(subtract(target, from));
+}
+
 /** The unit vector pointing along `heading` (radians, counter-clockwise from +x). */
 export function unitVector(heading: number): Vector {
   return {x: Math.cos(heading), y: Math.sin(heading)};
@@ -339,48 +349,54 @@ export interface PlacedSegment {
 }
 
 /** Where a placed segment ends. */
-export function segmentEnd(segment: PlacedSegment): Point {
+export function segmentEndPoint(segment: PlacedSegment): Point {
   return advance(segment.start.position, segment.start.heading, segment.length);
 }
 
 /** The exit pose of a placed segment: its end point, heading unchanged. */
 export function segmentEndPose(segment: PlacedSegment): Pose {
-  return {position: segmentEnd(segment), heading: segment.start.heading};
+  return {position: segmentEndPoint(segment), heading: segment.start.heading};
 }
 
 /** The bounding box of a placed segment. */
 export function segmentBounds(segment: PlacedSegment): Bounds {
-  return boundsOfPoints([segment.start.position, segmentEnd(segment)]);
+  return boundsOfPoints([segment.start.position, segmentEndPoint(segment)]);
 }
 
 // ── Arcs ──
 
-/** The shape of a circular arc: a radius and the (unsigned) angle it sweeps. */
+/** The shape of a circular arc: a radius and the signed angle it sweeps. */
 export interface Arc {
   /** Radius of the arc. */
   readonly radius: number;
-  /** Angle the arc subtends, in radians; always positive. */
+  /**
+   * Angle the arc subtends, in radians: counter-clockwise positive, clockwise
+   * negative; never zero.
+   */
   readonly sweep: number;
 }
 
-/** Builds an {@link Arc}, rejecting non-positive dimensions. */
+/**
+ * Builds an {@link Arc}, rejecting a non-positive radius and a zero sweep —
+ * a zero-sweep arc has no extent.
+ *
+ * @throws RangeError if `radius` is not a positive, finite number or `sweep`
+ * is not a nonzero, finite number.
+ */
 export function arc(radius: number, sweep: number): Arc {
-  return {
-    radius: requirePositive(radius, 'radius'),
-    sweep: requirePositive(sweep, 'sweep'),
-  };
+  if (requireFinite(sweep, 'sweep') === 0) {
+    throw new RangeError('sweep must be a nonzero, finite number');
+  }
+  return {radius: requirePositive(radius, 'radius'), sweep};
 }
 
-/** The running length of an arc: radius × sweep. */
-export function arcLength(shape: Arc): number {
-  return (
-    requirePositive(shape.radius, 'radius') *
-    requirePositive(shape.sweep, 'sweep')
-  );
+/** The running length of an arc: radius × |sweep|. */
+export function arcLength(arc: Arc): number {
+  return arc.radius * Math.abs(arc.sweep);
 }
 
 /**
- * The start→end offset of a unit-radius arc with the given entry `heading` and
+ * The start→end vector of a unit-radius arc with the given entry `heading` and
  * signed sweep (counter-clockwise positive). A placed arc's end is its start
  * plus `radius` times this vector, so a caller can solve for the radius that
  * lands the end on a target line.

@@ -31,14 +31,13 @@ describe('sectionLength', () => {
 
   it('returns the arc length of a curve, regardless of turn', () => {
     const expected = (Math.PI * 360) / 2; // a quarter of a circle of radius 360
-    expect(sectionLength(curve(360, 90, 'ccw'))).toBeCloseTo(expected);
-    expect(sectionLength(curve(360, 90, 'cw'))).toBeCloseTo(expected);
+    expect(sectionLength(curve(360, 90))).toBeCloseTo(expected);
+    expect(sectionLength(curve(360, -90))).toBeCloseTo(expected);
   });
 
-  it('rejects a non-positive length', () => {
-    expect(() => sectionLength({kind: 'straight', length: 0})).toThrow(
-      RangeError
-    );
+  it('rejects a non-positive length at build time', () => {
+    expect(() => straight(0)).toThrow(RangeError);
+    expect(() => straight(-5)).toThrow(RangeError);
   });
 });
 
@@ -48,19 +47,19 @@ describe('endsOf', () => {
   });
 
   it('names both ends A and B for a curve', () => {
-    expect(endsOf(curve(100, 90, 'ccw'))).toEqual(['A', 'B']);
+    expect(endsOf(curve(100, 90))).toEqual(['A', 'B']);
   });
 });
 
 describe('curve', () => {
-  it('carries its turn on the shape', () => {
-    expect(curve(100, 90, 'ccw')).toMatchObject({kind: 'curved', turn: 'ccw'});
-    expect(curve(100, 90, 'cw')).toMatchObject({kind: 'curved', turn: 'cw'});
+  it('signs the sweep by the direction of travel', () => {
+    expect(curve(100, 90).arc.sweep).toBeCloseTo(Math.PI / 2);
+    expect(curve(100, -90).arc.sweep).toBeCloseTo(-Math.PI / 2);
   });
 
   it('rejects non-positive radius and sweep at build time', () => {
-    expect(() => curve(0, 90, 'ccw')).toThrow(RangeError);
-    expect(() => curve(100, 0, 'cw')).toThrow(RangeError);
+    expect(() => curve(0, 90)).toThrow(RangeError);
+    expect(() => curve(100, -0)).toThrow(RangeError);
   });
 });
 
@@ -90,7 +89,7 @@ describe('placeSection — straight', () => {
 
 describe('placeSection — curve', () => {
   it('a ccw curve bends counter-clockwise (left of travel)', () => {
-    const placed = placeSection(curve(100, 90, 'ccw'), 'A', ORIGIN);
+    const placed = placeSection(curve(100, 90), 'A', ORIGIN);
     expect(placed.geometry[0].kind).toBe('arc');
     const b = endPose(placed, 'B');
     expect(b.position.x).toBeCloseTo(100);
@@ -100,14 +99,14 @@ describe('placeSection — curve', () => {
   });
 
   it('a cw curve bends clockwise (right of travel)', () => {
-    const b = endPose(placeSection(curve(100, 90, 'cw'), 'A', ORIGIN), 'B');
+    const b = endPose(placeSection(curve(100, -90), 'A', ORIGIN), 'B');
     expect(b.position.x).toBeCloseTo(100);
     expect(b.position.y).toBeCloseTo(-100);
     expect(b.heading).toBeCloseTo(-Math.PI / 2 + Math.PI);
   });
 
-  // The turn is defined by A→B travel, so it must hold from any start heading,
-  // not just along an axis: one off-axis heading per quadrant.
+  // The sweep's sign is defined by A→B travel, so it must hold from any start
+  // heading, not just along an axis: one off-axis heading per quadrant.
   const headings = [degToRad(30), degToRad(120), degToRad(210), degToRad(300)];
   const sweepDeg = 90;
   for (const heading of headings) {
@@ -115,10 +114,7 @@ describe('placeSection — curve', () => {
     const label = `${Math.round(radToDeg(heading))}°`;
 
     it(`turns the heading left by the sweep, ccw, from ${label}`, () => {
-      const b = endPose(
-        placeSection(curve(120, sweepDeg, 'ccw'), 'A', from),
-        'B'
-      );
+      const b = endPose(placeSection(curve(120, sweepDeg), 'A', from), 'B');
       // B faces back into the curve: the reverse of the sweep's exit heading.
       expect(b.heading).toBeCloseTo(heading + degToRad(sweepDeg) + Math.PI);
       // B lands to the left of travel (a positive cross with the forward ray).
@@ -127,10 +123,7 @@ describe('placeSection — curve', () => {
     });
 
     it(`turns the heading right by the sweep, cw, from ${label}`, () => {
-      const b = endPose(
-        placeSection(curve(120, sweepDeg, 'cw'), 'A', from),
-        'B'
-      );
+      const b = endPose(placeSection(curve(120, -sweepDeg), 'A', from), 'B');
       expect(b.heading).toBeCloseTo(heading - degToRad(sweepDeg) + Math.PI);
       const toB = subtract(b.position, from.position);
       expect(cross(unitVector(heading), toB)).toBeLessThan(0);
@@ -142,7 +135,7 @@ describe('placeSection — ends face inward', () => {
   // Every end's pose faces into its section: A's is the placing pose itself,
   // aiming along the sweep, and B's is the reverse of the sweep's exit pose.
   // Straights and both curve turns, from an off-axis heading in each quadrant.
-  const shapes = [straight(120), curve(90, 60, 'ccw'), curve(90, 60, 'cw')];
+  const shapes = [straight(120), curve(90, 60), curve(90, -60)];
   const headings = [degToRad(35), degToRad(125), degToRad(215), degToRad(305)];
   for (const shape of shapes) {
     for (const heading of headings) {
@@ -165,7 +158,7 @@ describe('placeSection — by either end', () => {
   // B at the pose its B lands on (when seated by A) must reproduce that very
   // placement — the mirror of seating by A. Straights and both curve turns, from
   // an off-axis heading in each quadrant.
-  const shapes = [straight(120), curve(90, 60, 'ccw'), curve(90, 60, 'cw')];
+  const shapes = [straight(120), curve(90, 60), curve(90, -60)];
   const headings = [degToRad(25), degToRad(115), degToRad(205), degToRad(295)];
   for (const shape of shapes) {
     for (const heading of headings) {
@@ -193,7 +186,7 @@ describe('sectionBounds — curve', () => {
   it('accounts for the arc bulge, not just the endpoints', () => {
     // A ccw 180° semicircle from the origin heading east bulges out to +x = R
     // and spans y from 0 to 2R, even though both endpoints sit on x = 0.
-    const b = sectionBounds(placeSection(curve(100, 180, 'ccw'), 'A', ORIGIN));
+    const b = sectionBounds(placeSection(curve(100, 180), 'A', ORIGIN));
     expect(b.minX).toBeCloseTo(0);
     expect(b.maxX).toBeCloseTo(100);
     expect(b.minY).toBeCloseTo(0);

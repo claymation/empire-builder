@@ -21,8 +21,7 @@ import {
   distance,
   dot,
   EPSILON,
-  headingOf,
-  lineIntersection,
+  headingToward,
   normalizeAngle,
   Point,
   Pose,
@@ -31,6 +30,7 @@ import {
 } from '../domain/geometry';
 import {SectionEnd, SectionEndPose} from '../domain/layout';
 import {
+  endPose,
   placeSection,
   PlacedSection,
   SectionShape,
@@ -44,6 +44,7 @@ import {
   shownSnap,
   Snap,
   snapToIncrement,
+  straightOntoLine,
 } from '../domain/snapping';
 
 /** Curve sweeps snap to multiples of this when within SNAP_THRESHOLD of one. */
@@ -181,28 +182,30 @@ function aimPreview(
   if (hover) {
     return {...NOTHING, hover};
   }
-  if (distance(anchor, target) < EPSILON) {
+  const aim = headingToward(anchor, target);
+  if (aim === null) {
     return NOTHING;
   }
-  const aim = normalizeAngle(headingOf(subtract(target, anchor)));
+  // Normalized once, after snapping: the multiples divide the full turn
+  // evenly, so snapping commutes with wrapping, and the one wrap also folds a
+  // snap to 2π back to 0.
   const heading = normalizeAngle(
     snapToIncrement(aim, SNAP_INCREMENT, SNAP_THRESHOLD)
   );
   const pose: Pose = {position: anchor, heading};
   const pull = resolveAnchorSnap(target, openEnds, LINE_MAGNET_PX / viewScale);
   if (pull && pull.kind === 'line') {
-    const crossing = lineIntersection(
-      {origin: anchor, direction: unitVector(heading)},
-      pull.line
-    );
-    const reach = crossing
-      ? dot(unitVector(heading), subtract(crossing, anchor))
-      : 0;
-    if (crossing && reach > EPSILON) {
+    const alignedStraight = straightOntoLine(pose, pull.line);
+    if (alignedStraight) {
       return lay(
         pose,
-        straight(reach),
-        {kind: 'line', point: crossing, line: pull.line},
+        alignedStraight,
+        {
+          kind: 'line',
+          point: endPose(placeSection(alignedStraight, 'A', pose), 'B')
+            .position,
+          line: pull.line,
+        },
         null
       );
     }
@@ -227,13 +230,8 @@ function rawPose(origin: DrawOrigin | null, target: Point): Pose | null {
   if (origin.kind === 'pose') {
     return origin.pose;
   }
-  if (distance(origin.position, target) < EPSILON) {
-    return null;
-  }
-  return {
-    position: origin.position,
-    heading: headingOf(subtract(target, origin.position)),
-  };
+  const aim = headingToward(origin.position, target);
+  return aim === null ? null : {position: origin.position, heading: aim};
 }
 
 /** A preview that lays `shape` from `railhead` — the ghost placed to match. */

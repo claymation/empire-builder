@@ -44,28 +44,29 @@ export type SectionId = string;
  */
 export type EndName = 'A' | 'B';
 
-/**
- * Which way a curve bends, as the rotational sense of travel from end `A` to end
- * `B`: `ccw` turns counter-clockwise, `cw` clockwise. Intrinsic to the shape —
- * placing the same curve by `B` traverses it B→A and so presents the opposite
- * bend on screen, from the one stored value.
- */
-export type Turn = 'ccw' | 'cw';
-
-/** The sign a {@link Turn} lends an arc's sweep: ccw positive (+), cw negative (−). */
-export function turnSign(turn: Turn): number {
-  return turn === 'ccw' ? 1 : -1;
+/** A straight (tangent) run of the given length (mm). */
+export interface Straight {
+  readonly kind: 'straight';
+  readonly length: number;
 }
 
 /**
- * The intrinsic form of a section: a straight of a given length, or a curve of a
- * given arc with the way it bends (its {@link Turn}). The bend rides on the shape
- * while the arc holds only radius and sweep. No identity, no placement — the
- * shape both {@link Section} and {@link PlacedSection} are built over.
+ * A curved run of the given arc (radius and sweep). The sweep's sign gives
+ * the rotational sense of travel from end `A` to end `B` — counter-clockwise
+ * positive, clockwise negative — so the one stored value, placed by `B`,
+ * presents the opposite bend on screen.
  */
-export type SectionShape =
-  | {readonly kind: 'straight'; readonly length: number}
-  | {readonly kind: 'curved'; readonly arc: Arc; readonly turn: Turn};
+export interface Curved {
+  readonly kind: 'curved';
+  readonly arc: Arc;
+}
+
+/**
+ * The intrinsic form of a section: a {@link Straight} or a {@link Curved}. No
+ * identity, no placement — the shape both {@link Section} and
+ * {@link PlacedSection} are built over.
+ */
+export type SectionShape = Straight | Curved;
 
 /** A {@link SectionShape} given an identity, so the layout can join and reference it. */
 export type Section = SectionShape & {readonly id: SectionId};
@@ -84,27 +85,24 @@ export interface PlacedSection {
 }
 
 /** Builds a straight section shape of the given length. */
-export function straight(length: number): SectionShape {
+export function straight(length: number): Straight {
   return {kind: 'straight', length: requirePositive(length, 'length')};
 }
 
 /**
- * Builds a curve of the given radius (mm) sweeping `sweepDegrees`, bending the
- * given way ({@link Turn}) as it travels from end `A` to end `B`.
+ * Builds a curve of the given radius (mm) sweeping `sweepDegrees` as it
+ * travels from end `A` to end `B`: positive counter-clockwise, negative
+ * clockwise.
  */
-export function curve(
-  radius: number,
-  sweepDegrees: number,
-  turn: Turn
-): SectionShape {
-  return {kind: 'curved', arc: arc(radius, degToRad(sweepDegrees)), turn};
+export function curve(radius: number, sweepDegrees: number): Curved {
+  return {kind: 'curved', arc: arc(radius, degToRad(sweepDegrees))};
 }
 
 /** The running length of a section — the distance a train travels across it. */
 export function sectionLength(shape: SectionShape): number {
   switch (shape.kind) {
     case 'straight':
-      return requirePositive(shape.length, 'length');
+      return shape.length;
     case 'curved':
       return arcLength(shape.arc);
     default:
@@ -133,8 +131,7 @@ const IDENTITY_POSE: Pose = {position: {x: 0, y: 0}, heading: 0};
 
 /**
  * Places `shape` by seating its `end` at `pose`, deriving every end's world pose
- * and the swept geometry together. A curve's {@link Turn} becomes the sign of the
- * arc's sweep — ccw counter-clockwise, cw clockwise.
+ * and the swept geometry together.
  *
  * Seating works through the shape's canonical frame (its origin end at the
  * identity pose). The seating transform carries `end`'s canonical pose onto
@@ -187,7 +184,7 @@ function placeByOrigin(shape: SectionShape, originPose: Pose): PlacedSection {
         kind: 'arc',
         start: originPose,
         radius: shape.arc.radius,
-        sweep: turnSign(shape.turn) * shape.arc.sweep,
+        sweep: shape.arc.sweep,
       };
       return {
         shape,
