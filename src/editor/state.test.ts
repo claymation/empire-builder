@@ -170,14 +170,17 @@ describe('tieInSection', () => {
     expect(a.position.y).toBeCloseTo(0);
   });
 
-  it('advances the railhead to the open A end', () => {
+  it('clears the railhead, leaving the A end open to resume from', () => {
+    // Like a closed loop, the run ends: nothing is selected, but the section's
+    // A end stays open, so a click there resumes drawing from it.
     const tied = tieInSection(
       aimedBack(),
       withId('s2', straight(100)),
       end('s1', 'B')
     );
-    expect(tied.railhead).toEqual(end('s2', 'A'));
+    expect(tied.railhead).toBeNull();
     expect(openEnds(tied.layout)).toEqual([end('s1', 'A'), end('s2', 'A')]);
+    expect(() => selectRailhead(tied, end('s2', 'A'))).not.toThrow();
   });
 
   it('is one undo step, back to the layout before the tie-in', () => {

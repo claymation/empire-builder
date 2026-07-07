@@ -129,10 +129,12 @@ export function startNetwork(
  * seated with its far `B` end on the open end `onto`, recording that join
  * ({@link joinSection}). No anchor is recorded — the section's placement
  * derives from the network it joined, keeping one anchor per network. The
- * railhead advances to the open `A` end, back at the aim; the pending anchor
- * is cleared. The prior snapshot goes to `past` — one undo step — and the
- * redo stack is dropped. "Tie in" is the railroad term for bringing new track
- * into track already laid; the join is the edge it records.
+ * railhead clears: like a closed loop, tying in ends the run, so drawing has
+ * nowhere to grow until an open end is selected — the section's `A` end stays
+ * open to resume from. The pending anchor is cleared. The prior snapshot goes
+ * to `past` — one undo step — and the redo stack is dropped. "Tie in" is the
+ * railroad term for bringing new track into track already laid; the join is
+ * the edge it records.
  */
 export function tieInSection(
   state: EditorState,
@@ -142,10 +144,11 @@ export function tieInSection(
   if (!state.pendingAnchor) {
     throw new Error('tying in requires a pending anchor');
   }
-  return commit(state, joinSection(state.layout, onto, section, 'B', null), {
-    sectionId: section.id,
-    end: otherEnd(section, 'B'),
-  });
+  return commit(
+    state,
+    joinSection(state.layout, onto, section, 'B', null),
+    null
+  );
 }
 
 /**
