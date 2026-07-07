@@ -342,7 +342,85 @@ describe('aiming a pending anchor', () => {
     expect(p.seatedEnd).toEqual(end('g', 'A'));
   });
 
-  it('a hovered ring outranks the aim', () => {
+  it('aiming at a hovered open end seats when the anchor is in line', () => {
+    // The anchor stands on the open end's tangent line, on its open side:
+    // pointing at the ring offers the tie-in straight — ghost to the point,
+    // seat, no hover — so the click joins instead of selecting.
+    const facingEnd = oe(end('g', 'A'), {position: {x: 200, y: 0}, heading: 0});
+    const p = computePreview(
+      aim({x: 0, y: 0}),
+      {x: 204, y: 3},
+      [facingEnd],
+      1,
+      false
+    );
+    expect(p.hover).toBeNull();
+    expect(p.seatedEnd).toEqual(end('g', 'A'));
+    if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
+    expect(p.shape.length).toBeCloseTo(200);
+    expect(p.snap).toMatchObject({kind: 'end', point: {x: 200, y: 0}});
+    expect(p.railhead?.heading).toBeCloseTo(0);
+  });
+
+  it('seats at an off-grid heading, keeping the raw aim', () => {
+    // A 43° tangent sits within the 5° snap threshold of the 45° multiple, so
+    // an aim that angle-snapped (or defaulted to an axis) would kink against
+    // the EPSILON-exact seat and fail; the tie-in must aim raw at the end.
+    const heading = degToRad(43);
+    const endPosition = {x: 60, y: -35};
+    const anchor = {
+      x: endPosition.x - 150 * Math.cos(heading),
+      y: endPosition.y - 150 * Math.sin(heading),
+    };
+    const facingEnd = oe(end('g', 'A'), {position: endPosition, heading});
+    const p = computePreview(
+      aim(anchor),
+      {x: endPosition.x + 4, y: endPosition.y + 3},
+      [facingEnd],
+      1,
+      false
+    );
+    expect(p.hover).toBeNull();
+    expect(p.seatedEnd).toEqual(end('g', 'A'));
+    expect(p.railhead?.heading).toBeCloseTo(heading);
+    if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
+    expect(p.shape.length).toBeCloseTo(150);
+  });
+
+  it('an anchor a hair off line stays a hover — seating is exact', () => {
+    // One millimeter off the end's tangent line: the straight to the ring
+    // arrives kinked, seats on nothing, and the click still selects.
+    const facingEnd = oe(end('g', 'A'), {position: {x: 200, y: 0}, heading: 0});
+    const p = computePreview(
+      aim({x: 0, y: 1}),
+      {x: 204, y: 3},
+      [facingEnd],
+      1,
+      false
+    );
+    expect(p.hover).toEqual(end('g', 'A'));
+    expect(p.shape).toBeNull();
+    expect(p.seatedEnd).toBeNull();
+  });
+
+  it('does not seat from beyond the open end', () => {
+    // The anchor on the tangent line but past the end, over its section: the
+    // straight doubles back over the section and arrives facing the same way
+    // as the open end — poses coincident, not reversed — so nothing seats and
+    // the hover stands.
+    const facingEnd = oe(end('g', 'A'), {position: {x: 200, y: 0}, heading: 0});
+    const p = computePreview(
+      aim({x: 300, y: 0}),
+      {x: 204, y: 3},
+      [facingEnd],
+      1,
+      false
+    );
+    expect(p.hover).toEqual(end('g', 'A'));
+    expect(p.seatedEnd).toBeNull();
+  });
+
+  it('a hovered ring outranks an aim that cannot seat on it', () => {
     const p = computePreview(
       aim({x: 0, y: 0}),
       {x: 100, y: 55},

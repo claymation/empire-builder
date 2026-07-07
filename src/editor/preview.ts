@@ -123,9 +123,9 @@ export function computePreview(
       : {...NOTHING, anchorPoint: target};
   }
   if (!origin) {
-    const hover = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
-    if (hover) {
-      return {...NOTHING, hover};
+    const openEnd = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
+    if (openEnd) {
+      return {...NOTHING, hover: openEnd.sectionEnd};
     }
     const snap = resolveAnchorSnap(
       target,
@@ -149,9 +149,9 @@ export function computePreview(
   // pointer on a ring hovers it — the click selects, so the ghost is
   // suppressed rather than shown reaching for track the click would not lay.
   if (snap.kind !== 'end') {
-    const hover = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
-    if (hover) {
-      return {...NOTHING, railhead, hover};
+    const openEnd = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
+    if (openEnd) {
+      return {...NOTHING, railhead, hover: openEnd.sectionEnd};
     }
   }
   const shape = shapeForSnap(railhead, snap, SNAP_INCREMENT, SNAP_THRESHOLD);
@@ -161,8 +161,10 @@ export function computePreview(
 /**
  * The preview while aiming a pending anchor: the heading follows the pointer,
  * so the section on offer is always the straight from the anchor toward it —
- * curves wait for the heading to be locked. A hovered ring still claims the
- * click. The aim angle-snaps to tidy multiples, so level and square starts
+ * curves wait for the heading to be locked. A hovered ring claims the click,
+ * unless the straight dead onto that end seats there ({@link seatAim}) — the
+ * tie-in outranks the selection, as a latched end outranks the hover while
+ * extending. The aim angle-snaps to tidy multiples, so level and square starts
  * come easily while a deliberate off-grid aim stands; a pointer near an open
  * end's guideline ({@link resolveAnchorSnap}) then slides the straight's end
  * to where the aim crosses it — the length that lines the new track's end up
@@ -175,9 +177,14 @@ function aimPreview(
   openEnds: readonly SectionEndPose[],
   viewScale: number
 ): Preview {
-  const hover = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
-  if (hover) {
-    return {...NOTHING, hover};
+  const openEnd = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
+  if (openEnd) {
+    return (
+      seatAim(anchor, openEnd, openEnds) ?? {
+        ...NOTHING,
+        hover: openEnd.sectionEnd,
+      }
+    );
   }
   const aim = headingToward(anchor, target);
   if (aim === null) {
@@ -211,6 +218,32 @@ function aimPreview(
   // its forward projection, so the preview keeps tracking the pointer.
   const reach = dot(unitVector(heading), subtract(target, anchor));
   return lay(pose, reach > EPSILON ? straight(reach) : null, null, openEnds);
+}
+
+/**
+ * The preview that seats an aim dead on the hovered open end `onto`: the
+ * straight from `anchor` to its point, laid when it seats there — the anchor
+ * stands on the end's tangent line, on its open side, so the straight meets
+ * it back-to-back ({@link findSeatedEnd}). Null when that straight does not
+ * seat, leaving the hover to claim the click: the gate is the seat itself, so
+ * a near miss stays a hover and the aim stands.
+ */
+function seatAim(
+  anchor: Point,
+  onto: SectionEndPose,
+  openEnds: readonly SectionEndPose[]
+): Preview | null {
+  const aim = headingToward(anchor, onto.pose.position);
+  if (aim === null) {
+    return null;
+  }
+  const tieIn = lay(
+    {position: anchor, heading: aim},
+    straight(distance(anchor, onto.pose.position)),
+    {kind: 'end', point: onto.pose.position},
+    openEnds
+  );
+  return tieIn.seatedEnd ? tieIn : null;
 }
 
 /**
@@ -258,13 +291,13 @@ function hoveredEnd(
   target: Point,
   openEnds: readonly SectionEndPose[],
   radius: number
-): SectionEnd | null {
-  let nearest: {end: SectionEnd; gap: number} | null = null;
-  for (const {sectionEnd, pose} of openEnds) {
-    const gap = distance(target, pose.position);
+): SectionEndPose | null {
+  let nearest: {openEnd: SectionEndPose; gap: number} | null = null;
+  for (const openEnd of openEnds) {
+    const gap = distance(target, openEnd.pose.position);
     if (gap <= radius && (!nearest || gap < nearest.gap)) {
-      nearest = {end: sectionEnd, gap};
+      nearest = {openEnd, gap};
     }
   }
-  return nearest ? nearest.end : null;
+  return nearest ? nearest.openEnd : null;
 }
