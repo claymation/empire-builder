@@ -29,10 +29,8 @@ import {
 } from '../domain/geometry';
 import {PlacedLayout} from '../domain/layout';
 import {PlacedSection} from '../domain/section';
-import {Snap} from '../domain/snapping';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
-import {assertNever} from '../domain/validate';
 import {fitTransform, ViewTransform} from './transform';
 
 /** Pixels of breathing room left between the sheet and the canvas edge. */
@@ -45,13 +43,13 @@ const PREVIEW_COLOR = '#3b82f6';
 const RAIL_WIDTH_PX = 3;
 const START_DOT_RADIUS_PX = 5;
 const LABEL_OFFSET_PX = 18;
-/** Accent for alignment feedback: the guide line and the open-end snap ring. */
+/** Accent for alignment feedback: the guide line and the seat ring. */
 const GUIDE_COLOR = '#ec4899';
 const GUIDE_DASH = [4, 4];
 /** The ghost's dashes, marking track on offer rather than laid. */
 const GHOST_DASH = [8, 6];
-const SNAP_RING_RADIUS_PX = 9;
-const SNAP_RING_WIDTH_PX = 2;
+const SEAT_RING_RADIUS_PX = 9;
+const SEAT_RING_WIDTH_PX = 2;
 /** Open-end rings: quiet when merely selectable, stronger at the start. */
 const OPEN_RING_COLOR = '#9c9c9c';
 const OPEN_RING_RADIUS_PX = 6;
@@ -107,8 +105,13 @@ export interface Overlay {
    * has produced a ghost.
    */
   readonly start: Point | null;
-  /** The alignment feedback that shaped the ghost: a guide line or a latch ring. */
-  readonly snap: Snap | null;
+  /**
+   * The alignment guide that shaped the ghost's end or the anchor drop,
+   * drawn beneath the ghost.
+   */
+  readonly guide: Line | null;
+  /** The open end the ghost seats onto, ringed on top. */
+  readonly seat: Point | null;
   /** The open end a click would select, haloed. */
   readonly halo: Point | null;
 }
@@ -116,8 +119,8 @@ export interface Overlay {
 /**
  * Renders the interaction state: the start's ring and dot, the ghost, and any
  * alignment feedback. The start's ring sits under the rest; the guide sits
- * beneath the ghost; a snap ring rides on top, marking the open end the
- * target has latched onto; a halo lights the open end a click would select.
+ * beneath the ghost; the seat ring rides on top, marking the open end the
+ * ghost seats onto; a halo lights the open end a click would select.
  * Redraw on every move.
  */
 export function renderOverlay(
@@ -128,11 +131,8 @@ export function renderOverlay(
   if (overlay.start) {
     drawStartRing(overlay.start, toCanvas);
   }
-  // The guide sits under the ghost, the ring on top, so resolve both up front
-  // and draw them around it.
-  const {guide, ring} = snapFeedback(overlay.snap);
-  if (guide) {
-    drawGuide(guide, toCanvas, transform.scale);
+  if (overlay.guide) {
+    drawGuide(overlay.guide, toCanvas, transform.scale);
   }
   if (overlay.ghost) {
     // The ghost is one drafted element — a single segment or arc. Draw it and
@@ -146,34 +146,11 @@ export function renderOverlay(
   if (overlay.start) {
     drawStartDot(overlay.start, toCanvas);
   }
-  if (ring) {
-    drawSnapRing(ring, toCanvas);
+  if (overlay.seat) {
+    drawSeatRing(overlay.seat, toCanvas);
   }
   if (overlay.halo) {
     drawHaloRing(overlay.halo, toCanvas);
-  }
-}
-
-/**
- * The alignment feedback a snap calls for: a guide `line` to draw beneath the
- * ghost, a `ring` point to draw on top, or neither.
- */
-function snapFeedback(snap: Snap | null): {
-  guide: Line | null;
-  ring: Point | null;
-} {
-  if (!snap) {
-    return {guide: null, ring: null};
-  }
-  switch (snap.kind) {
-    case 'line':
-      return {guide: snap.line, ring: null};
-    case 'end':
-      return {guide: null, ring: snap.point};
-    case 'angle':
-      return {guide: null, ring: null};
-    default:
-      return assertNever(snap);
   }
 }
 
@@ -194,13 +171,13 @@ function drawGuide(line: Line, toCanvas: ToCanvas, viewScale: number): void {
   guide.dashArray = GUIDE_DASH;
 }
 
-/** Rings the open end a target has latched onto. */
-function drawSnapRing(center: Point, toCanvas: ToCanvas): void {
+/** Rings the open end the ghost seats onto. */
+function drawSeatRing(center: Point, toCanvas: ToCanvas): void {
   drawRing(
     center,
     toCanvas,
-    SNAP_RING_RADIUS_PX,
-    SNAP_RING_WIDTH_PX,
+    SEAT_RING_RADIUS_PX,
+    SEAT_RING_WIDTH_PX,
     GUIDE_COLOR
   );
 }

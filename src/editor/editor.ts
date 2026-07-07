@@ -128,12 +128,15 @@ export function startEditor(
     // The start's dot and ring mark selection state, not the preview: they
     // show the moment an anchor drops or an end is selected, with the pointer
     // wherever it is.
+    // The snap's drawable feedback, projected here so the overlay stays plain
+    // draw data: an `angle` snap carries no feature to draw, so both are null.
     renderOverlay(view, {
       ghost,
       start:
         state.pendingAnchor ??
         (state.railhead ? poseOf(placed, state.railhead).position : null),
-      snap,
+      guide: snap?.kind === 'line' ? snap.line : null,
+      seat: snap?.kind === 'end' ? snap.point : null,
       halo: hoveredEnd ? poseOf(placed, hoveredEnd).position : null,
     });
   }
