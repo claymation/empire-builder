@@ -5,15 +5,18 @@
  * current open ends, draws what it returns, and routes the click by the same
  * value.
  *
- * The pointer means exactly one thing at a time, and the preview shows which:
- * a ghost seated on a ringed open end — the click closes the join; a hovered
- * ring with no ghost — the click selects that end; a ghost alone — the click
- * lays the section; with nothing selected to draw from, the click drops a new
- * network's anchor at `anchorPoint`, the pointer pulled onto any guideline in
- * range. A pending anchor aims ({@link DrawOrigin}): its ghost is the straight
- * toward the pointer, and curves wait for the heading to be locked. A latch
- * outranks a hover, so the two never both claim a click; a hover suppresses
- * the ghost, so the preview never shows a section a click would not lay.
+ * A click means exactly one thing at a time, and the preview shows which:
+ *
+ * - a ghost seated on a ringed open end — the click joins the two;
+ * - a hovered ring with no ghost — the click selects that end;
+ * - a ghost alone — the click lays the section;
+ * - nothing to draw from — the click drops a new network's anchor at
+ *   `anchorPoint`, the pointer pulled onto any guideline in range.
+ *
+ * A pending anchor aims ({@link DrawOrigin}): its ghost is the straight toward
+ * the pointer, and curves wait for the heading to be locked. A seat outranks a
+ * hover, so the two never both claim a click; a hover suppresses the ghost, so
+ * the preview never shows a section a click would not lay.
  */
 
 import {
@@ -28,7 +31,7 @@ import {
   subtract,
   unitVector,
 } from '../domain/geometry';
-import {SectionEnd, SectionEndPose} from '../domain/layout';
+import {sameEnd, SectionEnd, SectionEndPose} from '../domain/layout';
 import {
   endPose,
   placeSection,
@@ -68,23 +71,28 @@ export type DrawOrigin =
   | {readonly kind: 'point'; readonly position: Point};
 
 /**
- * What the next click would do: the `railhead` it lays from (for an aim, the
- * pose the aim resolved to — its heading is the one to commit), the section's
- * `shape` (to commit), that shape placed as a `ghost` (the dashed preview drawn
- * under the pointer), the `snap` that shaped it, the `seatedEnd` the shape
- * seats on ({@link findSeatedEnd}) — the join the click records — the open end
- * whose ring is hovered — which the click selects instead of laying — and
- * `anchorPoint`, where the click drops a new network's anchor: the pointer,
- * pulled onto any guideline in range; null whenever the click has something to
- * lay or select instead.
+ * What the next click would do:
+ *
+ * - `railhead` — the pose it lays from (for an aim, the pose the aim resolved
+ *   to; its heading is the one to commit);
+ * - `shape` — the section to commit, placed as `ghost` (the dashed preview
+ *   under the pointer);
+ * - `snap` — the alignment that shaped it;
+ * - `seatOnto` — the open end the shape's far end seats on, the join the click
+ *   records ({@link findSeatedEnd});
+ * - `hoveredEnd` — the open end whose ring is under the pointer, which the
+ *   click selects instead of laying;
+ * - `anchorPoint` — where the click drops a new network's anchor (the pointer,
+ *   pulled onto any guideline in range), or null when the click lays or
+ *   selects instead.
  */
 export interface Preview {
   readonly railhead: Pose | null;
   readonly shape: SectionShape | null;
   readonly ghost: PlacedSection | null;
   readonly snap: Snap | null;
-  readonly seatedEnd: SectionEnd | null;
-  readonly hover: SectionEnd | null;
+  readonly seatOnto: SectionEnd | null;
+  readonly hoveredEnd: SectionEnd | null;
   readonly anchorPoint: Point | null;
 }
 
@@ -93,8 +101,8 @@ const NOTHING: Preview = {
   shape: null,
   ghost: null,
   snap: null,
-  seatedEnd: null,
-  hover: null,
+  seatOnto: null,
+  hoveredEnd: null,
   anchorPoint: null,
 };
 
@@ -119,13 +127,17 @@ export function computePreview(
   if (suspendSnap) {
     const pose = rawPose(origin, target);
     return pose
-      ? lay(pose, shapeTo(pose, target), null, openEnds)
+      ? previewLay(pose, shapeTo(pose, target), null, openEnds)
       : {...NOTHING, anchorPoint: target};
   }
   if (!origin) {
-    const openEnd = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
-    if (openEnd) {
-      return {...NOTHING, hover: openEnd.sectionEnd};
+    const hoveredEnd = findHoveredEnd(
+      target,
+      openEnds,
+      RING_HIT_PX / viewScale
+    );
+    if (hoveredEnd) {
+      return {...NOTHING, hoveredEnd};
     }
     const snap = resolveAnchorSnap(
       target,
@@ -145,25 +157,34 @@ export function computePreview(
     POINT_MAGNET_PX / viewScale,
     LINE_MAGNET_PX / viewScale
   );
-  // A latched end outranks a hover: the click closes the join. Unlatched, a
-  // pointer on a ring hovers it — the click selects, so the ghost is
-  // suppressed rather than shown reaching for track the click would not lay.
+  // A seated end outranks a hover: the click joins. Otherwise a pointer on a
+  // ring hovers it — the click selects, so the ghost is suppressed rather than
+  // shown reaching for track the click would not lay.
   if (snap.kind !== 'end') {
-    const openEnd = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
-    if (openEnd) {
-      return {...NOTHING, railhead, hover: openEnd.sectionEnd};
+    const hoveredEnd = findHoveredEnd(
+      target,
+      openEnds,
+      RING_HIT_PX / viewScale
+    );
+    if (hoveredEnd) {
+      return {...NOTHING, railhead, hoveredEnd};
     }
   }
   const shape = shapeForSnap(railhead, snap, SNAP_INCREMENT, SNAP_THRESHOLD);
-  return lay(railhead, shape, shownSnap(railhead, snap, shape), openEnds);
+  return previewLay(
+    railhead,
+    shape,
+    shownSnap(railhead, snap, shape),
+    openEnds
+  );
 }
 
 /**
  * The preview while aiming a pending anchor: the heading follows the pointer,
  * so the section on offer is always the straight from the anchor toward it —
  * curves wait for the heading to be locked. A hovered ring claims the click,
- * unless the straight dead onto that end seats there ({@link seatAim}) — the
- * tie-in outranks the selection, as a latched end outranks the hover while
+ * unless the straight dead onto that end seats there ({@link previewTieIn}) —
+ * the tie-in outranks the selection, as a seated end outranks a hover while
  * extending. The aim angle-snaps to tidy multiples, so level and square starts
  * come easily while a deliberate off-grid aim stands; a pointer near an open
  * end's guideline ({@link resolveAnchorSnap}) then slides the straight's end
@@ -177,13 +198,10 @@ function aimPreview(
   openEnds: readonly SectionEndPose[],
   viewScale: number
 ): Preview {
-  const openEnd = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
-  if (openEnd) {
+  const hoveredEnd = findHoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
+  if (hoveredEnd) {
     return (
-      seatAim(anchor, openEnd, openEnds) ?? {
-        ...NOTHING,
-        hover: openEnd.sectionEnd,
-      }
+      previewTieIn(anchor, hoveredEnd, openEnds) ?? {...NOTHING, hoveredEnd}
     );
   }
   const aim = headingToward(anchor, target);
@@ -201,7 +219,7 @@ function aimPreview(
   if (pull && pull.kind === 'line') {
     const alignedStraight = straightOntoLine(pose, pull.line);
     if (alignedStraight) {
-      return lay(
+      return previewLay(
         pose,
         alignedStraight,
         {
@@ -217,33 +235,41 @@ function aimPreview(
   // A snapped heading leaves the pointer a hair off-axis; the straight runs to
   // its forward projection, so the preview keeps tracking the pointer.
   const reach = dot(unitVector(heading), subtract(target, anchor));
-  return lay(pose, reach > EPSILON ? straight(reach) : null, null, openEnds);
+  return previewLay(
+    pose,
+    reach > EPSILON ? straight(reach) : null,
+    null,
+    openEnds
+  );
 }
 
 /**
- * The preview that seats an aim dead on the hovered open end `onto`: the
- * straight from `anchor` to its point, laid when it seats there — the anchor
- * stands on the end's tangent line, on its open side, so the straight meets
- * it back-to-back ({@link findSeatedEnd}). Null when that straight does not
- * seat, leaving the hover to claim the click: the gate is the seat itself, so
- * a near miss stays a hover and the aim stands.
+ * The preview for tying a pending anchor into the hovered open end `onto`: the
+ * straight from `anchor` to it, offered when that straight seats there
+ * ({@link findSeatedEnd}). Null when it does not seat — then the hover claims
+ * the click. Seating needs the anchor on the end's tangent line, on its open
+ * side, so the straight arrives back-to-back.
  */
-function seatAim(
+function previewTieIn(
   anchor: Point,
-  onto: SectionEndPose,
+  onto: SectionEnd,
   openEnds: readonly SectionEndPose[]
 ): Preview | null {
-  const aim = headingToward(anchor, onto.pose.position);
-  if (aim === null) {
+  const seat = openEnds.find(({sectionEnd}) => sameEnd(sectionEnd, onto));
+  if (!seat) {
     return null;
   }
-  const tieIn = lay(
-    {position: anchor, heading: aim},
-    straight(distance(anchor, onto.pose.position)),
-    {kind: 'end', point: onto.pose.position},
+  const heading = headingToward(anchor, seat.pose.position);
+  if (heading === null) {
+    return null;
+  }
+  const tieIn = previewLay(
+    {position: anchor, heading},
+    straight(distance(anchor, seat.pose.position)),
+    {kind: 'end', point: seat.pose.position},
     openEnds
   );
-  return tieIn.seatedEnd ? tieIn : null;
+  return tieIn.seatOnto ? tieIn : null;
 }
 
 /**
@@ -265,11 +291,11 @@ function rawPose(origin: DrawOrigin | null, target: Point): Pose | null {
 }
 
 /**
- * A preview that lays `shape` from `railhead` — the ghost placed to match, and
- * `seatedEnd` read off the laid geometry ({@link findSeatedEnd}), whichever
- * path shaped it, so every landing that seats records its join.
+ * The preview for laying `shape` from `railhead`: the ghost placed to match,
+ * and `seatOnto` read from the laid geometry — the open end its far end seats
+ * on ({@link findSeatedEnd}), whichever path shaped it.
  */
-function lay(
+function previewLay(
   railhead: Pose,
   shape: SectionShape | null,
   snap: Snap | null,
@@ -280,24 +306,24 @@ function lay(
     shape,
     ghost: shape ? placeSection(shape, 'A', railhead) : null,
     snap,
-    seatedEnd: shape ? findSeatedEnd(railhead, shape, openEnds) : null,
-    hover: null,
+    seatOnto: shape ? findSeatedEnd(railhead, shape, openEnds) : null,
+    hoveredEnd: null,
     anchorPoint: null,
   };
 }
 
 /** The open end whose ring the pointer is within `radius` of; nearest wins. */
-function hoveredEnd(
+function findHoveredEnd(
   target: Point,
   openEnds: readonly SectionEndPose[],
   radius: number
-): SectionEndPose | null {
-  let nearest: {openEnd: SectionEndPose; gap: number} | null = null;
-  for (const openEnd of openEnds) {
-    const gap = distance(target, openEnd.pose.position);
+): SectionEnd | null {
+  let nearest: {end: SectionEnd; gap: number} | null = null;
+  for (const {sectionEnd, pose} of openEnds) {
+    const gap = distance(target, pose.position);
     if (gap <= radius && (!nearest || gap < nearest.gap)) {
-      nearest = {openEnd, gap};
+      nearest = {end: sectionEnd, gap};
     }
   }
-  return nearest ? nearest.openEnd : null;
+  return nearest ? nearest.end : null;
 }

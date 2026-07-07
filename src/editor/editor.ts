@@ -125,19 +125,19 @@ export function startEditor(
   }
 
   function refreshOverlay(view: ViewTransform): void {
-    const {ghost, snap, seatedEnd, hover: hoveredEnd} = preview(view);
-    // The start's dot and ring mark selection state, not the preview: they
-    // show the moment an anchor drops or an end is selected, with the pointer
-    // wherever it is.
-    // The preview's drawable feedback, projected onto plain draw data: a line
-    // snap's guide, and the seat ring at the open end the ghost seats onto.
+    const {ghost, snap, seatOnto, hoveredEnd} = preview(view);
+    // `start` is read from the committed state, not the preview, so the dot and
+    // ring mark where drawing grows from — a pending anchor or the railhead —
+    // the moment one is set, wherever the pointer is. The other fields are the
+    // preview's feedback as plain draw data: the guide line, the seat ring, and
+    // the hover halo, each projected to a point or line here.
     renderOverlay(view, {
       ghost,
       start:
         state.pendingAnchor ??
         (state.railhead ? poseOf(placed, state.railhead).position : null),
       guide: snap?.kind === 'line' ? snap.line : null,
-      seat: seatedEnd ? poseOf(placed, seatedEnd).position : null,
+      seat: seatOnto ? poseOf(placed, seatOnto).position : null,
       halo: hoveredEnd ? poseOf(placed, hoveredEnd).position : null,
     });
   }
@@ -172,31 +172,30 @@ export function startEditor(
   tool.onMouseUp = (event: paper.ToolEvent) => {
     const view = transform();
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
-    // Route the click by the same preview the overlay drew: a hovered ring
-    // selects that end; a shape lays it — from the pending anchor, tied into
-    // the open end it seats on or anchored as a new network at the previewed
-    // heading, or extended from the railhead, a seated far end closing the
-    // join. With nothing to select or lay, `anchorPoint` — the pointer,
-    // pulled onto any guideline — is where the click drops the anchor a new
-    // network grows from.
+    // Route the click by the same preview the overlay drew:
+    //  - a hovered ring selects that end;
+    //  - a shape from a pending anchor ties into the end it seats on, else
+    //    anchors a new network at the previewed heading;
+    //  - a shape from the railhead extends it, a seat closing the join;
+    //  - otherwise the click drops a new network's anchor at `anchorPoint`.
     const {
       shape,
-      seatedEnd,
-      hover,
+      seatOnto,
+      hoveredEnd,
       anchorPoint,
       railhead: from,
     } = preview(view);
-    if (hover) {
-      setState(selectRailhead(state, hover));
+    if (hoveredEnd) {
+      setState(selectRailhead(state, hoveredEnd));
     } else if (shape) {
       if (state.pendingAnchor && from) {
         setState(
-          seatedEnd
-            ? tieInSection(state, withId(shape), seatedEnd)
+          seatOnto
+            ? tieInSection(state, withId(shape), seatOnto)
             : startNetwork(state, withId(shape), from.heading)
         );
       } else if (state.railhead) {
-        setState(extend(state, state.railhead, withId(shape), seatedEnd));
+        setState(extend(state, state.railhead, withId(shape), seatOnto));
       }
     } else if (anchorPoint) {
       setState(dropAnchor(state, anchorPoint));

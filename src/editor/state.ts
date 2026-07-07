@@ -4,15 +4,19 @@
  * edge (./editor) owns an instance, calls these on pointer and keyboard events,
  * and renders the result.
  *
- * The state is the current {@link Layout}, the selected railhead, a transient
- * pending anchor, and the history undo/redo walk. {@link dropAnchor} drops the
- * anchor a new network grows from; {@link startNetwork} lays that network's
- * first section there — {@link tieInSection} instead joins a first section
- * that lands seated on an existing network's open end — {@link extend} lays
- * one joined onto an open end, {@link selectRailhead} moves drawing to
- * another open end, and {@link deselect} clears the selection. The editor
- * picks among them and computes the section (so snapping applies once); only
- * the transitions that change the layout record history.
+ * The state is the current {@link Layout}, the railhead, a transient pending
+ * anchor, and the history undo/redo walk. The transitions:
+ *
+ * - {@link dropAnchor} drops the anchor a new network grows from;
+ * - {@link startNetwork} lays that network's first section there;
+ * - {@link tieInSection} instead joins a first section that lands seated on an
+ *   existing network's open end;
+ * - {@link extend} lays one joined onto an open end;
+ * - {@link selectRailhead} moves drawing to another open end;
+ * - {@link deselect} clears the selection.
+ *
+ * The editor picks among them and computes the section (so snapping applies
+ * once); only the transitions that change the layout record history.
  *
  * The railhead — the selected open end the next section grows from — is the one
  * irreducible piece of selection state the layout cannot express: a chain has
@@ -125,16 +129,12 @@ export function startNetwork(
 }
 
 /**
- * Lay a pending anchor's first section tied into existing track: the section
- * seated with its far `B` end on the open end `onto`, recording that join
- * ({@link joinSection}). No anchor is recorded — the section's placement
- * derives from the network it joined, keeping one anchor per network. The
- * railhead clears: like a closed loop, tying in ends the run, so drawing has
- * nowhere to grow until an open end is selected — the section's `A` end stays
- * open to resume from. The pending anchor is cleared. The prior snapshot goes
- * to `past` — one undo step — and the redo stack is dropped. "Tie in" is the
- * railroad term for bringing new track into track already laid; the join is
- * the edge it records.
+ * Tie a pending anchor's first section into existing track: seat its far `B`
+ * end on the open end `onto` and record that join ({@link joinSection}). No
+ * anchor is recorded — placement derives from the joined network, one anchor
+ * per network. The railhead clears, as when a loop closes: the run ends, the
+ * section's `A` end left open to resume from. One undo step. ("Tie in" is the
+ * railroad term for bringing new track into track already laid.)
  */
 export function tieInSection(
   state: EditorState,
