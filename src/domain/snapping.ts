@@ -5,9 +5,9 @@
  * onto the layout's open ends — their points and alignment lines — from
  * proximity alone; {@link resolveAnchorSnap} reads where a dropped anchor
  * pulls onto those same lines. {@link shapeForSnap} turns a snap into the
- * section, spending any freedom the snap leaves on a tidy sweep angle. An open end is a
- * {@link SectionEndPose}: the snap reads each end's pose for the geometry and
- * names the end it latched onto, so the caller can act on it (record a join).
+ * section, spending any freedom the snap leaves on a tidy sweep angle.
+ * {@link findSeatedEnd} reads the join off the section that results: the open
+ * end its far end seats back-to-back on, whichever snap (or none) shaped it.
  *
  * Each section below leads with its public surface and ends with the private
  * helpers behind it.
@@ -48,18 +48,16 @@ import {assertNever} from './validate';
 
 /**
  * What the pointer's target snapped to. Every kind carries the resolved `point`
- * the section is then built toward; `end` and `line` also carry the open-end
- * feature they latched onto, which the editor draws.
+ * the section is then built toward; `line` also carries the open-end line it
+ * latched onto, which the editor draws as a guide.
  *
- * - `end`: an open end — drawn as a ring at its `point`. Carries the `end` it
- *   latched onto, so the caller can act on it (e.g. record a join).
- * - `line`: one of an open end's normal or tangent lines (carries the `line`) —
- *   drawn as a guide.
+ * - `end`: an open end's point — the section is built exactly to it.
+ * - `line`: one of an open end's normal or tangent lines (carries the `line`).
  * - `angle`: no open end in range; the sweep angle-snaps toward `point`. There is
  *   no feature to carry — the snapped sweep is fixed when the arc is built.
  */
 export type Snap =
-  | {readonly kind: 'end'; readonly point: Point; readonly end: SectionEnd}
+  | {readonly kind: 'end'; readonly point: Point}
   | {readonly kind: 'line'; readonly point: Point; readonly line: Line}
   | {readonly kind: 'angle'; readonly point: Point};
 
@@ -95,8 +93,8 @@ export function resolveSnap(
 ): Snap {
   // An end wins over any line, so look for the nearest open end first and skip
   // the line search entirely when one is in range.
-  let nearest: {end: SectionEnd; pose: Pose; gap: number} | null = null;
-  for (const {sectionEnd, pose} of openEnds) {
+  let nearest: {pose: Pose; gap: number} | null = null;
+  for (const {pose} of openEnds) {
     // The railhead can't snap to itself: a section to its own start is empty.
     if (distance(pose.position, from.position) <= EPSILON) {
       continue;
@@ -116,11 +114,11 @@ export function resolveSnap(
     }
     const b = endPose(placeSection(connector, 'A', from), 'B');
     if (posesEqual(b, reversePose(pose))) {
-      nearest = {end: sectionEnd, pose, gap};
+      nearest = {pose, gap};
     }
   }
   if (nearest) {
-    return {kind: 'end', point: nearest.pose.position, end: nearest.end};
+    return {kind: 'end', point: nearest.pose.position};
   }
 
   // `from` offers its own lines alongside the open ends': an anchor stands at
@@ -216,6 +214,32 @@ export function shownSnap(
   // The section is laid from `from` by its A end; its far end B is where the guide lands.
   const end = endPose(placeSection(section, 'A', from), 'B');
   return onLine(end.position, snap.line) ? snap : null;
+}
+
+/**
+ * The open end `shape` seats on when laid from `from`: placed by its `A` end
+ * at `from`, the shape's far `B` end poses as the exact reverse of that open
+ * end — the back-to-back relation threading gives a join's ends — so the
+ * caller can record the join the landing makes. An open end coincident with
+ * `from` is skipped: a section back onto its own origin would be empty. Null
+ * when nothing seats. Tolerance is {@link posesEqual}'s EPSILON: a join
+ * demands tangency, so a near miss or a kinked meeting seats on nothing.
+ */
+export function findSeatedEnd(
+  from: Pose,
+  shape: SectionShape,
+  openEnds: readonly SectionEndPose[]
+): SectionEnd | null {
+  const farPose = endPose(placeSection(shape, 'A', from), 'B');
+  for (const {sectionEnd, pose} of openEnds) {
+    if (distance(pose.position, from.position) <= EPSILON) {
+      continue;
+    }
+    if (posesEqual(farPose, reversePose(pose))) {
+      return sectionEnd;
+    }
+  }
+  return null;
 }
 
 /**

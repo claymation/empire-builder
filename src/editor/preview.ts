@@ -6,9 +6,9 @@
  * value.
  *
  * The pointer means exactly one thing at a time, and the preview shows which:
- * a ghost reaching a latched ring — the click closes the join; a hovered ring
- * with no ghost — the click selects that end; a ghost alone — the click lays
- * the section; with nothing selected to draw from, the click drops a new
+ * a ghost seated on a ringed open end — the click closes the join; a hovered
+ * ring with no ghost — the click selects that end; a ghost alone — the click
+ * lays the section; with nothing selected to draw from, the click drops a new
  * network's anchor at `anchorPoint`, the pointer pulled onto any guideline in
  * range. A pending anchor aims ({@link DrawOrigin}): its ghost is the straight
  * toward the pointer, and curves wait for the heading to be locked. A latch
@@ -37,6 +37,7 @@ import {
   straight,
 } from '../domain/section';
 import {
+  findSeatedEnd,
   resolveAnchorSnap,
   resolveSnap,
   shapeForSnap,
@@ -70,18 +71,19 @@ export type DrawOrigin =
  * What the next click would do: the `railhead` it lays from (for an aim, the
  * pose the aim resolved to — its heading is the one to commit), the section's
  * `shape` (to commit), that shape placed as a `ghost` (the dashed preview drawn
- * under the pointer), the `snap` that shaped it, the open end it closes onto,
- * the open end whose ring is hovered — which the click selects instead of
- * laying anything — and `anchorPoint`, where the click drops a new network's
- * anchor: the pointer, pulled onto any guideline in range; null whenever the
- * click has something to lay or select instead.
+ * under the pointer), the `snap` that shaped it, the `seatedEnd` the shape
+ * seats on ({@link findSeatedEnd}) — the join the click records — the open end
+ * whose ring is hovered — which the click selects instead of laying — and
+ * `anchorPoint`, where the click drops a new network's anchor: the pointer,
+ * pulled onto any guideline in range; null whenever the click has something to
+ * lay or select instead.
  */
 export interface Preview {
   readonly railhead: Pose | null;
   readonly shape: SectionShape | null;
   readonly ghost: PlacedSection | null;
   readonly snap: Snap | null;
-  readonly closeOnto: SectionEnd | null;
+  readonly seatedEnd: SectionEnd | null;
   readonly hover: SectionEnd | null;
   readonly anchorPoint: Point | null;
 }
@@ -91,7 +93,7 @@ const NOTHING: Preview = {
   shape: null,
   ghost: null,
   snap: null,
-  closeOnto: null,
+  seatedEnd: null,
   hover: null,
   anchorPoint: null,
 };
@@ -117,7 +119,7 @@ export function computePreview(
   if (suspendSnap) {
     const pose = rawPose(origin, target);
     return pose
-      ? lay(pose, shapeTo(pose, target), null, null)
+      ? lay(pose, shapeTo(pose, target), null, openEnds)
       : {...NOTHING, anchorPoint: target};
   }
   if (!origin) {
@@ -153,12 +155,7 @@ export function computePreview(
     }
   }
   const shape = shapeForSnap(railhead, snap, SNAP_INCREMENT, SNAP_THRESHOLD);
-  return lay(
-    railhead,
-    shape,
-    shownSnap(railhead, snap, shape),
-    snap.kind === 'end' ? snap.end : null
-  );
+  return lay(railhead, shape, shownSnap(railhead, snap, shape), openEnds);
 }
 
 /**
@@ -206,14 +203,14 @@ function aimPreview(
             .position,
           line: pull.line,
         },
-        null
+        openEnds
       );
     }
   }
   // A snapped heading leaves the pointer a hair off-axis; the straight runs to
   // its forward projection, so the preview keeps tracking the pointer.
   const reach = dot(unitVector(heading), subtract(target, anchor));
-  return lay(pose, reach > EPSILON ? straight(reach) : null, null, null);
+  return lay(pose, reach > EPSILON ? straight(reach) : null, null, openEnds);
 }
 
 /**
@@ -234,19 +231,23 @@ function rawPose(origin: DrawOrigin | null, target: Point): Pose | null {
   return aim === null ? null : {position: origin.position, heading: aim};
 }
 
-/** A preview that lays `shape` from `railhead` — the ghost placed to match. */
+/**
+ * A preview that lays `shape` from `railhead` — the ghost placed to match, and
+ * `seatedEnd` read off the laid geometry ({@link findSeatedEnd}), whichever
+ * path shaped it, so every landing that seats records its join.
+ */
 function lay(
   railhead: Pose,
   shape: SectionShape | null,
   snap: Snap | null,
-  closeOnto: SectionEnd | null
+  openEnds: readonly SectionEndPose[]
 ): Preview {
   return {
     railhead,
     shape,
     ghost: shape ? placeSection(shape, 'A', railhead) : null,
     snap,
-    closeOnto,
+    seatedEnd: shape ? findSeatedEnd(railhead, shape, openEnds) : null,
     hover: null,
     anchorPoint: null,
   };

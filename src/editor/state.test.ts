@@ -15,6 +15,7 @@ import {
   dropAnchor,
   redo,
   selectRailhead,
+  tieInSection,
   undo,
 } from './state';
 
@@ -142,6 +143,63 @@ function anchored(): ReturnType<typeof startNetwork> {
     0
   );
 }
+
+describe('tieInSection', () => {
+  /**
+   * A pending anchor at (200, 0), aimed back west so the first section's far
+   * end seats on s1's open B end at (100, 0).
+   */
+  function aimedBack(): ReturnType<typeof dropAnchor> {
+    return dropAnchor(anchored(), {x: 200, y: 0});
+  }
+
+  it('joins the section into the seated network, recording no anchor', () => {
+    const tied = tieInSection(
+      aimedBack(),
+      withId('s2', straight(100)),
+      end('s1', 'B')
+    );
+    expect(tied.layout.joins).toContainEqual({
+      ends: [end('s1', 'B'), end('s2', 'B')],
+    });
+    expect(tied.layout.anchors).toHaveLength(1); // s1's places the network
+    expect(tied.pendingAnchor).toBeNull();
+    // s2 threads from s1's network: its open A end stands back at the aim.
+    const a = poseOf(placeLayout(tied.layout), end('s2', 'A'));
+    expect(a.position.x).toBeCloseTo(200);
+    expect(a.position.y).toBeCloseTo(0);
+  });
+
+  it('advances the railhead to the open A end', () => {
+    const tied = tieInSection(
+      aimedBack(),
+      withId('s2', straight(100)),
+      end('s1', 'B')
+    );
+    expect(tied.railhead).toEqual(end('s2', 'A'));
+    expect(openEnds(tied.layout)).toEqual([end('s1', 'A'), end('s2', 'A')]);
+  });
+
+  it('is one undo step, back to the layout before the tie-in', () => {
+    const tied = tieInSection(
+      aimedBack(),
+      withId('s2', straight(100)),
+      end('s1', 'B')
+    );
+    expect(tied.past).toHaveLength(2); // the anchored s1, then the tie-in
+    const undone = undo(tied);
+    expect(undone.layout.sections.map(s => s.id)).toEqual(['s1']);
+    expect(undone.pendingAnchor).toBeNull();
+    expect(undo(undone).layout.sections).toHaveLength(0);
+    expect(redo(undone).layout.sections.map(s => s.id)).toEqual(['s1', 's2']);
+  });
+
+  it('throws without a pending anchor', () => {
+    expect(() =>
+      tieInSection(anchored(), withId('s2', straight(100)), end('s1', 'B'))
+    ).toThrow();
+  });
+});
 
 describe('selectRailhead', () => {
   it('selects an open end', () => {

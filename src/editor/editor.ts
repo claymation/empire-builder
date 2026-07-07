@@ -29,6 +29,7 @@ import {
   startNetwork,
   redo,
   selectRailhead,
+  tieInSection,
   undo,
 } from './state';
 
@@ -124,19 +125,19 @@ export function startEditor(
   }
 
   function refreshOverlay(view: ViewTransform): void {
-    const {ghost, snap, hover: hoveredEnd} = preview(view);
+    const {ghost, snap, seatedEnd, hover: hoveredEnd} = preview(view);
     // The start's dot and ring mark selection state, not the preview: they
     // show the moment an anchor drops or an end is selected, with the pointer
     // wherever it is.
-    // The snap's drawable feedback, projected here so the overlay stays plain
-    // draw data: an `angle` snap carries no feature to draw, so both are null.
+    // The preview's drawable feedback, projected onto plain draw data: a line
+    // snap's guide, and the seat ring at the open end the ghost seats onto.
     renderOverlay(view, {
       ghost,
       start:
         state.pendingAnchor ??
         (state.railhead ? poseOf(placed, state.railhead).position : null),
       guide: snap?.kind === 'line' ? snap.line : null,
-      seat: snap?.kind === 'end' ? snap.point : null,
+      seat: seatedEnd ? poseOf(placed, seatedEnd).position : null,
       halo: hoveredEnd ? poseOf(placed, hoveredEnd).position : null,
     });
   }
@@ -172,14 +173,15 @@ export function startEditor(
     const view = transform();
     pointer = view.toDomain({x: event.point.x, y: event.point.y});
     // Route the click by the same preview the overlay drew: a hovered ring
-    // selects that end; a shape lays it — from the pending anchor as a new
-    // network at the previewed heading, or extended from the railhead, a
-    // latched end snap closing the join. With nothing to select or lay,
-    // `anchorPoint` — the pointer, pulled onto any guideline — is where the
-    // click drops the anchor a new network grows from.
+    // selects that end; a shape lays it — from the pending anchor, tied into
+    // the open end it seats on or anchored as a new network at the previewed
+    // heading, or extended from the railhead, a seated far end closing the
+    // join. With nothing to select or lay, `anchorPoint` — the pointer,
+    // pulled onto any guideline — is where the click drops the anchor a new
+    // network grows from.
     const {
       shape,
-      closeOnto,
+      seatedEnd,
       hover,
       anchorPoint,
       railhead: from,
@@ -188,9 +190,13 @@ export function startEditor(
       setState(selectRailhead(state, hover));
     } else if (shape) {
       if (state.pendingAnchor && from) {
-        setState(startNetwork(state, withId(shape), from.heading));
+        setState(
+          seatedEnd
+            ? tieInSection(state, withId(shape), seatedEnd)
+            : startNetwork(state, withId(shape), from.heading)
+        );
       } else if (state.railhead) {
-        setState(extend(state, state.railhead, withId(shape), closeOnto));
+        setState(extend(state, state.railhead, withId(shape), seatedEnd));
       }
     } else if (anchorPoint) {
       setState(dropAnchor(state, anchorPoint));

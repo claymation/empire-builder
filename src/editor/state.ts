@@ -7,11 +7,12 @@
  * The state is the current {@link Layout}, the selected railhead, a transient
  * pending anchor, and the history undo/redo walk. {@link dropAnchor} drops the
  * anchor a new network grows from; {@link startNetwork} lays that network's
- * first section there, {@link extend} lays one joined onto an open end,
- * {@link selectRailhead} moves drawing to another open end, and
- * {@link deselect} clears the selection. The editor picks among them and
- * computes the section (so snapping applies once); only the transitions that
- * change the layout record history.
+ * first section there — {@link tieInSection} instead joins a first section
+ * that lands seated on an existing network's open end — {@link extend} lays
+ * one joined onto an open end, {@link selectRailhead} moves drawing to
+ * another open end, and {@link deselect} clears the selection. The editor
+ * picks among them and computes the section (so snapping applies once); only
+ * the transitions that change the layout record history.
  *
  * The railhead — the selected open end the next section grows from — is the one
  * irreducible piece of selection state the layout cannot express: a chain has
@@ -121,6 +122,30 @@ export function startNetwork(
     }),
     {sectionId: section.id, end: otherEnd(section, 'A')}
   );
+}
+
+/**
+ * Lay a pending anchor's first section tied into existing track: the section
+ * seated with its far `B` end on the open end `onto`, recording that join
+ * ({@link joinSection}). No anchor is recorded — the section's placement
+ * derives from the network it joined, keeping one anchor per network. The
+ * railhead advances to the open `A` end, back at the aim; the pending anchor
+ * is cleared. The prior snapshot goes to `past` — one undo step — and the
+ * redo stack is dropped. "Tie in" is the railroad term for bringing new track
+ * into track already laid; the join is the edge it records.
+ */
+export function tieInSection(
+  state: EditorState,
+  section: Section,
+  onto: SectionEnd
+): EditorState {
+  if (!state.pendingAnchor) {
+    throw new Error('tying in requires a pending anchor');
+  }
+  return commit(state, joinSection(state.layout, onto, section, 'B', null), {
+    sectionId: section.id,
+    end: otherEnd(section, 'B'),
+  });
 }
 
 /**

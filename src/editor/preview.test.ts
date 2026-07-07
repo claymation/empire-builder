@@ -151,10 +151,31 @@ describe('computePreview', () => {
       false
     );
     expect(p.hover).toBeNull();
-    expect(p.closeOnto).toEqual(end('f', 'B'));
+    expect(p.seatedEnd).toEqual(end('f', 'B'));
     expect(p.shape).not.toBeNull();
     // The ghost reaches the latched ring exactly.
     expect(p.snap).toMatchObject({kind: 'end', point: {x: 100, y: 100}});
+  });
+
+  it('a guideline slide landing on an open end carries the snap and the seat', () => {
+    // An open end at (400, 0) facing east — away from the railhead — puts its
+    // normal line at x = 400. The pointer rides that line outside the end's
+    // point magnet and ring; the near-level aim flattens to a straight, and
+    // the slide lands its end at the crossing (400, 0): dead on the open end,
+    // so the landing seats and the click will record the join.
+    const facingEnd = oe(end('g', 'A'), {position: {x: 400, y: 0}, heading: 0});
+    const p = computePreview(
+      pose(RAILHEAD),
+      {x: 405, y: 12},
+      [facingEnd],
+      1,
+      false
+    );
+    expect(p.hover).toBeNull();
+    expect(p.snap?.kind).toBe('line');
+    if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
+    expect(p.shape.length).toBeCloseTo(400);
+    expect(p.seatedEnd).toEqual(end('g', 'A'));
   });
 
   it('hovers the railhead’s own ring, laying nothing', () => {
@@ -202,7 +223,7 @@ describe('computePreview', () => {
     );
     expect(p.hover).toBeNull();
     expect(p.snap).toBeNull();
-    expect(p.closeOnto).toBeNull();
+    expect(p.seatedEnd).toBeNull();
     expect(p.shape).toEqual(shapeTo(RAILHEAD, {x: 100, y: 50}));
   });
 
@@ -212,6 +233,38 @@ describe('computePreview', () => {
     expect(p.shape).toBeNull();
     expect(p.snap).toBeNull();
     expect(p.anchorPoint).toEqual({x: 100, y: 50});
+  });
+
+  it('a suspended landing dead on an open end seats', () => {
+    // Freehand is unsnapped, never unjoined: the section laid to the raw
+    // pointer still seats when its far end lands exactly back-to-back.
+    const facingEnd = oe(end('g', 'A'), {position: {x: 100, y: 0}, heading: 0});
+    const p = computePreview(
+      pose(RAILHEAD),
+      {x: 100, y: 0},
+      [facingEnd],
+      1,
+      true
+    );
+    expect(p.snap).toBeNull();
+    expect(p.hover).toBeNull();
+    expect(p.shape?.kind).toBe('straight');
+    expect(p.seatedEnd).toEqual(end('g', 'A'));
+  });
+
+  it('a near miss under suspension carries nothing', () => {
+    // A micron off the open end: the section lays, but nothing seats — a join
+    // demands tangency, and freehand gets no magnet.
+    const facingEnd = oe(end('g', 'A'), {position: {x: 100, y: 0}, heading: 0});
+    const p = computePreview(
+      pose(RAILHEAD),
+      {x: 100, y: 0.000001},
+      [facingEnd],
+      1,
+      true
+    );
+    expect(p.shape).not.toBeNull();
+    expect(p.seatedEnd).toBeNull();
   });
 });
 
@@ -267,6 +320,26 @@ describe('aiming a pending anchor', () => {
     expect(p.snap?.kind).toBe('line');
     expect(p.snap?.point.x).toBeCloseTo(100);
     expect(p.snap?.point.y).toBeCloseTo(200);
+  });
+
+  it('an aimed straight landing on a facing open end carries the seat', () => {
+    // Aiming from the origin past the open end at (200, 0): the aim snaps
+    // level, the end's normal line slides the straight's end onto the crossing
+    // (200, 0) — dead on the open end — and the seat carries, so the click
+    // ties the first section in rather than anchoring a second network.
+    const facingEnd = oe(end('g', 'A'), {position: {x: 200, y: 0}, heading: 0});
+    const p = computePreview(
+      aim({x: 0, y: 0}),
+      {x: 200, y: 15},
+      [facingEnd],
+      1,
+      false
+    );
+    expect(p.railhead?.heading).toBeCloseTo(0);
+    expect(p.snap?.kind).toBe('line');
+    if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
+    expect(p.shape.length).toBeCloseTo(200);
+    expect(p.seatedEnd).toEqual(end('g', 'A'));
   });
 
   it('a hovered ring outranks the aim', () => {

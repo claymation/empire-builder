@@ -3,6 +3,7 @@ import {degToRad, radToDeg, type Point, type Pose} from './geometry';
 import {type SectionEnd, type SectionEndPose} from './layout';
 import {curve, endPose, placeSection, straight} from './section';
 import {
+  findSeatedEnd,
   resolveAnchorSnap,
   resolveSnap,
   shapeForSnap,
@@ -644,7 +645,7 @@ describe('shapeForSnap', () => {
 
   it('aims straight at a snapped open-end point', () => {
     const end: Pose = {position: {x: 100, y: 40}, heading: Math.PI};
-    const snap = {kind: 'end' as const, point: end.position, end: SOME_END};
+    const snap = {kind: 'end' as const, point: end.position};
     expect(shapeForSnap(ORIGIN, snap, increment, threshold)).toEqual(
       shapeTo(ORIGIN, end.position)
     );
@@ -682,7 +683,7 @@ describe('shownSnap', () => {
 
   it('passes point and angle snaps through', () => {
     const end: Pose = {position: {x: 100, y: 40}, heading: Math.PI};
-    const point = {kind: 'end' as const, point: end.position, end: SOME_END};
+    const point = {kind: 'end' as const, point: end.position};
     const angle = {kind: 'angle' as const, point: {x: 100, y: 95}};
     expect(shownSnap(ORIGIN, point, straight(10))).toEqual(point);
     expect(shownSnap(ORIGIN, angle, straight(10))).toEqual(angle);
@@ -690,5 +691,114 @@ describe('shownSnap', () => {
 
   it('shows nothing when there is no section', () => {
     expect(shownSnap(ORIGIN, lineSnap, null)).toBeNull();
+  });
+});
+
+describe('findSeatedEnd', () => {
+  it('seats a straight in every quadrant, on and off axis', () => {
+    // A straight's far end lands one length ahead, facing back at the start;
+    // it seats on an open end there facing onward into its own section — the
+    // open end's heading is the direction of travel. Hand-placed runs east,
+    // west, north, south, and one diagonal, landing in all four quadrants.
+    const cases: Array<{from: Pose; length: number; onto: Pose}> = [
+      {
+        from: {position: {x: -90, y: 20}, heading: 0},
+        length: 70,
+        onto: {position: {x: -20, y: 20}, heading: 0},
+      },
+      {
+        from: {position: {x: -30, y: -10}, heading: Math.PI},
+        length: 40,
+        onto: {position: {x: -70, y: -10}, heading: Math.PI},
+      },
+      {
+        from: {position: {x: 20, y: -60}, heading: Math.PI / 2},
+        length: 50,
+        onto: {position: {x: 20, y: -10}, heading: Math.PI / 2},
+      },
+      {
+        from: {position: {x: 5, y: 60}, heading: -Math.PI / 2},
+        length: 35,
+        onto: {position: {x: 5, y: 25}, heading: -Math.PI / 2},
+      },
+      {
+        // 45° for 100√2 lands at exact integers, trig dust and all.
+        from: {position: {x: 10, y: 20}, heading: Math.PI / 4},
+        length: 100 * Math.SQRT2,
+        onto: {position: {x: 110, y: 120}, heading: Math.PI / 4},
+      },
+    ];
+    for (const {from, length, onto} of cases) {
+      expect(findSeatedEnd(from, straight(length), [oe(onto)])).toEqual(
+        SOME_END
+      );
+    }
+  });
+
+  it('seats a curve landing back-to-back, either bend', () => {
+    // A quarter turn counter-clockwise from the origin lands at (100, 100)
+    // heading north; its clockwise mirror from (-50, -50) heading north lands
+    // at (50, 50) heading east.
+    const ccwOnto = oe({position: {x: 100, y: 100}, heading: Math.PI / 2});
+    expect(findSeatedEnd(ORIGIN, curve(100, 90), [ccwOnto])).toEqual(SOME_END);
+    const cwFrom: Pose = {position: {x: -50, y: -50}, heading: Math.PI / 2};
+    const cwOnto = oe({position: {x: 50, y: 50}, heading: 0});
+    expect(findSeatedEnd(cwFrom, curve(100, -90), [cwOnto])).toEqual(SOME_END);
+  });
+
+  it('returns the seating end among open ends that do not seat', () => {
+    const kinkedEnd = oe({position: {x: 100, y: 0}, heading: degToRad(1)});
+    const seat: SectionEndPose = {
+      sectionEnd: {sectionId: 'w', end: 'A'},
+      pose: {position: {x: 100, y: 0}, heading: 0},
+    };
+    expect(findSeatedEnd(ORIGIN, straight(100), [kinkedEnd, seat])).toEqual({
+      sectionId: 'w',
+      end: 'A',
+    });
+  });
+
+  it('declines a near miss', () => {
+    // Position off by a micron: a join demands tangency, so nothing seats.
+    const nearMiss = oe({position: {x: 100.000001, y: 0}, heading: 0});
+    expect(findSeatedEnd(ORIGIN, straight(100), [nearMiss])).toBeNull();
+  });
+
+  it('declines a kinked meeting', () => {
+    // Position exact, heading a degree off the direction of travel.
+    const kinkedEnd = oe({position: {x: 100, y: 0}, heading: degToRad(1)});
+    expect(findSeatedEnd(ORIGIN, straight(100), [kinkedEnd])).toBeNull();
+  });
+
+  it('seats within EPSILON and declines just past it', () => {
+    // The far end lands exactly at (100, 0) heading π; EPSILON is 1e-9. An
+    // open end 5e-10 off seats, 2e-9 off does not — in position and heading.
+    expect(
+      findSeatedEnd(ORIGIN, straight(100), [
+        oe({position: {x: 100 + 5e-10, y: 0}, heading: 0}),
+      ])
+    ).toEqual(SOME_END);
+    expect(
+      findSeatedEnd(ORIGIN, straight(100), [
+        oe({position: {x: 100 + 2e-9, y: 0}, heading: 0}),
+      ])
+    ).toBeNull();
+    expect(
+      findSeatedEnd(ORIGIN, straight(100), [
+        oe({position: {x: 100, y: 0}, heading: 5e-10}),
+      ])
+    ).toEqual(SOME_END);
+    expect(
+      findSeatedEnd(ORIGIN, straight(100), [
+        oe({position: {x: 100, y: 0}, heading: 2e-9}),
+      ])
+    ).toBeNull();
+  });
+
+  it('skips an open end coincident with the start', () => {
+    // A full circle is the one shape whose far end returns to the start, where
+    // it would seat on a same-facing open end; the start's own spot is skipped.
+    const endAtStart = oe({position: {x: 0, y: 0}, heading: 0});
+    expect(findSeatedEnd(ORIGIN, curve(50, 360), [endAtStart])).toBeNull();
   });
 });
