@@ -90,7 +90,7 @@ export function normalize(v: Vector): Vector {
   return length < EPSILON ? {x: 0, y: 0} : scale(v, 1 / length);
 }
 
-/** The point reached by travelling `distance` from `origin` along `heading`. */
+/** The point reached by traveling `distance` from `origin` along `heading`. */
 export function advance(
   origin: Point,
   heading: number,

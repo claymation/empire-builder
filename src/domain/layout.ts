@@ -227,11 +227,11 @@ export function joinSection(
 
 /** A section's end that is not `end` — the far end of a two-ended section. */
 export function otherEnd(section: Section, end: EndName): EndName {
-  const other = endsOf(section).find(candidate => candidate !== end);
-  if (!other) {
+  const farEnd = endsOf(section).find(candidate => candidate !== end);
+  if (!farEnd) {
     throw new RangeError(`section ${section.id} has no end besides ${end}`);
   }
-  return other;
+  return farEnd;
 }
 
 /**
@@ -302,20 +302,27 @@ function threadNetwork(
   const pending: Array<{section: Section; end: EndName; pose: Pose}> = [
     {section: start, end: anchor.sectionEnd.end, pose: anchor.pose},
   ];
-  for (let item = pending.shift(); item; item = pending.shift()) {
-    const {section, end, pose} = item;
-    const alreadyPlaced = placed.get(section.id);
+  for (
+    let placement = pending.shift();
+    placement;
+    placement = pending.shift()
+  ) {
+    const alreadyPlaced = placed.get(placement.section.id);
     if (alreadyPlaced) {
       // Reached again: never re-place, only require the arriving join aligns.
-      if (!posesAlign(pose, endPose(alreadyPlaced, end))) {
+      if (!posesAlign(placement.pose, endPose(alreadyPlaced, placement.end))) {
         throw new RangeError(
           'a closing join does not align; geometry is unsatisfiable'
         );
       }
       continue;
     }
-    const placedSection = placeSection(section, end, pose);
-    placed.set(section.id, placedSection);
+    const placedSection = placeSection(
+      placement.section,
+      placement.end,
+      placement.pose
+    );
+    placed.set(placement.section.id, placedSection);
 
     // Carry a pose across every end's join to the neighbor waiting there —
     // including the end this section was seated by, so a join on an anchored
@@ -323,9 +330,9 @@ function threadNetwork(
     // seats at the reverse of this end's pose. A carry back to the section
     // that seated this one finds it already placed and only re-checks
     // alignment.
-    for (const from of endsOf(section)) {
+    for (const from of endsOf(placement.section)) {
       const neighborEnd = findNeighborEnd(layout, {
-        sectionId: section.id,
+        sectionId: placement.section.id,
         end: from,
       });
       if (!neighborEnd) {

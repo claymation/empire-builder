@@ -107,15 +107,15 @@ export function resolveSnap(
     }
     // An end snap lays a section straight onto the end, so only offer it when
     // that section meets the end tangentially back-to-back — otherwise the
-    // join would kink, which a run never permits. The connecting section
-    // reaches the end's position; it qualifies when its far end (B) seats as
-    // the reverse of the open end's pose, the facing join threading seats.
-    const connector = shapeTo(from, pose.position);
-    if (!connector) {
+    // join would kink, which a run never permits. The section joining onto the
+    // end reaches its position; it qualifies when its far end (B) seats as the
+    // reverse of the open end's pose, the facing join threading seats.
+    const shape = shapeTo(from, pose.position);
+    if (!shape) {
       continue;
     }
-    const b = endPose(placeSection(connector, 'A', from), 'B');
-    if (posesEqual(b, reversePose(pose))) {
+    const farEndPose = endPose(placeSection(shape, 'A', from), 'B');
+    if (posesEqual(farEndPose, reversePose(pose))) {
       nearest = {end: sectionEnd, pose, gap};
     }
   }
@@ -195,27 +195,27 @@ export function shapeForSnap(
 }
 
 /**
- * The snap whose feedback should be drawn for `section`, or null when there is
- * none. A line's guide is shown only where the section's end actually lands on
+ * The snap whose feedback should be drawn for `shape`, or null when there is
+ * none. A line's guide is shown only where the shape's end actually lands on
  * the line: an active alignment always lands there, while a line the railhead
- * lies on lands only when the section curves back onto it (a 180° arc onto the
+ * lies on lands only when the shape curves back onto it (a 180° arc onto the
  * start's normal). An end's ring and the featureless `angle` snap carry through
- * unchanged; a null section (nothing to lay) shows nothing.
+ * unchanged; a null shape (nothing to lay) shows nothing.
  */
 export function shownSnap(
   from: Pose,
   snap: Snap,
-  section: SectionShape | null
+  shape: SectionShape | null
 ): Snap | null {
-  if (!section) {
+  if (!shape) {
     return null;
   }
   if (snap.kind !== 'line') {
     return snap;
   }
-  // The section is laid from `from` by its A end; its far end B is where the guide lands.
-  const end = endPose(placeSection(section, 'A', from), 'B');
-  return onLine(end.position, snap.line) ? snap : null;
+  // The shape is laid from `from` by its A end; its far end B is where the guide lands.
+  const farEndPose = endPose(placeSection(shape, 'A', from), 'B');
+  return onLine(farEndPose.position, snap.line) ? snap : null;
 }
 
 /**
@@ -243,16 +243,16 @@ export function shapeTo(from: Pose, target: Point): SectionShape | null {
     return null; // target coincides with `from`
   }
 
-  const ahead = dot(forward, toTarget);
+  const reach = dot(forward, toTarget);
   const sideways = dot(left, toTarget);
 
   // A target with no perpendicular offset lies on the heading line: a straight,
-  // whose length is the target's forward distance `ahead`, reachable only when
+  // whose length is the target's forward distance `reach`, reachable only when
   // the target is in front. This test is exact — a target just off the line
   // yields a valid (large-radius) arc, and any snap-to-straight tolerance
   // belongs to the UI, not here.
   if (Math.abs(sideways) < EPSILON) {
-    return ahead > 0 ? straight(ahead) : null;
+    return reach > 0 ? straight(reach) : null;
   }
 
   const offset = distanceSquared / (2 * sideways);
@@ -305,20 +305,20 @@ export function snappedShapeTo(
   increment: number,
   threshold: number
 ): SectionShape | null {
-  const raw = shapeTo(from, target);
-  if (!raw || raw.kind === 'straight') {
-    return raw;
+  const rawShape = shapeTo(from, target);
+  if (!rawShape || rawShape.kind === 'straight') {
+    return rawShape;
   }
-  const sweep = snapToIncrement(raw.arc.sweep, increment, threshold);
-  if (sweep === raw.arc.sweep) {
-    return raw;
+  const sweep = snapToIncrement(rawShape.arc.sweep, increment, threshold);
+  if (sweep === rawShape.arc.sweep) {
+    return rawShape;
   }
 
   const toTarget = subtract(target, from.position);
   if (sweep === 0) {
     // Flatten to a straight reaching the pointer's forward projection.
-    const ahead = dot(unitVector(from.heading), toTarget);
-    return ahead > EPSILON ? straight(ahead) : raw;
+    const reach = dot(unitVector(from.heading), toTarget);
+    return reach > EPSILON ? straight(reach) : rawShape;
   }
 
   // With the sweep fixed, the arc's end rides a ray out of `from`: it is
@@ -333,7 +333,7 @@ export function snappedShapeTo(
     chordLengthSquared > EPSILON
       ? dot(toTarget, chord) / chordLengthSquared
       : 0;
-  return radius > 0 ? {kind: 'curved', arc: arc(radius, sweep)} : raw;
+  return radius > 0 ? {kind: 'curved', arc: arc(radius, sweep)} : rawShape;
 }
 
 /**
@@ -353,15 +353,15 @@ export function shapeOntoLine(
   increment: number,
   threshold: number
 ): SectionShape | null {
-  const shaped = snappedShapeTo(from, target, increment, threshold);
-  if (!shaped) {
+  const snappedShape = snappedShapeTo(from, target, increment, threshold);
+  if (!snappedShape) {
     return null;
   }
   const alignedShape =
-    shaped.kind === 'straight'
+    snappedShape.kind === 'straight'
       ? straightOntoLine(from, line)
-      : curveOntoLine(from, line, shaped.arc.sweep);
-  return alignedShape ?? shaped;
+      : curveOntoLine(from, line, snappedShape.arc.sweep);
+  return alignedShape ?? snappedShape;
 }
 
 /**
@@ -371,14 +371,14 @@ export function shapeOntoLine(
  */
 export function straightOntoLine(from: Pose, line: Line): Straight | null {
   const forward = unitVector(from.heading);
-  const meeting = lineIntersection(
+  const intersection = lineIntersection(
     {origin: from.position, direction: forward},
     line
   );
-  if (!meeting) {
+  if (!intersection) {
     return null;
   }
-  const reach = dot(forward, subtract(meeting, from.position));
+  const reach = dot(forward, subtract(intersection, from.position));
   return reach > EPSILON ? straight(reach) : null;
 }
 
@@ -387,14 +387,14 @@ export function straightOntoLine(from: Pose, line: Line): Straight | null {
 // the line is where that ray crosses the line.
 function curveOntoLine(from: Pose, line: Line, sweep: number): Curved | null {
   const chord = unitArcChord(from.heading, sweep);
-  const meeting = lineIntersection(
+  const intersection = lineIntersection(
     {origin: from.position, direction: chord},
     line
   );
-  if (!meeting) {
+  if (!intersection) {
     return null;
   }
   const radius =
-    dot(subtract(meeting, from.position), chord) / dot(chord, chord);
+    dot(subtract(intersection, from.position), chord) / dot(chord, chord);
   return radius > EPSILON ? {kind: 'curved', arc: arc(radius, sweep)} : null;
 }

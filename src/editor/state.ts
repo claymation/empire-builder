@@ -92,7 +92,7 @@ export function selectRailhead(
   state: EditorState,
   end: SectionEnd
 ): EditorState {
-  if (!openEnds(state.layout).some(open => sameEnd(open, end))) {
+  if (!openEnds(state.layout).some(openEnd => sameEnd(openEnd, end))) {
     throw new RangeError(`no open end ${end.sectionId}:${end.end} to select`);
   }
   return {...state, railhead: end, pendingAnchor: null};
@@ -173,13 +173,13 @@ function snapshot(state: EditorState): Snapshot {
  * anchor or selection — there is nothing to undo.
  */
 export function undo(state: EditorState): EditorState {
-  const previous = state.past.at(-1);
-  if (!previous) {
+  const previousSnapshot = state.past.at(-1);
+  if (!previousSnapshot) {
     return state;
   }
   return {
-    layout: previous.layout,
-    railhead: previous.railhead,
+    layout: previousSnapshot.layout,
+    railhead: previousSnapshot.railhead,
     pendingAnchor: null,
     past: state.past.slice(0, -1),
     future: [...state.future, snapshot(state)],
@@ -188,13 +188,13 @@ export function undo(state: EditorState): EditorState {
 
 /** Re-apply the most recently undone snapshot, clearing any pending anchor. */
 export function redo(state: EditorState): EditorState {
-  const next = state.future.at(-1);
-  if (!next) {
+  const nextSnapshot = state.future.at(-1);
+  if (!nextSnapshot) {
     return state;
   }
   return {
-    layout: next.layout,
-    railhead: next.railhead,
+    layout: nextSnapshot.layout,
+    railhead: nextSnapshot.railhead,
     pendingAnchor: null,
     past: [...state.past, snapshot(state)],
     future: state.future.slice(0, -1),

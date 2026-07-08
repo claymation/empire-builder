@@ -39,14 +39,14 @@ const FACING_END = oe(end('f', 'B'), {
 describe('computePreview', () => {
   it('previews nothing without a pointer', () => {
     const p = computePreview(pose(RAILHEAD), null, [SIDE_END], 1, false);
-    expect(p.railhead).toBeNull();
+    expect(p.originPose).toBeNull();
     expect(p.shape).toBeNull();
-    expect(p.hover).toBeNull();
+    expect(p.hoveredEnd).toBeNull();
   });
 
   it('hovers an open end with no railhead — the click can still select', () => {
     const p = computePreview(null, {x: 104, y: 53}, [SIDE_END], 1, false);
-    expect(p.hover).toEqual(end('s', 'B'));
+    expect(p.hoveredEnd).toEqual(end('s', 'B'));
     expect(p.shape).toBeNull();
     expect(p.ghost).toBeNull();
     expect(p.anchorPoint).toBeNull(); // the click selects, never drops
@@ -54,7 +54,7 @@ describe('computePreview', () => {
 
   it('drops at the pointer with no railhead and nothing in reach', () => {
     const p = computePreview(null, {x: 300, y: 300}, [SIDE_END], 1, false);
-    expect(p.hover).toBeNull();
+    expect(p.hoveredEnd).toBeNull();
     expect(p.shape).toBeNull();
     expect(p.snap).toBeNull();
     expect(p.anchorPoint).toEqual({x: 300, y: 300});
@@ -65,7 +65,7 @@ describe('computePreview', () => {
     // (x = 100), far outside its ring. The drop point is the projection, so a
     // second network's anchor lands exactly abreast of the first's end.
     const p = computePreview(null, {x: 104, y: 250}, [SIDE_END], 1, false);
-    expect(p.hover).toBeNull();
+    expect(p.hoveredEnd).toBeNull();
     expect(p.snap?.kind).toBe('line');
     expect(p.anchorPoint?.x).toBeCloseTo(100);
     expect(p.anchorPoint?.y).toBeCloseTo(250);
@@ -75,7 +75,7 @@ describe('computePreview', () => {
     // (100, 55) sits on the normal line and within the ring: the click
     // selects; no anchor drop, no guide.
     const p = computePreview(null, {x: 100, y: 55}, [SIDE_END], 1, false);
-    expect(p.hover).toEqual(end('s', 'B'));
+    expect(p.hoveredEnd).toEqual(end('s', 'B'));
     expect(p.snap).toBeNull();
     expect(p.anchorPoint).toBeNull();
   });
@@ -103,11 +103,11 @@ describe('computePreview', () => {
       1,
       false
     );
-    expect(inside.hover).toEqual(end('s', 'B'));
+    expect(inside.hoveredEnd).toEqual(end('s', 'B'));
     expect(inside.shape).toBeNull();
     expect(inside.ghost).toBeNull();
     expect(inside.snap).toBeNull();
-    expect(inside.railhead).toEqual(RAILHEAD);
+    expect(inside.originPose).toEqual(RAILHEAD);
 
     const outside = computePreview(
       pose(RAILHEAD),
@@ -116,7 +116,7 @@ describe('computePreview', () => {
       1,
       false
     );
-    expect(outside.hover).toBeNull();
+    expect(outside.hoveredEnd).toBeNull();
     expect(outside.shape).not.toBeNull();
     expect(outside.ghost).not.toBeNull();
   });
@@ -130,7 +130,7 @@ describe('computePreview', () => {
       2,
       false
     );
-    expect(inside.hover).toEqual(end('s', 'B'));
+    expect(inside.hoveredEnd).toEqual(end('s', 'B'));
     const outside = computePreview(
       pose(RAILHEAD),
       {x: 100, y: 56.1},
@@ -138,7 +138,7 @@ describe('computePreview', () => {
       2,
       false
     );
-    expect(outside.hover).toBeNull();
+    expect(outside.hoveredEnd).toBeNull();
     expect(outside.shape).not.toBeNull();
   });
 
@@ -150,7 +150,7 @@ describe('computePreview', () => {
       1,
       false
     );
-    expect(p.hover).toBeNull();
+    expect(p.hoveredEnd).toBeNull();
     expect(p.closeOnto).toEqual(end('f', 'B'));
     expect(p.shape).not.toBeNull();
     // The ghost reaches the latched ring exactly.
@@ -163,7 +163,7 @@ describe('computePreview', () => {
     // near-zero section can't be laid by accident; the click re-selects it.
     const own = oe(end('r', 'B'), {position: {x: 0, y: 0}, heading: Math.PI});
     const p = computePreview(pose(RAILHEAD), {x: 5, y: 5}, [own], 1, false);
-    expect(p.hover).toEqual(end('r', 'B'));
+    expect(p.hoveredEnd).toEqual(end('r', 'B'));
     expect(p.shape).toBeNull();
   });
 
@@ -176,7 +176,7 @@ describe('computePreview', () => {
       1,
       false
     );
-    expect(p.hover).toEqual(end('n', 'A'));
+    expect(p.hoveredEnd).toEqual(end('n', 'A'));
   });
 
   it('snaps a 180° curve from a locked heading onto its normal guideline', () => {
@@ -200,7 +200,7 @@ describe('computePreview', () => {
       1,
       true
     );
-    expect(p.hover).toBeNull();
+    expect(p.hoveredEnd).toBeNull();
     expect(p.snap).toBeNull();
     expect(p.closeOnto).toBeNull();
     expect(p.shape).toEqual(shapeTo(RAILHEAD, {x: 100, y: 50}));
@@ -208,7 +208,7 @@ describe('computePreview', () => {
 
   it('suspending snapping with no railhead drops at the raw pointer', () => {
     const p = computePreview(null, {x: 100, y: 50}, [SIDE_END], 1, true);
-    expect(p.hover).toBeNull();
+    expect(p.hoveredEnd).toBeNull();
     expect(p.shape).toBeNull();
     expect(p.snap).toBeNull();
     expect(p.anchorPoint).toEqual({x: 100, y: 50});
@@ -224,7 +224,7 @@ describe('aiming a pending anchor', () => {
       y: 100 * Math.sin(degToRad(43)),
     };
     const p = computePreview(aim({x: 0, y: 0}), target, [], 1, false);
-    expect(p.railhead?.heading).toBeCloseTo(Math.PI / 4);
+    expect(p.originPose?.heading).toBeCloseTo(Math.PI / 4);
     if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
     expect(p.shape.length).toBeCloseTo(100 * Math.cos(degToRad(2)));
   });
@@ -236,7 +236,7 @@ describe('aiming a pending anchor', () => {
       y: 100 * Math.sin(degToRad(38)),
     };
     const p = computePreview(aim({x: 0, y: 0}), target, [], 1, false);
-    expect(p.railhead?.heading).toBeCloseTo(degToRad(38));
+    expect(p.originPose?.heading).toBeCloseTo(degToRad(38));
     if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
     expect(p.shape.length).toBeCloseTo(100);
   });
@@ -261,7 +261,7 @@ describe('aiming a pending anchor', () => {
       1,
       false
     );
-    expect(p.railhead?.heading).toBeCloseTo(0);
+    expect(p.originPose?.heading).toBeCloseTo(0);
     if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
     expect(p.shape.length).toBeCloseTo(100);
     expect(p.snap?.kind).toBe('line');
@@ -277,7 +277,7 @@ describe('aiming a pending anchor', () => {
       1,
       false
     );
-    expect(p.hover).toEqual(end('s', 'B'));
+    expect(p.hoveredEnd).toEqual(end('s', 'B'));
     expect(p.shape).toBeNull();
   });
 
@@ -287,7 +287,7 @@ describe('aiming a pending anchor', () => {
       y: 100 * Math.sin(degToRad(43)),
     };
     const p = computePreview(aim({x: 0, y: 0}), target, [], 1, true);
-    expect(p.railhead?.heading).toBeCloseTo(degToRad(43));
+    expect(p.originPose?.heading).toBeCloseTo(degToRad(43));
     if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
     expect(p.shape.length).toBeCloseTo(100);
     expect(p.snap).toBeNull();
@@ -296,6 +296,6 @@ describe('aiming a pending anchor', () => {
   it('previews nothing from a degenerate aim', () => {
     const p = computePreview(aim({x: 3, y: 4}), {x: 3, y: 4}, [], 1, false);
     expect(p.shape).toBeNull();
-    expect(p.railhead).toBeNull();
+    expect(p.originPose).toBeNull();
   });
 });

@@ -67,7 +67,7 @@ export type DrawOrigin =
   | {readonly kind: 'point'; readonly position: Point};
 
 /**
- * What the next click would do: the `railhead` it lays from (for an aim, the
+ * What the next click would do: the `originPose` it lays from (for an aim, the
  * pose the aim resolved to — its heading is the one to commit), the section's
  * `shape` (to commit), that shape placed as a `ghost` (the dashed preview drawn
  * under the pointer), the `snap` that shaped it, the open end it closes onto,
@@ -77,22 +77,22 @@ export type DrawOrigin =
  * click has something to lay or select instead.
  */
 export interface Preview {
-  readonly railhead: Pose | null;
+  readonly originPose: Pose | null;
   readonly shape: SectionShape | null;
   readonly ghost: PlacedSection | null;
   readonly snap: Snap | null;
   readonly closeOnto: SectionEnd | null;
-  readonly hover: SectionEnd | null;
+  readonly hoveredEnd: SectionEnd | null;
   readonly anchorPoint: Point | null;
 }
 
 const NOTHING: Preview = {
-  railhead: null,
+  originPose: null,
   shape: null,
   ghost: null,
   snap: null,
   closeOnto: null,
-  hover: null,
+  hoveredEnd: null,
   anchorPoint: null,
 };
 
@@ -109,21 +109,25 @@ export function computePreview(
   target: Point | null,
   openEnds: readonly SectionEndPose[],
   viewScale: number,
-  suspendSnap: boolean
+  snapSuspended: boolean
 ): Preview {
   if (!target) {
     return NOTHING;
   }
-  if (suspendSnap) {
-    const pose = rawPose(origin, target);
-    return pose
-      ? lay(pose, shapeTo(pose, target), null, null)
+  if (snapSuspended) {
+    const originPose = rawPose(origin, target);
+    return originPose
+      ? lay(originPose, shapeTo(originPose, target), null, null)
       : {...NOTHING, anchorPoint: target};
   }
   if (!origin) {
-    const hover = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
-    if (hover) {
-      return {...NOTHING, hover};
+    const hoveredEnd = findHoveredEnd(
+      target,
+      openEnds,
+      RING_HIT_PX / viewScale
+    );
+    if (hoveredEnd) {
+      return {...NOTHING, hoveredEnd};
     }
     const snap = resolveAnchorSnap(
       target,
@@ -135,9 +139,9 @@ export function computePreview(
   if (origin.kind === 'point') {
     return aimPreview(origin.position, target, openEnds, viewScale);
   }
-  const railhead = origin.pose;
+  const originPose = origin.pose;
   const snap = resolveSnap(
-    railhead,
+    originPose,
     target,
     openEnds,
     POINT_MAGNET_PX / viewScale,
@@ -147,16 +151,20 @@ export function computePreview(
   // pointer on a ring hovers it — the click selects, so the ghost is
   // suppressed rather than shown reaching for track the click would not lay.
   if (snap.kind !== 'end') {
-    const hover = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
-    if (hover) {
-      return {...NOTHING, railhead, hover};
+    const hoveredEnd = findHoveredEnd(
+      target,
+      openEnds,
+      RING_HIT_PX / viewScale
+    );
+    if (hoveredEnd) {
+      return {...NOTHING, originPose, hoveredEnd};
     }
   }
-  const shape = shapeForSnap(railhead, snap, SNAP_INCREMENT, SNAP_THRESHOLD);
+  const shape = shapeForSnap(originPose, snap, SNAP_INCREMENT, SNAP_THRESHOLD);
   return lay(
-    railhead,
+    originPose,
     shape,
-    shownSnap(railhead, snap, shape),
+    shownSnap(originPose, snap, shape),
     snap.kind === 'end' ? snap.end : null
   );
 }
@@ -178,9 +186,9 @@ function aimPreview(
   openEnds: readonly SectionEndPose[],
   viewScale: number
 ): Preview {
-  const hover = hoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
-  if (hover) {
-    return {...NOTHING, hover};
+  const hoveredEnd = findHoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
+  if (hoveredEnd) {
+    return {...NOTHING, hoveredEnd};
   }
   const aim = headingToward(anchor, target);
   if (aim === null) {
@@ -193,9 +201,9 @@ function aimPreview(
     snapToIncrement(aim, SNAP_INCREMENT, SNAP_THRESHOLD)
   );
   const pose: Pose = {position: anchor, heading};
-  const pull = resolveAnchorSnap(target, openEnds, LINE_MAGNET_PX / viewScale);
-  if (pull && pull.kind === 'line') {
-    const alignedStraight = straightOntoLine(pose, pull.line);
+  const snap = resolveAnchorSnap(target, openEnds, LINE_MAGNET_PX / viewScale);
+  if (snap && snap.kind === 'line') {
+    const alignedStraight = straightOntoLine(pose, snap.line);
     if (alignedStraight) {
       return lay(
         pose,
@@ -204,7 +212,7 @@ function aimPreview(
           kind: 'line',
           point: endPose(placeSection(alignedStraight, 'A', pose), 'B')
             .position,
-          line: pull.line,
+          line: snap.line,
         },
         null
       );
@@ -234,26 +242,26 @@ function rawPose(origin: DrawOrigin | null, target: Point): Pose | null {
   return aim === null ? null : {position: origin.position, heading: aim};
 }
 
-/** A preview that lays `shape` from `railhead` — the ghost placed to match. */
+/** A preview that lays `shape` from `originPose` — the ghost placed to match. */
 function lay(
-  railhead: Pose,
+  originPose: Pose,
   shape: SectionShape | null,
   snap: Snap | null,
   closeOnto: SectionEnd | null
 ): Preview {
   return {
-    railhead,
+    originPose,
     shape,
-    ghost: shape ? placeSection(shape, 'A', railhead) : null,
+    ghost: shape ? placeSection(shape, 'A', originPose) : null,
     snap,
     closeOnto,
-    hover: null,
+    hoveredEnd: null,
     anchorPoint: null,
   };
 }
 
 /** The open end whose ring the pointer is within `radius` of; nearest wins. */
-function hoveredEnd(
+function findHoveredEnd(
   target: Point,
   openEnds: readonly SectionEndPose[],
   radius: number

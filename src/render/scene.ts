@@ -83,7 +83,7 @@ export function renderLayout(
   placed: PlacedLayout,
   openEndPoints: readonly Point[]
 ): void {
-  const toCanvas = onLayer('layout', transform);
+  const toCanvas = resetLayer('layout', transform);
   drawSheet(space, toCanvas);
   for (const section of placed.sectionsById.values()) {
     for (const geometry of section.geometry) {
@@ -127,7 +127,7 @@ export function renderOverlay(
   transform: ViewTransform,
   overlay: Overlay
 ): void {
-  const toCanvas = onLayer('overlay', transform);
+  const toCanvas = resetLayer('overlay', transform);
   if (overlay.start) {
     drawStartRing(overlay.start, toCanvas);
   }
@@ -137,10 +137,10 @@ export function renderOverlay(
   if (overlay.ghost) {
     // The ghost is one drafted element — a single segment or arc. Draw it and
     // label it (a curve shows its sweep and radius, a straight its length).
-    const [ghost] = overlay.ghost.geometry;
-    if (ghost) {
-      drawGeometry(ghost, toCanvas, PREVIEW_COLOR, GHOST_DASH);
-      drawLabel(ghost, toCanvas);
+    const [geometry] = overlay.ghost.geometry;
+    if (geometry) {
+      drawGeometry(geometry, toCanvas, PREVIEW_COLOR, GHOST_DASH);
+      drawLabel(geometry, toCanvas);
     }
   }
   if (overlay.start) {
@@ -160,8 +160,8 @@ export function renderOverlay(
  * converted to domain units, which always overshoots the visible area.
  */
 function drawGuide(line: Line, toCanvas: ToCanvas, viewScale: number): void {
-  const reach = (paper.view.size.width + paper.view.size.height) / viewScale;
-  const step = scale(normalize(line.direction), reach);
+  const span = (paper.view.size.width + paper.view.size.height) / viewScale;
+  const step = scale(normalize(line.direction), span);
   const guide = new paper.Path.Line(
     toCanvas(subtract(line.origin, step)),
     toCanvas(add(line.origin, step))
@@ -315,9 +315,10 @@ function nudgeInside(
 }
 
 /** Activates the named layer (creating it once), clears it, and returns a mapper. */
-function onLayer(name: string, transform: ViewTransform): ToCanvas {
-  const existing = paper.project.layers.find(l => l.name === name);
-  const layer = existing ?? new paper.Layer({name});
+function resetLayer(name: string, transform: ViewTransform): ToCanvas {
+  const layer =
+    paper.project.layers.find(candidate => candidate.name === name) ??
+    new paper.Layer({name});
   layer.activate();
   layer.removeChildren();
   return point => {
