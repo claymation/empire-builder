@@ -48,7 +48,6 @@ describe('computePreview', () => {
     const p = computePreview(null, {x: 104, y: 53}, [SIDE_END], 1, false);
     expect(p.hoveredEnd).toEqual(end('s', 'B'));
     expect(p.shape).toBeNull();
-    expect(p.ghost).toBeNull();
     expect(p.anchorPoint).toBeNull(); // the click selects, never drops
   });
 
@@ -92,7 +91,7 @@ describe('computePreview', () => {
     expect(p.anchorPoint).toBeNull();
   });
 
-  it('hovering suppresses the ghost, exactly to the ring radius', () => {
+  it('hovering suppresses the section, exactly to the ring radius', () => {
     // The pointer sits on the end's normal line, so without the hover the
     // preview would offer a line-snapped section; inside the ring radius the
     // hover claims the click instead. Pin the boundary: 12 px in, 12.1 px out.
@@ -105,7 +104,6 @@ describe('computePreview', () => {
     );
     expect(inside.hoveredEnd).toEqual(end('s', 'B'));
     expect(inside.shape).toBeNull();
-    expect(inside.ghost).toBeNull();
     expect(inside.snap).toBeNull();
     expect(inside.railhead).toEqual(RAILHEAD);
 
@@ -118,7 +116,6 @@ describe('computePreview', () => {
     );
     expect(outside.hoveredEnd).toBeNull();
     expect(outside.shape).not.toBeNull();
-    expect(outside.ghost).not.toBeNull();
   });
 
   it('scales the ring radius with the view', () => {
@@ -142,7 +139,7 @@ describe('computePreview', () => {
     expect(outside.shape).not.toBeNull();
   });
 
-  it('a latched end outranks the hover: the click closes, not selects', () => {
+  it('a seated end outranks the hover: the click joins, not selects', () => {
     const p = computePreview(
       pose(RAILHEAD),
       {x: 104, y: 103},
@@ -153,14 +150,14 @@ describe('computePreview', () => {
     expect(p.hoveredEnd).toBeNull();
     expect(p.seatOnto).toEqual(end('f', 'B'));
     expect(p.shape).not.toBeNull();
-    // The ghost reaches the latched ring exactly.
+    // The section reaches the seated ring exactly.
     expect(p.snap).toMatchObject({kind: 'end', point: {x: 100, y: 100}});
   });
 
   it('a guideline slide landing on an open end carries the snap and the seat', () => {
     // An open end at (400, 0) facing east — away from the railhead — puts its
     // normal line at x = 400. The pointer rides that line outside the end's
-    // point magnet and ring; the near-level aim flattens to a straight, and
+    // point magnet and ring; the near-level heading flattens to a straight, and
     // the slide lands its end at the crossing (400, 0): dead on the open end,
     // so the landing seats and the click will record the join.
     const facingEnd = oe(end('g', 'A'), {position: {x: 400, y: 0}, heading: 0});
@@ -201,7 +198,7 @@ describe('computePreview', () => {
   });
 
   it('snaps a 180° curve from a locked heading onto its normal guideline', () => {
-    // A network's first section with the aim locked: the anchor stands as a
+    // A network's first section with the heading locked: the anchor stands as a
     // full pose and no open end exists. A pointer just off abreast pulls onto
     // the pose's normal, so the half-circle starting a return loop is exact.
     const p = computePreview(pose(RAILHEAD), {x: 4, y: 100}, [], 1, false);
@@ -270,7 +267,7 @@ describe('computePreview', () => {
 
 describe('aiming a pending anchor', () => {
   it('aims a straight at the pointer, angle-snapping the heading', () => {
-    // 43° lies within the 5° threshold of 45°: the aim snaps, and the
+    // 43° lies within the 5° threshold of 45°: the heading snaps, and the
     // straight runs to the pointer's projection on the snapped heading.
     const target = {
       x: 100 * Math.cos(degToRad(43)),
@@ -282,7 +279,7 @@ describe('aiming a pending anchor', () => {
     expect(p.shape.length).toBeCloseTo(100 * Math.cos(degToRad(2)));
   });
 
-  it('keeps a deliberate off-grid aim', () => {
+  it('keeps a deliberate off-grid heading', () => {
     // 38° sits 8° and 7° from the nearest multiples: no snap.
     const target = {
       x: 100 * Math.cos(degToRad(38)),
@@ -302,9 +299,9 @@ describe('aiming a pending anchor', () => {
     expect(locked.shape?.kind).toBe('curved');
   });
 
-  it('slides the straight onto a guideline, keeping the snapped aim', () => {
+  it('slides the straight onto a guideline, keeping the snapped heading', () => {
     // From (0, 200) toward a pointer a degree off level and 3 off the open
-    // end's normal (x = 100): the aim snaps level, and the end slides to the
+    // end's normal (x = 100): the heading snaps level, and the end slides to the
     // crossing (100, 200) — the length that lines up with the old track,
     // without tilting the run.
     const p = computePreview(
@@ -323,7 +320,7 @@ describe('aiming a pending anchor', () => {
   });
 
   it('an aimed straight landing on a facing open end carries the seat', () => {
-    // Aiming from the origin past the open end at (200, 0): the aim snaps
+    // Aiming from the origin past the open end at (200, 0): the heading snaps
     // level, the end's normal line slides the straight's end onto the crossing
     // (200, 0) — dead on the open end — and the seat carries, so the click
     // ties the first section in rather than anchoring a second network.
@@ -362,9 +359,9 @@ describe('aiming a pending anchor', () => {
     expect(p.railhead?.heading).toBeCloseTo(0);
   });
 
-  it('seats at an off-grid heading, keeping the raw aim', () => {
+  it('seats at an off-grid heading, keeping the raw heading', () => {
     // A 43° tangent sits within the 5° snap threshold of the 45° multiple, so
-    // an aim that angle-snapped (or defaulted to an axis) would kink against
+    // a heading that angle-snapped (or defaulted to an axis) would kink against
     // the EPSILON-exact seat and fail; the tie-in must aim raw at the end.
     const heading = degToRad(43);
     const endPosition = {x: 60, y: -35};
@@ -420,7 +417,7 @@ describe('aiming a pending anchor', () => {
     expect(p.seatOnto).toBeNull();
   });
 
-  it('a hovered ring outranks an aim that cannot seat on it', () => {
+  it('a hovered ring outranks a section that cannot seat on it', () => {
     const p = computePreview(
       aim({x: 0, y: 0}),
       {x: 100, y: 55},
@@ -444,7 +441,7 @@ describe('aiming a pending anchor', () => {
     expect(p.snap).toBeNull();
   });
 
-  it('previews nothing from a degenerate aim', () => {
+  it('previews nothing when the anchor and pointer coincide', () => {
     const p = computePreview(aim({x: 3, y: 4}), {x: 3, y: 4}, [], 1, false);
     expect(p.shape).toBeNull();
     expect(p.railhead).toBeNull();

@@ -164,7 +164,7 @@ describe('tieInSection', () => {
     });
     expect(tied.layout.anchors).toHaveLength(1); // s1's places the network
     expect(tied.pendingAnchor).toBeNull();
-    // s2 threads from s1's network: its open A end stands back at the aim.
+    // s2 threads from s1's network: its open A end stands back at the anchor.
     const a = poseOf(placeLayout(tied.layout), end('s2', 'A'));
     expect(a.position.x).toBeCloseTo(200);
     expect(a.position.y).toBeCloseTo(0);

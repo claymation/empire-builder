@@ -14,7 +14,12 @@ import {
   PlacedLayout,
   poseOf,
 } from '../domain/layout';
-import {Section, SectionShape, sectionLength} from '../domain/section';
+import {
+  placeSection,
+  Section,
+  SectionShape,
+  sectionLength,
+} from '../domain/section';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
 import {renderLayout, renderOverlay, sceneTransform} from '../render/scene';
@@ -46,9 +51,9 @@ export function startEditor(
   let pointer: Point | null = null;
   // Snapping suspended (Option/Alt held) for raw freehand placement.
   let suspendSnap = false;
-  // The heading a pending anchor's aim is locked to (Shift held), so the
-  // pointer can move off-axis to shape a curve; null while the aim follows
-  // the pointer. Held-modifier state, a sibling of suspendSnap — it lives at
+  // The heading a pending anchor is locked to (Shift held), so the pointer can
+  // move off-axis to shape a curve; null while the heading follows the pointer.
+  // Held-modifier state, a sibling of suspendSnap — it lives at
   // this edge, not in EditorState, which keeps the pending anchor a bare
   // position and records a heading only when a section commits, so every
   // committed heading is the previewed one.
@@ -73,8 +78,8 @@ export function startEditor(
       placed = placeLayout(next.layout);
     }
     state = next;
-    // Any transition ends the aim in progress: the lock belongs to the
-    // pending anchor it was captured over.
+    // Any transition resets the heading lock: it belongs to the pending anchor
+    // it was captured over.
     lockedHeading = null;
   }
 
@@ -125,14 +130,16 @@ export function startEditor(
   }
 
   function refreshOverlay(view: ViewTransform): void {
-    const {ghost, snap, seatOnto, hoveredEnd} = preview(view);
-    // `start` is read from the committed state, not the preview, so the dot and
+    const {shape, railhead, snap, seatOnto, hoveredEnd} = preview(view);
+    // The ghost is placed here from the preview's shape and railhead: the
+    // preview decides what to lay, the overlay renders it and the commit lays
+    // it, so the placed section is not carried on the preview itself.
+    // `start` is read from the committed state, not the preview, so its dot and
     // ring mark where drawing grows from — a pending anchor or the railhead —
-    // the moment one is set, wherever the pointer is. The other fields are the
-    // preview's feedback as plain draw data: the guide line, the seat ring, and
-    // the hover halo, each projected to a point or line here.
+    // the moment one is set, wherever the pointer is. The guide, seat, and halo
+    // are the preview's feedback projected to a point or line.
     renderOverlay(view, {
-      ghost,
+      ghost: shape && railhead ? placeSection(shape, 'A', railhead) : null,
       start:
         state.pendingAnchor ??
         (state.railhead ? poseOf(placed, state.railhead).position : null),
@@ -176,7 +183,7 @@ export function startEditor(
     //  - a hovered ring selects that end;
     //  - a shape from a pending anchor ties into the end it seats on, else
     //    anchors a new network at the previewed heading;
-    //  - a shape from the railhead extends it, a seat closing the join;
+    //  - a shape from the railhead extends it, a seat recording the far-end join;
     //  - otherwise the click drops a new network's anchor at `anchorPoint`.
     const {
       shape,
@@ -213,7 +220,7 @@ export function startEditor(
       paper.view.update();
     }
   };
-  // Holding Shift locks a pending anchor's aim at its previewed heading, so
+  // Holding Shift locks a pending anchor's heading at its previewed value, so
   // the pointer can move off-axis to shape the first section into a curve.
   const setHeadingLock = (held: boolean) => {
     if (held === (lockedHeading !== null)) {

@@ -226,9 +226,9 @@ function drawRing(
  * Labels the preview with its dimensions: a curve its sweep and radius
  * (`90.0° · r 15.1″`), a straight its heading and length (`∠ 30.0° · ℓ 34.1″`
  * — the ∠ marking a direction rather than a sweep, the script ℓ keeping the
- * prefix from reading as a digit 1). The heading is the value aiming a first
- * section chooses, and it shows the angle snap catching a tidy multiple. The
- * label sits by the preview's leading end — near the pointer, where the eye
+ * prefix from reading as a digit 1). The heading is the value chosen when
+ * aiming a first section, and it shows the angle snap catching a tidy multiple.
+ * The label sits by the preview's leading end — near the pointer, where the eye
  * is — pushed clear of the track: radially out from the arc's center for a
  * curve, square off the run for a straight.
  */
