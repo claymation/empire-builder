@@ -53,10 +53,12 @@ export function startEditor(
   let suspendSnap = false;
   // The heading a pending anchor is locked to (Shift held), so the pointer can
   // move off-axis to shape a curve; null while the heading follows the pointer.
-  // Held-modifier state, a sibling of suspendSnap — it lives at
-  // this edge, not in EditorState, which keeps the pending anchor a bare
-  // position and records a heading only when a section commits, so every
-  // committed heading is the previewed one.
+  // Held-modifier state, a sibling of suspendSnap: it lives in this closure,
+  // not in EditorState, because only this edge reads it (to build the draw
+  // origin) — no state transition needs it. The pending anchor's *position*, by
+  // contrast, lives in EditorState because the commit transitions consume it;
+  // its heading is recorded only when a section commits, so every committed
+  // heading is the previewed one.
   let lockedHeading: number | null = null;
   // Section ids come from a monotonic counter held outside the state, so undo
   // and redo never reuse or collide ids.
@@ -73,13 +75,15 @@ export function startEditor(
   // Pointer moves and the selection transitions (select, deselect, drop an
   // anchor) leave the layout untouched and reuse this.
   let placed: PlacedLayout = placeLayout(state.layout);
+
+  // Makes `next` the current state: re-derives the placed layout when the
+  // layout changed (only then), and clears the heading lock, which belongs to
+  // the pending anchor it was captured over.
   function setState(next: EditorState): void {
     if (next.layout !== state.layout) {
       placed = placeLayout(next.layout);
     }
     state = next;
-    // Any transition resets the heading lock: it belongs to the pending anchor
-    // it was captured over.
     lockedHeading = null;
   }
 
@@ -130,17 +134,17 @@ export function startEditor(
   }
 
   function refreshOverlay(view: ViewTransform): void {
-    const {shape, railhead, snap, seatOnto, hoveredEnd} = preview(view);
-    // The ghost is placed here from the preview's shape and railhead: the
+    const {shape, originPose, snap, seatOnto, hoveredEnd} = preview(view);
+    // The ghost is placed here from the preview's shape and origin pose: the
     // preview decides what to lay, the overlay renders it and the commit lays
     // it, so the placed section is not carried on the preview itself.
-    // `start` is read from the committed state, not the preview, so its dot and
-    // ring mark where drawing grows from — a pending anchor or the railhead —
-    // the moment one is set, wherever the pointer is. The guide, seat, and halo
-    // are the preview's feedback projected to a point or line.
+    // `origin` is read from the committed state, not the preview, so its dot
+    // and ring mark where drawing grows from — a pending anchor or the railhead
+    // — the moment one is set, wherever the pointer is. The guide, seat, and
+    // halo are the preview's feedback projected to a point or line.
     renderOverlay(view, {
-      ghost: shape && railhead ? placeSection(shape, 'A', railhead) : null,
-      start:
+      ghost: shape && originPose ? placeSection(shape, 'A', originPose) : null,
+      origin:
         state.pendingAnchor ??
         (state.railhead ? poseOf(placed, state.railhead).position : null),
       guide: snap?.kind === 'line' ? snap.line : null,
@@ -185,21 +189,16 @@ export function startEditor(
     //    anchors a new network at the previewed heading;
     //  - a shape from the railhead extends it, a seat recording the far-end join;
     //  - otherwise the click drops a new network's anchor at `anchorPoint`.
-    const {
-      shape,
-      seatOnto,
-      hoveredEnd,
-      anchorPoint,
-      railhead: from,
-    } = preview(view);
+    const {shape, seatOnto, hoveredEnd, anchorPoint, originPose} =
+      preview(view);
     if (hoveredEnd) {
       setState(selectRailhead(state, hoveredEnd));
     } else if (shape) {
-      if (state.pendingAnchor && from) {
+      if (state.pendingAnchor && originPose) {
         setState(
           seatOnto
             ? tieInSection(state, withId(shape), seatOnto)
-            : startNetwork(state, withId(shape), from.heading)
+            : startNetwork(state, withId(shape), originPose.heading)
         );
       } else if (state.railhead) {
         setState(extend(state, state.railhead, withId(shape), seatOnto));
@@ -230,7 +229,7 @@ export function startEditor(
       if (!state.pendingAnchor) {
         return;
       }
-      lockedHeading = preview(transform()).railhead?.heading ?? null;
+      lockedHeading = preview(transform()).originPose?.heading ?? null;
     } else {
       lockedHeading = null;
     }

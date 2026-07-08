@@ -39,7 +39,7 @@ const FACING_END = oe(end('f', 'B'), {
 describe('computePreview', () => {
   it('previews nothing without a pointer', () => {
     const p = computePreview(pose(RAILHEAD), null, [SIDE_END], 1, false);
-    expect(p.railhead).toBeNull();
+    expect(p.originPose).toBeNull();
     expect(p.shape).toBeNull();
     expect(p.hoveredEnd).toBeNull();
   });
@@ -105,7 +105,7 @@ describe('computePreview', () => {
     expect(inside.hoveredEnd).toEqual(end('s', 'B'));
     expect(inside.shape).toBeNull();
     expect(inside.snap).toBeNull();
-    expect(inside.railhead).toEqual(RAILHEAD);
+    expect(inside.originPose).toEqual(RAILHEAD);
 
     const outside = computePreview(
       pose(RAILHEAD),
@@ -274,7 +274,7 @@ describe('aiming a pending anchor', () => {
       y: 100 * Math.sin(degToRad(43)),
     };
     const p = computePreview(aim({x: 0, y: 0}), target, [], 1, false);
-    expect(p.railhead?.heading).toBeCloseTo(Math.PI / 4);
+    expect(p.originPose?.heading).toBeCloseTo(Math.PI / 4);
     if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
     expect(p.shape.length).toBeCloseTo(100 * Math.cos(degToRad(2)));
   });
@@ -286,7 +286,7 @@ describe('aiming a pending anchor', () => {
       y: 100 * Math.sin(degToRad(38)),
     };
     const p = computePreview(aim({x: 0, y: 0}), target, [], 1, false);
-    expect(p.railhead?.heading).toBeCloseTo(degToRad(38));
+    expect(p.originPose?.heading).toBeCloseTo(degToRad(38));
     if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
     expect(p.shape.length).toBeCloseTo(100);
   });
@@ -311,7 +311,7 @@ describe('aiming a pending anchor', () => {
       1,
       false
     );
-    expect(p.railhead?.heading).toBeCloseTo(0);
+    expect(p.originPose?.heading).toBeCloseTo(0);
     if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
     expect(p.shape.length).toBeCloseTo(100);
     expect(p.snap?.kind).toBe('line');
@@ -332,7 +332,7 @@ describe('aiming a pending anchor', () => {
       1,
       false
     );
-    expect(p.railhead?.heading).toBeCloseTo(0);
+    expect(p.originPose?.heading).toBeCloseTo(0);
     expect(p.snap?.kind).toBe('line');
     if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
     expect(p.shape.length).toBeCloseTo(200);
@@ -356,7 +356,7 @@ describe('aiming a pending anchor', () => {
     if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
     expect(p.shape.length).toBeCloseTo(200);
     expect(p.snap).toMatchObject({kind: 'end', point: {x: 200, y: 0}});
-    expect(p.railhead?.heading).toBeCloseTo(0);
+    expect(p.originPose?.heading).toBeCloseTo(0);
   });
 
   it('seats at an off-grid heading, keeping the raw heading', () => {
@@ -379,7 +379,7 @@ describe('aiming a pending anchor', () => {
     );
     expect(p.hoveredEnd).toBeNull();
     expect(p.seatOnto).toEqual(end('g', 'A'));
-    expect(p.railhead?.heading).toBeCloseTo(heading);
+    expect(p.originPose?.heading).toBeCloseTo(heading);
     if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
     expect(p.shape.length).toBeCloseTo(150);
   });
@@ -435,7 +435,7 @@ describe('aiming a pending anchor', () => {
       y: 100 * Math.sin(degToRad(43)),
     };
     const p = computePreview(aim({x: 0, y: 0}), target, [], 1, true);
-    expect(p.railhead?.heading).toBeCloseTo(degToRad(43));
+    expect(p.originPose?.heading).toBeCloseTo(degToRad(43));
     if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
     expect(p.shape.length).toBeCloseTo(100);
     expect(p.snap).toBeNull();
@@ -444,6 +444,6 @@ describe('aiming a pending anchor', () => {
   it('previews nothing when the anchor and pointer coincide', () => {
     const p = computePreview(aim({x: 3, y: 4}), {x: 3, y: 4}, [], 1, false);
     expect(p.shape).toBeNull();
-    expect(p.railhead).toBeNull();
+    expect(p.originPose).toBeNull();
   });
 });
