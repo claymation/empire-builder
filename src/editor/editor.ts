@@ -44,10 +44,10 @@ export function startEditor(
   // The pointer's last known domain position; null until it enters the canvas.
   let pointer: Point | null = null;
   // Snapping suspended (Option/Alt held) for raw freehand placement.
-  let suspendSnap = false;
+  let snapSuspended = false;
   // The heading a pending anchor's aim is locked to (Shift held), so the
   // pointer can move off-axis to shape a curve; null while the aim follows
-  // the pointer. Held-modifier state, a sibling of suspendSnap — it lives at
+  // the pointer. Held-modifier state, a sibling of snapSuspended — it lives at
   // this edge, not in EditorState, which keeps the pending anchor a bare
   // position and records a heading only when a section commits, so every
   // committed heading is the previewed one.
@@ -59,7 +59,7 @@ export function startEditor(
 
   // Rebuilt per use so it always reflects the current view size, which changes
   // on resize; building it is cheap arithmetic, so there is nothing to cache.
-  const transform = (): ViewTransform =>
+  const computeTransform = (): ViewTransform =>
     sceneTransform(space, paper.view.size.width, paper.view.size.height);
 
   // The current layout, placed. Re-derived only when a transition changed the
@@ -67,11 +67,11 @@ export function startEditor(
   // Pointer moves and the selection transitions (select, deselect, drop an
   // anchor) leave the layout untouched and reuse this.
   let placed: PlacedLayout = placeLayout(state.layout);
-  function setState(next: EditorState): void {
-    if (next.layout !== state.layout) {
-      placed = placeLayout(next.layout);
+  function setState(newState: EditorState): void {
+    if (newState.layout !== state.layout) {
+      placed = placeLayout(newState.layout);
     }
-    state = next;
+    state = newState;
     // Any transition ends the aim in progress: the lock belongs to the
     // pending anchor it was captured over.
     lockedHeading = null;
@@ -104,13 +104,13 @@ export function startEditor(
    * click routing both read this one decision, which is what keeps what is
    * drawn and what a click does in agreement.
    */
-  function preview(view: ViewTransform): Preview {
+  function buildPreview(transform: ViewTransform): Preview {
     return computePreview(
       drawOrigin(),
       pointer,
       openEndPoses(state.layout, placed),
-      view.scale,
-      suspendSnap
+      transform.scale,
+      snapSuspended
     );
   }
 
@@ -119,25 +119,27 @@ export function startEditor(
     return openEndPoses(state.layout, placed).map(({pose}) => pose.position);
   }
 
-  function refreshLayout(view: ViewTransform): void {
-    renderLayout(view, space, placed, openEndPoints());
+  function refreshLayout(transform: ViewTransform): void {
+    renderLayout(transform, space, placed, openEndPoints());
   }
 
-  function refreshOverlay(view: ViewTransform): void {
-    const {ghost, snap, hover: hoveredEnd} = preview(view);
+  function refreshOverlay(transform: ViewTransform): void {
+    const preview = buildPreview(transform);
     // The start's dot and ring mark selection state, not the preview: they
     // show the moment an anchor drops or an end is selected, with the pointer
     // wherever it is.
     // The snap's drawable feedback, projected here so the overlay stays plain
     // draw data: an `angle` snap carries no feature to draw, so both are null.
-    renderOverlay(view, {
-      ghost,
+    renderOverlay(transform, {
+      ghost: preview.ghost,
       start:
         state.pendingAnchor ??
         (state.railhead ? poseOf(placed, state.railhead).position : null),
-      guide: snap?.kind === 'line' ? snap.line : null,
-      seat: snap?.kind === 'end' ? snap.point : null,
-      halo: hoveredEnd ? poseOf(placed, hoveredEnd).position : null,
+      guide: preview.snap?.kind === 'line' ? preview.snap.line : null,
+      seat: preview.snap?.kind === 'end' ? preview.snap.point : null,
+      halo: preview.hoveredEnd
+        ? poseOf(placed, preview.hoveredEnd).position
+        : null,
     });
   }
 
@@ -152,48 +154,51 @@ export function startEditor(
   // is a separate step each frame ends with, so it is not tied to which
   // layer happens to draw last.
   function refreshAll(): void {
-    const view = transform();
-    refreshLayout(view);
-    refreshOverlay(view);
+    const transform = computeTransform();
+    refreshLayout(transform);
+    refreshOverlay(transform);
     refreshStatus();
     paper.view.update();
   }
 
   const tool = new paper.Tool();
   tool.onMouseMove = (event: paper.ToolEvent) => {
-    const view = transform();
-    pointer = view.toDomain({x: event.point.x, y: event.point.y});
-    refreshOverlay(view);
+    const transform = computeTransform();
+    pointer = transform.toDomain({x: event.point.x, y: event.point.y});
+    refreshOverlay(transform);
     paper.view.update();
   };
   // Commit on the click's release, not the press — the drawing-tool convention,
   // and it keeps a press-and-drag available as its own gesture.
   tool.onMouseUp = (event: paper.ToolEvent) => {
-    const view = transform();
-    pointer = view.toDomain({x: event.point.x, y: event.point.y});
+    const transform = computeTransform();
+    pointer = transform.toDomain({x: event.point.x, y: event.point.y});
     // Route the click by the same preview the overlay drew: a hovered ring
     // selects that end; a shape lays it — from the pending anchor as a new
     // network at the previewed heading, or extended from the railhead, a
     // latched end snap closing the join. With nothing to select or lay,
     // `anchorPoint` — the pointer, pulled onto any guideline — is where the
     // click drops the anchor a new network grows from.
-    const {
-      shape,
-      closeOnto,
-      hover,
-      anchorPoint,
-      railhead: from,
-    } = preview(view);
-    if (hover) {
-      setState(selectRailhead(state, hover));
-    } else if (shape) {
-      if (state.pendingAnchor && from) {
-        setState(startNetwork(state, withId(shape), from.heading));
+    const preview = buildPreview(transform);
+    if (preview.hoveredEnd) {
+      setState(selectRailhead(state, preview.hoveredEnd));
+    } else if (preview.shape) {
+      if (state.pendingAnchor && preview.originPose) {
+        setState(
+          startNetwork(state, withId(preview.shape), preview.originPose.heading)
+        );
       } else if (state.railhead) {
-        setState(extend(state, state.railhead, withId(shape), closeOnto));
+        setState(
+          extend(
+            state,
+            state.railhead,
+            withId(preview.shape),
+            preview.closeOnto
+          )
+        );
       }
-    } else if (anchorPoint) {
-      setState(dropAnchor(state, anchorPoint));
+    } else if (preview.anchorPoint) {
+      setState(dropAnchor(state, preview.anchorPoint));
     }
     refreshAll();
   };
@@ -202,9 +207,9 @@ export function startEditor(
 
   // Holding Option/Alt suspends snapping for raw freehand placement.
   const setSuspend = (held: boolean) => {
-    if (held !== suspendSnap) {
-      suspendSnap = held;
-      refreshOverlay(transform());
+    if (held !== snapSuspended) {
+      snapSuspended = held;
+      refreshOverlay(computeTransform());
       paper.view.update();
     }
   };
@@ -218,11 +223,12 @@ export function startEditor(
       if (!state.pendingAnchor) {
         return;
       }
-      lockedHeading = preview(transform()).railhead?.heading ?? null;
+      lockedHeading =
+        buildPreview(computeTransform()).originPose?.heading ?? null;
     } else {
       lockedHeading = null;
     }
-    refreshOverlay(transform());
+    refreshOverlay(computeTransform());
     paper.view.update();
   };
   window.addEventListener('keydown', event => {
