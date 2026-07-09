@@ -1,22 +1,24 @@
 /**
  * What the next click would do, computed in one place so the on-screen feedback
- * and the commit agree — the editor's decision core, free of
- * Paper.js and the DOM. The editor edge (./editor) feeds it the pointer and the
- * current open ends, draws what it returns, and routes the click by the same
- * value.
+ * and the commit agree — the editor's decision core, free of Paper.js and the
+ * DOM. The editor edge (./editor) feeds it the pointer and the current open
+ * ends, draws what {@link computePreview} returns, and routes the click by the
+ * same value.
  *
- * The pointer means exactly one thing at a time, and the preview shows which:
- * a ghost reaching an open end — the click joins the sections; a hovered ring
- * with no ghost — the click selects that end; a ghost alone — the click lays
- * the section; with nothing selected to draw from, the click drops a new
- * network's anchor at `anchorPoint`, the pointer pulled onto any guideline in
- * range. A pending anchor aims ({@link DrawOrigin}): its ghost is the straight
- * toward the pointer, and curves wait for the heading to be locked. An end
- * snap outranks a hover, so the two never both claim a click; a hover suppresses
- * the ghost, so the preview never shows a section a click would not lay.
+ * A click means exactly one thing at a time, and a {@link Preview} says which:
+ *
+ * - a ghost reaching an open end lays a section — an end snap also joins its
+ *   far end onto that open end;
+ * - a hovered ring selects that end;
+ * - with nothing selected, a click on empty space drops a new network's anchor.
+ *
+ * An end snap outranks a hover, so the two never both claim a click; a hover
+ * suppresses the ghost, so the preview never offers a section a click would not
+ * lay.
  */
 
 import {
+  advance,
   degToRad,
   distance,
   dot,
@@ -29,13 +31,7 @@ import {
   unitVector,
 } from '../lib/geometry';
 import {SectionEnd, SectionEndPose} from '../domain/layout';
-import {
-  endPose,
-  placeSection,
-  PlacedSection,
-  SectionShape,
-  straight,
-} from '../domain/section';
+import {SectionShape, straight} from '../domain/section';
 import {
   resolveAnchorSnap,
   resolveSnap,
@@ -57,52 +53,58 @@ const LINE_MAGNET_PX = 8;
 export const RING_HIT_PX = 12;
 
 /**
- * Where drawing grows from. A `pose` fixes both position and heading — a
- * selected railhead, or a pending anchor whose heading has been locked. A
- * `point` fixes only the position — a pending anchor whose heading follows
- * the pointer until it is locked or the first section is laid.
+ * Where drawing grows from:
+ *
+ * - `railhead`: a selected open end `at`, extended from `pose`;
+ * - `anchor`: a pending anchor whose heading is set, starting a new network at
+ *   `pose`;
+ * - `point`: a pending anchor whose heading still follows the pointer, so it has
+ *   only a position — the heading is chosen (aimed) while the first section is
+ *   previewed.
+ *
+ * `railhead` and `anchor` are settled: they carry a full pose, so a section can
+ * be laid from either. Laying resolves a `point` into an `anchor`.
  */
 export type DrawOrigin =
-  | {readonly kind: 'pose'; readonly pose: Pose}
+  | {readonly kind: 'anchor'; readonly pose: Pose}
+  | {readonly kind: 'railhead'; readonly pose: Pose; readonly at: SectionEnd}
   | {readonly kind: 'point'; readonly position: Point};
 
-/**
- * What the next click would do: the `originPose` it lays from (for an aim, the
- * pose the aim resolved to — its heading is the one to commit), the section's
- * `shape` (to commit), that shape placed as a `ghost` (the dashed preview drawn
- * under the pointer), the `snap` that shaped it, the open end it closes onto,
- * the open end whose ring is hovered — which the click selects instead of
- * laying anything — and `anchorPoint`, where the click drops a new network's
- * anchor: the pointer, pulled onto any guideline in range; null whenever the
- * click has something to lay or select instead.
- */
-export interface Preview {
-  readonly originPose: Pose | null;
-  readonly shape: SectionShape | null;
-  readonly ghost: PlacedSection | null;
-  readonly snap: Snap | null;
-  readonly closeOnto: SectionEnd | null;
-  readonly hoveredEnd: SectionEnd | null;
-  readonly anchorPoint: Point | null;
-}
+/** A settled origin: a `DrawOrigin` that carries a pose, so a section lays from it. */
+type SettledOrigin = Exclude<DrawOrigin, {readonly kind: 'point'}>;
 
-const NOTHING: Preview = {
-  originPose: null,
-  shape: null,
-  ghost: null,
-  snap: null,
-  closeOnto: null,
-  hoveredEnd: null,
-  anchorPoint: null,
-};
+/**
+ * What the next click would do — exactly one of these outcomes, so a reader
+ * never reasons about which fields are valid together or which takes
+ * precedence; the choice is made here, once.
+ *
+ * - `nothing`: the click does nothing (no pointer, or nowhere to lay, select,
+ *   or drop).
+ * - `select`: the click selects the hovered open `end` as the railhead.
+ * - `anchor`: the click drops a new network's anchor `at` — the pointer, pulled
+ *   onto `snap`'s guideline when one is in range.
+ * - `lay`: the click lays `shape` from `origin`; `snap` shaped it and, when it
+ *   is an end snap, names the open end the far end joins onto.
+ */
+export type Preview =
+  | {readonly kind: 'nothing'}
+  | {readonly kind: 'select'; readonly end: SectionEnd}
+  | {readonly kind: 'anchor'; readonly at: Point; readonly snap: Snap | null}
+  | {
+      readonly kind: 'lay';
+      readonly origin: SettledOrigin;
+      readonly shape: SectionShape;
+      readonly snap: Snap | null;
+    };
+
+const NOTHING: Preview = {kind: 'nothing'};
 
 /**
  * Computes the {@link Preview} for a pointer at `target`. `origin` is where
- * drawing grows from ({@link DrawOrigin}), or null when nothing is selected —
- * the pointer can still hover an open end to select one, or drop an anchor.
+ * drawing grows from ({@link DrawOrigin}), or null when nothing is selected.
  * `viewScale` converts the pixel magnets to domain units. Suspending snapping
- * (Option/Alt) lays the plain section to the pointer — an aim becomes the raw
- * straight toward it — with no snaps, no guides, no hover.
+ * (Option/Alt) lays a plain section to the pointer, with no snaps, no guides,
+ * and no hover.
  */
 export function computePreview(
   origin: DrawOrigin | null,
@@ -114,71 +116,87 @@ export function computePreview(
   if (!target) {
     return NOTHING;
   }
-  if (snapSuspended) {
-    const originPose = rawPose(origin, target);
-    return originPose
-      ? lay(originPose, shapeTo(originPose, target), null, null)
-      : {...NOTHING, anchorPoint: target};
-  }
-  if (!origin) {
-    const hoveredEnd = findHoveredEnd(
-      target,
-      openEnds,
-      RING_HIT_PX / viewScale
-    );
-    if (hoveredEnd) {
-      return {...NOTHING, hoveredEnd};
+  const outcome = snapSuspended
+    ? freehand(origin, target)
+    : withSnapping(origin, target, openEnds, viewScale);
+
+  // A hovered ring makes the click select that end instead — unless an end snap
+  // claims the click (an end snap outranks a hover), or snapping is suspended
+  // (which offers no hovers).
+  if (!snapSuspended && !isEndSnap(outcome)) {
+    const hovered = findHoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
+    if (hovered) {
+      return {kind: 'select', end: hovered};
     }
+  }
+  return outcome;
+}
+
+/** Whether an outcome is a lay whose end snaps onto an open end. */
+function isEndSnap(preview: Preview): boolean {
+  return preview.kind === 'lay' && preview.snap?.kind === 'end';
+}
+
+/**
+ * The lay or drop the pointer offers with snapping on — before a hover is
+ * allowed to override it. No origin drops an anchor (pulled onto a nearby
+ * guideline); a `point` origin aims the first section; a settled origin lays
+ * the section the pointer's snap calls for.
+ */
+function withSnapping(
+  origin: DrawOrigin | null,
+  target: Point,
+  openEnds: readonly SectionEndPose[],
+  viewScale: number
+): Preview {
+  if (!origin) {
     const snap = resolveAnchorSnap(
       target,
       openEnds,
       LINE_MAGNET_PX / viewScale
     );
-    return {...NOTHING, snap, anchorPoint: snap ? snap.target : target};
+    return {kind: 'anchor', at: snap ? snap.target : target, snap};
   }
   if (origin.kind === 'point') {
     return aimPreview(origin.position, target, openEnds, viewScale);
   }
-  const originPose = origin.pose;
   const snap = resolveSnap(
-    originPose,
+    origin.pose,
     target,
     openEnds,
     POINT_MAGNET_PX / viewScale,
     LINE_MAGNET_PX / viewScale
   );
-  // An end snap outranks a hover: the click joins the sections. Without one, a
-  // pointer on a ring hovers it — the click selects, so the ghost is
-  // suppressed rather than shown reaching for track the click would not lay.
-  if (snap.kind !== 'end') {
-    const hoveredEnd = findHoveredEnd(
-      target,
-      openEnds,
-      RING_HIT_PX / viewScale
-    );
-    if (hoveredEnd) {
-      return {...NOTHING, originPose, hoveredEnd};
-    }
+  const shape = shapeForSnap(origin.pose, snap, SNAP_INCREMENT, SNAP_THRESHOLD);
+  return shape
+    ? {kind: 'lay', origin, shape, snap: shownSnap(origin.pose, snap, shape)}
+    : NOTHING;
+}
+
+/**
+ * The lay or drop the pointer offers with snapping suspended (Option/Alt): a
+ * settled origin lays the plain section straight to the pointer; otherwise —
+ * nothing selected, or the pointer sitting on an aiming anchor — a click drops
+ * a fresh anchor at the raw pointer.
+ */
+function freehand(origin: DrawOrigin | null, target: Point): Preview {
+  const from = origin ? settle(origin, target) : null;
+  if (!from) {
+    return {kind: 'anchor', at: target, snap: null};
   }
-  const shape = shapeForSnap(originPose, snap, SNAP_INCREMENT, SNAP_THRESHOLD);
-  return lay(
-    originPose,
-    shape,
-    shownSnap(originPose, snap, shape),
-    snap.kind === 'end' ? snap.end : null
-  );
+  const shape = shapeTo(from.pose, target);
+  return shape ? {kind: 'lay', origin: from, shape, snap: null} : NOTHING;
 }
 
 /**
  * The preview while aiming a pending anchor: the heading follows the pointer,
  * so the section on offer is always the straight from the anchor toward it —
- * curves wait for the heading to be locked. A hovered ring still claims the
- * click. The aim angle-snaps to tidy multiples, so level and square starts
- * come easily while a deliberate off-grid aim stands; a pointer near an open
- * end's guideline ({@link resolveAnchorSnap}) then slides the straight's end
- * to where the aim crosses it — the length that lines the new track's end up
- * with the old, while the aim itself stands, so a level start stays level and
- * stays parallel.
+ * curves wait for the heading to be locked. The aim angle-snaps to tidy
+ * multiples, so level and square starts come easily while a deliberate off-grid
+ * aim stands; a pointer near an open end's guideline ({@link resolveAnchorSnap})
+ * then slides the straight's end to where the heading crosses it — the length
+ * that lines the new track's end up with the old, while the heading itself
+ * stands, so a level start stays level and stays parallel.
  */
 function aimPreview(
   anchor: Point,
@@ -186,78 +204,57 @@ function aimPreview(
   openEnds: readonly SectionEndPose[],
   viewScale: number
 ): Preview {
-  const hoveredEnd = findHoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
-  if (hoveredEnd) {
-    return {...NOTHING, hoveredEnd};
-  }
-  const aim = headingToward(anchor, target);
-  if (aim === null) {
+  const heading = headingToward(anchor, target);
+  if (heading === null) {
     return NOTHING;
   }
   // Normalized once, after snapping: the multiples divide the full turn
   // evenly, so snapping commutes with wrapping, and the one wrap also folds a
   // snap to 2π back to 0.
-  const heading = normalizeAngle(
-    snapToIncrement(aim, SNAP_INCREMENT, SNAP_THRESHOLD)
+  const snappedHeading = normalizeAngle(
+    snapToIncrement(heading, SNAP_INCREMENT, SNAP_THRESHOLD)
   );
-  const pose: Pose = {position: anchor, heading};
+  const origin: SettledOrigin = {
+    kind: 'anchor',
+    pose: {position: anchor, heading: snappedHeading},
+  };
   const snap = resolveAnchorSnap(target, openEnds, LINE_MAGNET_PX / viewScale);
   if (snap && snap.kind === 'line') {
-    const alignedStraight = straightOntoLine(pose, snap.line);
+    const alignedStraight = straightOntoLine(origin.pose, snap.line);
     if (alignedStraight) {
-      return lay(
-        pose,
-        alignedStraight,
-        {
-          kind: 'line',
-          target: endPose(placeSection(alignedStraight, 'A', pose), 'B')
-            .position,
-          line: snap.line,
-        },
-        null
-      );
+      // The straight ends where the heading crosses the guideline; that point
+      // is where its guide draws.
+      const crossing = advance(anchor, snappedHeading, alignedStraight.length);
+      return {
+        kind: 'lay',
+        origin,
+        shape: alignedStraight,
+        snap: {kind: 'line', target: crossing, line: snap.line},
+      };
     }
   }
   // A snapped heading leaves the pointer a hair off-axis; the straight runs to
   // its forward projection, so the preview keeps tracking the pointer.
-  const reach = dot(unitVector(heading), subtract(target, anchor));
-  return lay(pose, reach > EPSILON ? straight(reach) : null, null, null);
+  const reach = dot(unitVector(snappedHeading), subtract(target, anchor));
+  return reach > EPSILON
+    ? {kind: 'lay', origin, shape: straight(reach), snap: null}
+    : NOTHING;
 }
 
 /**
- * The pose to draw from when snapping is suspended (Option/Alt). A `pose`
- * origin already is one. A `point` origin becomes one by pointing straight at
- * `target` — the raw aim, no angle snap. Null when there is no origin at all,
- * or when the pointer sits on the anchor itself and there is no direction to
- * point yet.
+ * Settles an origin's heading for a suspended (raw) lay: a settled origin
+ * passes through; a `point` origin becomes an `anchor` by pointing straight at
+ * `target`, with no angle snap. Null when the pointer sits on the anchor itself
+ * and there is no direction to point yet.
  */
-function rawPose(origin: DrawOrigin | null, target: Point): Pose | null {
-  if (!origin) {
-    return null;
+function settle(origin: DrawOrigin, target: Point): SettledOrigin | null {
+  if (origin.kind !== 'point') {
+    return origin;
   }
-  if (origin.kind === 'pose') {
-    return origin.pose;
-  }
-  const aim = headingToward(origin.position, target);
-  return aim === null ? null : {position: origin.position, heading: aim};
-}
-
-/** A preview that lays `shape` from `originPose` — the ghost placed to match. */
-function lay(
-  originPose: Pose,
-  shape: SectionShape | null,
-  snap: Snap | null,
-  closeOnto: SectionEnd | null
-): Preview {
-  return {
-    originPose,
-    shape,
-    ghost: shape ? placeSection(shape, 'A', originPose) : null,
-    snap,
-    closeOnto,
-    hoveredEnd: null,
-    anchorPoint: null,
-  };
+  const heading = headingToward(origin.position, target);
+  return heading === null
+    ? null
+    : {kind: 'anchor', pose: {position: origin.position, heading}};
 }
 
 /** The open end whose ring the pointer is within `radius` of; nearest wins. */
