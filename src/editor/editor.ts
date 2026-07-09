@@ -138,7 +138,7 @@ export function startEditor(
         state.pendingAnchor ??
         (state.railhead ? poseOf(placedLayout, state.railhead).position : null),
       guide: preview.snap?.kind === 'line' ? preview.snap.line : null,
-      seat: preview.snap?.kind === 'end' ? preview.snap.point : null,
+      seat: preview.snap?.kind === 'end' ? preview.snap.target : null,
       halo: preview.hoveredEnd
         ? poseOf(placedLayout, preview.hoveredEnd).position
         : null,

@@ -165,7 +165,7 @@ describe('resolveSnap', () => {
       lineTolerance
     );
     expect(snap.kind).toBe('end');
-    expect(snap.point).toEqual({x: 100, y: 100});
+    expect(snap.target).toEqual({x: 100, y: 100});
   });
 
   it('declines a point the section cannot reach facing it', () => {
@@ -191,8 +191,8 @@ describe('resolveSnap', () => {
       lineTolerance
     );
     expect(snap.kind).toBe('line');
-    expect(snap.point.x).toBeCloseTo(300);
-    expect(snap.point.y).toBeCloseTo(50);
+    expect(snap.target.x).toBeCloseTo(300);
+    expect(snap.target.y).toBeCloseTo(50);
   });
 
   it('projects onto the normal line when squared up across it', () => {
@@ -204,8 +204,8 @@ describe('resolveSnap', () => {
       lineTolerance
     );
     expect(snap.kind).toBe('line');
-    expect(snap.point.x).toBeCloseTo(100);
-    expect(snap.point.y).toBeCloseTo(250);
+    expect(snap.target.x).toBeCloseTo(100);
+    expect(snap.target.y).toBeCloseTo(250);
   });
 
   it("latches onto a placed section's open B end, arriving facing it", () => {
@@ -229,8 +229,8 @@ describe('resolveSnap', () => {
       lineTolerance
     );
     expect(snap.kind).toBe('end');
-    expect(snap.point.x).toBeCloseTo(100);
-    expect(snap.point.y).toBeCloseTo(100);
+    expect(snap.target.x).toBeCloseTo(100);
+    expect(snap.target.y).toBeCloseTo(100);
   });
 
   it('prefers the point even when a line is strictly nearer', () => {
@@ -245,7 +245,7 @@ describe('resolveSnap', () => {
       lineTolerance
     );
     expect(snap.kind).toBe('end');
-    expect(snap.point).toEqual({x: 100, y: 100});
+    expect(snap.target).toEqual({x: 100, y: 100});
   });
 
   it('leaves a target clear of every magnet unsnapped', () => {
@@ -257,7 +257,7 @@ describe('resolveSnap', () => {
       lineTolerance
     );
     expect(snap.kind).toBe('angle');
-    expect(snap.point).toEqual({x: 300, y: 250});
+    expect(snap.target).toEqual({x: 300, y: 250});
   });
 
   it('skips a line the railhead already lies on', () => {
@@ -286,7 +286,7 @@ describe('resolveSnap', () => {
       lineTolerance
     );
     expect(snap.kind).toBe('line');
-    expect(snap.point.x).toBeCloseTo(100);
+    expect(snap.target.x).toBeCloseTo(100);
   });
 
   it('keeps a line the railhead crosses as a candidate', () => {
@@ -302,7 +302,7 @@ describe('resolveSnap', () => {
       lineTolerance
     );
     expect(snap.kind).toBe('line');
-    expect(snap.point.x).toBeCloseTo(100);
+    expect(snap.target.x).toBeCloseTo(100);
   });
 
   it('latches onto the nearer of two reachable ends within the point magnet', () => {
@@ -318,7 +318,7 @@ describe('resolveSnap', () => {
       lineTolerance
     );
     expect(snap.kind).toBe('end');
-    expect(snap.point).toEqual({x: 100, y: 100});
+    expect(snap.target).toEqual({x: 100, y: 100});
   });
 
   it('projects onto the nearer of two ends’ lines', () => {
@@ -334,7 +334,7 @@ describe('resolveSnap', () => {
       lineTolerance
     );
     expect(snap.kind).toBe('line');
-    expect(snap.point.x).toBeCloseTo(104);
+    expect(snap.target.x).toBeCloseTo(104);
   });
 
   it('snaps a point gap exactly at the magnet edge, not one past it', () => {
@@ -388,8 +388,8 @@ describe('resolveSnap', () => {
       lineTolerance
     );
     expect(snap.kind).toBe('line');
-    expect(snap.point.x).toBeCloseTo(0);
-    expect(snap.point.y).toBeCloseTo(200);
+    expect(snap.target.x).toBeCloseTo(0);
+    expect(snap.target.y).toBeCloseTo(200);
     const section = shapeForSnap(from, snap, degToRad(15), degToRad(5));
     if (section?.kind !== 'curved') throw new Error('expected a curve');
     expect(radToDeg(section.arc.sweep)).toBeCloseTo(180);
@@ -409,8 +409,8 @@ describe('resolveSnap', () => {
     };
     const snap = resolveSnap(anchor, target, [], pointTolerance, lineTolerance);
     expect(snap.kind).toBe('line');
-    expect(snap.point.x).toBeCloseTo(3 + 100 * normal.x);
-    expect(snap.point.y).toBeCloseTo(-2 + 100 * normal.y);
+    expect(snap.target.x).toBeCloseTo(3 + 100 * normal.x);
+    expect(snap.target.y).toBeCloseTo(-2 + 100 * normal.y);
   });
 
   it('does not offer the tangent `from` runs along', () => {
@@ -451,15 +451,15 @@ describe('resolveAnchorSnap', () => {
   it("pulls onto an end's normal line", () => {
     const snap = resolveAnchorSnap({x: 103, y: 250}, ends, tolerance);
     expect(snap?.kind).toBe('line');
-    expect(snap?.point.x).toBeCloseTo(100);
-    expect(snap?.point.y).toBeCloseTo(250);
+    expect(snap?.target.x).toBeCloseTo(100);
+    expect(snap?.target.y).toBeCloseTo(250);
   });
 
   it("pulls onto an end's heading line", () => {
     const snap = resolveAnchorSnap({x: 300, y: 47}, ends, tolerance);
     expect(snap?.kind).toBe('line');
-    expect(snap?.point.x).toBeCloseTo(300);
-    expect(snap?.point.y).toBeCloseTo(50);
+    expect(snap?.target.x).toBeCloseTo(300);
+    expect(snap?.target.y).toBeCloseTo(50);
   });
 
   it('pulls onto the nearer of two lines', () => {
@@ -470,7 +470,7 @@ describe('resolveAnchorSnap', () => {
       oe({position: {x: 104, y: 50}, heading: 0}),
     ];
     const snap = resolveAnchorSnap({x: 103, y: 250}, pair, tolerance);
-    expect(snap?.point.x).toBeCloseTo(104);
+    expect(snap?.target.x).toBeCloseTo(104);
   });
 
   it("pulls onto an off-grid end's lines", () => {
@@ -489,8 +489,8 @@ describe('resolveAnchorSnap', () => {
       tolerance
     );
     expect(snap?.kind).toBe('line');
-    expect(snap?.point.x).toBeCloseTo(3 + 100 * normal.x);
-    expect(snap?.point.y).toBeCloseTo(-2 + 100 * normal.y);
+    expect(snap?.target.x).toBeCloseTo(3 + 100 * normal.x);
+    expect(snap?.target.y).toBeCloseTo(-2 + 100 * normal.y);
   });
 
   it('snaps a gap exactly at the tolerance, not one past it', () => {
@@ -636,15 +636,15 @@ describe('shapeForSnap', () => {
   const threshold = degToRad(5);
 
   it('angle-snaps toward the target when no end is in range', () => {
-    const snap = {kind: 'angle' as const, point: {x: 100, y: 95}};
+    const snap = {kind: 'angle' as const, target: {x: 100, y: 95}};
     expect(shapeForSnap(ORIGIN, snap, increment, threshold)).toEqual(
-      snappedShapeTo(ORIGIN, snap.point, increment, threshold)
+      snappedShapeTo(ORIGIN, snap.target, increment, threshold)
     );
   });
 
   it('aims straight at a snapped open-end point', () => {
     const end: Pose = {position: {x: 100, y: 40}, heading: Math.PI};
-    const snap = {kind: 'end' as const, point: end.position, end: SOME_END};
+    const snap = {kind: 'end' as const, target: end.position, end: SOME_END};
     expect(shapeForSnap(ORIGIN, snap, increment, threshold)).toEqual(
       shapeTo(ORIGIN, end.position)
     );
@@ -653,20 +653,20 @@ describe('shapeForSnap', () => {
   it('aligns a snapped line, landing the end on it', () => {
     const from: Pose = {position: {x: 200, y: 100}, heading: Math.PI};
     const line = {origin: {x: 0, y: 0}, direction: {x: 0, y: 1}};
-    const snap = {kind: 'line' as const, point: {x: 0, y: 103}, line};
+    const snap = {kind: 'line' as const, target: {x: 0, y: 103}, line};
     const section = shapeForSnap(from, snap, increment, threshold);
     if (!section) throw new Error('expected a section');
     const b = endPose(placeSection(section, 'A', from), 'B');
     expect(b.position.x).toBeCloseTo(0); // landed on the line x = 0
     expect(section).toEqual(
-      shapeOntoLine(from, snap.point, line, increment, threshold)
+      shapeOntoLine(from, snap.target, line, increment, threshold)
     );
   });
 });
 
 describe('shownSnap', () => {
   const line = {origin: {x: 0, y: 0}, direction: {x: 0, y: 1}}; // x = 0
-  const lineSnap = {kind: 'line' as const, point: {x: 0, y: 100}, line};
+  const lineSnap = {kind: 'line' as const, target: {x: 0, y: 100}, line};
 
   it('keeps a line guide the section ends on', () => {
     // A 180° curve from the origin ends on the start's normal (x = 0).
@@ -682,8 +682,8 @@ describe('shownSnap', () => {
 
   it('passes point and angle snaps through', () => {
     const end: Pose = {position: {x: 100, y: 40}, heading: Math.PI};
-    const point = {kind: 'end' as const, point: end.position, end: SOME_END};
-    const angle = {kind: 'angle' as const, point: {x: 100, y: 95}};
+    const point = {kind: 'end' as const, target: end.position, end: SOME_END};
+    const angle = {kind: 'angle' as const, target: {x: 100, y: 95}};
     expect(shownSnap(ORIGIN, point, straight(10))).toEqual(point);
     expect(shownSnap(ORIGIN, angle, straight(10))).toEqual(angle);
   });
