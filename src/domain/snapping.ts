@@ -7,7 +7,7 @@
  * pulls onto those same lines. {@link shapeForSnap} turns a snap into the
  * section, spending any freedom the snap leaves on a tidy sweep angle. An open end is a
  * {@link SectionEndPose}: the snap reads each end's pose for the geometry and
- * names the end it latched onto, so the caller can act on it (record a join).
+ * names the end it snapped to, so the caller can act on it (record a join).
  *
  * Each section below leads with its public surface and ends with the private
  * helpers behind it.
@@ -49,10 +49,10 @@ import {assertNever} from '../lib/validate';
 /**
  * What the pointer snapped to. Every kind carries the resolved `target` the
  * section is then built toward; `end` and `line` also carry the feature they
- * latched onto, which the editor draws.
+ * snapped to, which the editor draws.
  *
  * - `end`: an open end — drawn as a ring at its `target`. Carries the `end` it
- *   latched onto, so the caller can act on it (e.g. record a join).
+ *   snapped to, so the caller can act on it (e.g. record a join).
  * - `line`: one of an open end's normal or tangent lines (carries the `line`) —
  *   drawn as a guide.
  * - `angle`: no open end in range; the sweep angle-snaps toward `target`. There
