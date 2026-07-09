@@ -307,10 +307,12 @@ function threadNetwork(
     placement;
     placement = pending.shift()
   ) {
-    const alreadyPlaced = placed.get(placement.section.id);
-    if (alreadyPlaced) {
+    const priorPlacedSection = placed.get(placement.section.id);
+    if (priorPlacedSection) {
       // Reached again: never re-place, only require the arriving join aligns.
-      if (!posesAlign(placement.pose, endPose(alreadyPlaced, placement.end))) {
+      if (
+        !posesAlign(placement.pose, endPose(priorPlacedSection, placement.end))
+      ) {
         throw new RangeError(
           'a closing join does not align; geometry is unsatisfiable'
         );

@@ -37,17 +37,17 @@ describe('editor state', () => {
     expect(EMPTY_STATE.pendingAnchor).toBeNull();
   });
 
-  it('plants an anchor as a transient, recording no history', () => {
-    const planted = dropAnchor(EMPTY_STATE, {x: 100, y: 50});
-    expect(planted.pendingAnchor).toEqual({x: 100, y: 50});
-    expect(planted.layout.sections).toHaveLength(0);
-    expect(planted.past).toHaveLength(0); // planting is not historized
-    expect(undo(planted)).toBe(planted); // nothing to undo
+  it('drops an anchor as a transient, recording no history', () => {
+    const state = dropAnchor(EMPTY_STATE, {x: 100, y: 50});
+    expect(state.pendingAnchor).toEqual({x: 100, y: 50});
+    expect(state.layout.sections).toHaveLength(0);
+    expect(state.past).toHaveLength(0); // dropping an anchor is not historized
+    expect(undo(state)).toBe(state); // nothing to undo
   });
 
   it('lays the first section as a new anchored network', () => {
-    const planted = dropAnchor(EMPTY_STATE, ORIGIN);
-    const drawn = startNetwork(planted, withId('s1', straight(300)), 0);
+    const state = dropAnchor(EMPTY_STATE, ORIGIN);
+    const drawn = startNetwork(state, withId('s1', straight(300)), 0);
     expect(drawn.layout.sections.map(s => s.id)).toEqual(['s1']);
     expect(drawn.layout.anchors).toHaveLength(1);
     expect(drawn.pendingAnchor).toBeNull();
@@ -55,9 +55,9 @@ describe('editor state', () => {
   });
 
   it('anchors the first section at the aimed heading', () => {
-    const planted = dropAnchor(EMPTY_STATE, {x: 5, y: 7});
+    const state = dropAnchor(EMPTY_STATE, {x: 5, y: 7});
     const drawn = startNetwork(
-      planted,
+      state,
       withId('s1', straight(100)),
       degToRad(30)
     );
@@ -86,7 +86,7 @@ describe('editor state', () => {
     );
     const undone = undo(drawn);
     expect(undone.layout.sections).toHaveLength(0);
-    expect(undone.pendingAnchor).toBeNull(); // the planted anchor is not restored
+    expect(undone.pendingAnchor).toBeNull(); // the dropped anchor is not restored
     expect(redo(undone).layout.sections).toHaveLength(1);
   });
 
@@ -152,9 +152,9 @@ describe('selectRailhead', () => {
   it('clears a pending anchor, and dropping an anchor clears the selection', () => {
     // Force the two to coexist momentarily from either side; each transition
     // restores the invariant that at most one is set.
-    const planted = dropAnchor(anchored(), {x: 500, y: 500});
-    expect(planted.railhead).toBeNull();
-    const selected = selectRailhead(planted, end('s1', 'A'));
+    const state = dropAnchor(anchored(), {x: 500, y: 500});
+    expect(state.railhead).toBeNull();
+    const selected = selectRailhead(state, end('s1', 'A'));
     expect(selected.railhead).toEqual(end('s1', 'A'));
     expect(selected.pendingAnchor).toBeNull();
   });
@@ -270,8 +270,8 @@ describe('deselect', () => {
   });
 
   it('clears a pending anchor', () => {
-    const planted = dropAnchor(anchored(), {x: 500, y: 500});
-    expect(deselect(planted).pendingAnchor).toBeNull();
+    const state = dropAnchor(anchored(), {x: 500, y: 500});
+    expect(deselect(state).pendingAnchor).toBeNull();
   });
 });
 
@@ -281,8 +281,8 @@ describe('deselect', () => {
  * sits on s2's B.
  */
 function twoNetworks(): ReturnType<typeof startNetwork> {
-  const planted = dropAnchor(deselect(anchored()), {x: 0, y: 100});
-  return startNetwork(planted, withId('s2', straight(100)), 0);
+  const state = dropAnchor(deselect(anchored()), {x: 0, y: 100});
+  return startNetwork(state, withId('s2', straight(100)), 0);
 }
 
 describe('starting a second network', () => {

@@ -147,8 +147,11 @@ export function placeSection(
   if (!endsOf(shape).includes(end)) {
     throw new RangeError(`section of kind ${shape.kind} has no ${end} end`);
   }
-  const seating = composePose(pose, inversePose(canonicalEndPose(shape, end)));
-  return placeByOrigin(shape, seating);
+  const seatingTransform = composePose(
+    pose,
+    inversePose(canonicalEndPose(shape, end))
+  );
+  return placeByOrigin(shape, seatingTransform);
 }
 
 /**

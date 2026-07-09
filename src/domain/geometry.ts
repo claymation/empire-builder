@@ -475,13 +475,14 @@ function bendSign(sweep: number): number {
 }
 
 /**
- * A point `swept` (signed) radians along the placed arc from its start: the
- * start position plus `radius` along the unit-arc chord for that partial sweep.
+ * A point at the given `sweptAngle` (signed radians) along the placed arc from
+ * its start: the start position plus `radius` along the unit-arc chord for that
+ * partial sweep.
  */
-function arcPoint(arc: PlacedArc, swept: number): Point {
+function arcPoint(arc: PlacedArc, sweptAngle: number): Point {
   return add(
     arc.start.position,
-    scale(unitArcChord(arc.start.heading, swept), arc.radius)
+    scale(unitArcChord(arc.start.heading, sweptAngle), arc.radius)
   );
 }
 
