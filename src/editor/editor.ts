@@ -66,10 +66,10 @@ export function startEditor(
   // layout — the linear cost of placing the whole graph, paid once per edit.
   // Pointer moves and the selection transitions (select, deselect, drop an
   // anchor) leave the layout untouched and reuse this.
-  let placed: PlacedLayout = placeLayout(state.layout);
+  let placedLayout: PlacedLayout = placeLayout(state.layout);
   function setState(newState: EditorState): void {
     if (newState.layout !== state.layout) {
-      placed = placeLayout(newState.layout);
+      placedLayout = placeLayout(newState.layout);
     }
     state = newState;
     // Any transition ends the aim in progress: the lock belongs to the
@@ -93,7 +93,7 @@ export function startEditor(
         : {kind: 'point', position: state.pendingAnchor};
     }
     return state.railhead
-      ? {kind: 'pose', pose: reversePose(poseOf(placed, state.railhead))}
+      ? {kind: 'pose', pose: reversePose(poseOf(placedLayout, state.railhead))}
       : null;
   }
 
@@ -108,7 +108,7 @@ export function startEditor(
     return computePreview(
       drawOrigin(),
       pointer,
-      openEndPoses(state.layout, placed),
+      openEndPoses(state.layout, placedLayout),
       transform.scale,
       snapSuspended
     );
@@ -116,11 +116,13 @@ export function startEditor(
 
   /** Every open end's position, each ringed as a clickable affordance. */
   function openEndPoints(): Point[] {
-    return openEndPoses(state.layout, placed).map(({pose}) => pose.position);
+    return openEndPoses(state.layout, placedLayout).map(
+      ({pose}) => pose.position
+    );
   }
 
   function refreshLayout(transform: ViewTransform): void {
-    renderLayout(transform, space, placed, openEndPoints());
+    renderLayout(transform, space, placedLayout, openEndPoints());
   }
 
   function refreshOverlay(transform: ViewTransform): void {
@@ -134,11 +136,11 @@ export function startEditor(
       ghost: preview.ghost,
       start:
         state.pendingAnchor ??
-        (state.railhead ? poseOf(placed, state.railhead).position : null),
+        (state.railhead ? poseOf(placedLayout, state.railhead).position : null),
       guide: preview.snap?.kind === 'line' ? preview.snap.line : null,
       seat: preview.snap?.kind === 'end' ? preview.snap.point : null,
       halo: preview.hoveredEnd
-        ? poseOf(placed, preview.hoveredEnd).position
+        ? poseOf(placedLayout, preview.hoveredEnd).position
         : null,
     });
   }
