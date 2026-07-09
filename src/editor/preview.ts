@@ -1,6 +1,6 @@
 /**
  * What the next click would do, computed in one place so the on-screen feedback
- * and the commit agree — the lay-track tool's pure decision core, free of
+ * and the commit agree — the editor's decision core, free of
  * Paper.js and the DOM. The editor edge (./editor) feeds it the pointer and the
  * current open ends, draws what it returns, and routes the click by the same
  * value.

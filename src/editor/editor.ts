@@ -1,5 +1,5 @@
 /**
- * The lay-track tool's edge: it owns an {@link EditorState}, translates Paper.js
+ * The editor's edge: it owns an {@link EditorState}, translates Paper.js
  * pointer and keyboard events into pure state transitions, and redraws. All the
  * decision logic lives in ./state, ./preview, and ../domain; this file is the
  * Paper.js/DOM glue.
@@ -32,7 +32,7 @@ import {
   undo,
 } from './state';
 
-/** Wires the lay-track tool onto `canvas`, drawing within `space`. */
+/** Wires the editor onto `canvas`, drawing within `space`. */
 export function startEditor(
   canvas: HTMLCanvasElement,
   space: Space,
