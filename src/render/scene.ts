@@ -43,14 +43,14 @@ const PREVIEW_COLOR = '#3b82f6';
 const RAIL_WIDTH_PX = 3;
 const START_DOT_RADIUS_PX = 5;
 const LABEL_OFFSET_PX = 18;
-/** Accent for alignment feedback: the guide line and the seat ring. */
+/** Accent for alignment feedback: the guide line and the connect ring. */
 const GUIDE_COLOR = '#ec4899';
 const GUIDE_DASH = [4, 4];
 /** The ghost's dashes, marking track on offer rather than laid. */
 const GHOST_DASH = [8, 6];
 const SEAT_RING_RADIUS_PX = 9;
 const SEAT_RING_WIDTH_PX = 2;
-/** Open-end rings: quiet when merely selectable, stronger at the start. */
+/** Open-end rings: quiet when merely selectable, stronger at the origin. */
 const OPEN_RING_COLOR = '#9c9c9c';
 const OPEN_RING_RADIUS_PX = 6;
 const OPEN_RING_WIDTH_PX = 1.5;
@@ -104,22 +104,22 @@ export interface Overlay {
    * railhead — marked with a dot and ring, drawn whether or not the pointer
    * has produced a ghost.
    */
-  readonly start: Point | null;
+  readonly origin: Point | null;
   /**
    * The alignment guide that shaped the ghost's end or the anchor drop,
    * drawn beneath the ghost.
    */
   readonly guide: Line | null;
   /** The open end the ghost seats onto, ringed on top. */
-  readonly seat: Point | null;
+  readonly ring: Point | null;
   /** The open end a click would select, haloed. */
   readonly halo: Point | null;
 }
 
 /**
- * Renders the interaction state: the start's ring and dot, the ghost, and any
- * alignment feedback. The start's ring sits under the rest; the guide sits
- * beneath the ghost; the seat ring rides on top, marking the open end the
+ * Renders the interaction state: the origin's ring and dot, the ghost, and any
+ * alignment feedback. The origin's ring sits under the rest; the guide sits
+ * beneath the ghost; the connect ring rides on top, marking the open end the
  * ghost seats onto; a halo lights the open end a click would select.
  * Redraw on every move.
  */
@@ -128,8 +128,8 @@ export function renderOverlay(
   overlay: Overlay
 ): void {
   const toCanvas = resetLayer('overlay', transform);
-  if (overlay.start) {
-    drawStartRing(overlay.start, toCanvas);
+  if (overlay.origin) {
+    drawOriginRing(overlay.origin, toCanvas);
   }
   if (overlay.guide) {
     drawGuide(overlay.guide, toCanvas, transform.scale);
@@ -143,11 +143,11 @@ export function renderOverlay(
       drawLabel(geometry, toCanvas);
     }
   }
-  if (overlay.start) {
-    drawStartDot(overlay.start, toCanvas);
+  if (overlay.origin) {
+    drawOriginDot(overlay.origin, toCanvas);
   }
-  if (overlay.seat) {
-    drawSeatRing(overlay.seat, toCanvas);
+  if (overlay.ring) {
+    drawConnectRing(overlay.ring, toCanvas);
   }
   if (overlay.halo) {
     drawHaloRing(overlay.halo, toCanvas);
@@ -172,7 +172,7 @@ function drawGuide(line: Line, toCanvas: ToCanvas, viewScale: number): void {
 }
 
 /** Rings the open end the ghost seats onto. */
-function drawSeatRing(center: Point, toCanvas: ToCanvas): void {
+function drawConnectRing(center: Point, toCanvas: ToCanvas): void {
   drawRing(
     center,
     toCanvas,
@@ -182,7 +182,7 @@ function drawSeatRing(center: Point, toCanvas: ToCanvas): void {
   );
 }
 
-/** Rings an open end, quietly; the overlay marks the start. */
+/** Rings an open end, quietly; the overlay marks the origin. */
 function drawOpenEndRing(center: Point, toCanvas: ToCanvas): void {
   drawRing(
     center,
@@ -193,8 +193,8 @@ function drawOpenEndRing(center: Point, toCanvas: ToCanvas): void {
   );
 }
 
-/** Rings the start, covering its open end's quiet ring when it has one. */
-function drawStartRing(center: Point, toCanvas: ToCanvas): void {
+/** Rings the origin, covering its open end's quiet ring when it has one. */
+function drawOriginRing(center: Point, toCanvas: ToCanvas): void {
   drawRing(
     center,
     toCanvas,
@@ -358,8 +358,8 @@ function drawGeometry(
   }
 }
 
-/** The filled dot at the start — where the next section grows from. */
-function drawStartDot(center: Point, toCanvas: ToCanvas): void {
+/** The filled dot at the origin — where the next section grows from. */
+function drawOriginDot(center: Point, toCanvas: ToCanvas): void {
   const dot = new paper.Path.Circle(toCanvas(center), START_DOT_RADIUS_PX);
   dot.fillColor = new paper.Color(PREVIEW_COLOR);
 }

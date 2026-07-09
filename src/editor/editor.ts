@@ -85,8 +85,8 @@ export function startEditor(
 
   /**
    * Where drawing grows from (see {@link DrawOrigin}), or null when nothing is
-   * selected. A pending anchor aims — or, with the heading locked, stands as an
-   * `anchor` at a full pose. A selected railhead is placed and reversed (an
+   * selected. A pending anchor aims (a `point`) — or, with the heading locked,
+   * stands as an `anchor` at a full pose. A railhead is placed and reversed (an
    * end's pose faces into its section, so drawing extends away from it) and
    * carries the end it extends.
    */
@@ -97,7 +97,7 @@ export function startEditor(
             kind: 'anchor',
             pose: {position: state.pendingAnchor, heading: lockedHeading},
           }
-        : {kind: 'aiming', position: state.pendingAnchor};
+        : {kind: 'point', position: state.pendingAnchor};
     }
     return state.railhead
       ? {
@@ -138,11 +138,14 @@ export function startEditor(
 
   function refreshOverlay(transform: ViewTransform): void {
     const preview = buildPreview(transform);
-    // The start's dot and ring mark selection state, not the preview: they
-    // show the moment an anchor drops or an end is selected, with the pointer
-    // wherever it is.
-    // The snap's drawable feedback is projected here so the overlay stays plain
-    // draw data: an `angle` snap carries no feature to draw, so both are null.
+    // The origin marker (dot + ring) shows where drawing grows from — the
+    // pending anchor or the selected railhead — read from state, so it stays
+    // put as the pointer moves.
+    const origin =
+      state.pendingAnchor ??
+      (state.railhead ? poseOf(placedLayout, state.railhead).position : null);
+    // A guide line and a connect ring come from the snap the preview carries;
+    // an `angle` snap has neither.
     const snap =
       preview.kind === 'lay' || preview.kind === 'anchor' ? preview.snap : null;
     renderOverlay(transform, {
@@ -150,11 +153,9 @@ export function startEditor(
         preview.kind === 'lay'
           ? placeSection(preview.shape, 'A', preview.origin.pose)
           : null,
-      start:
-        state.pendingAnchor ??
-        (state.railhead ? poseOf(placedLayout, state.railhead).position : null),
+      origin,
       guide: snap?.kind === 'line' ? snap.line : null,
-      seat: snap?.kind === 'end' ? snap.target : null,
+      ring: snap?.kind === 'end' ? snap.target : null,
       halo:
         preview.kind === 'select'
           ? poseOf(placedLayout, preview.end).position
@@ -195,7 +196,7 @@ export function startEditor(
     // Route the click by the same preview the overlay drew.
     const preview = buildPreview(transform);
     switch (preview.kind) {
-      case 'idle':
+      case 'nothing':
         break;
       case 'select':
         setState(selectRailhead(state, preview.end));
@@ -207,9 +208,12 @@ export function startEditor(
         const section = withId(preview.shape);
         const origin = preview.origin;
         if (origin.kind === 'railhead') {
-          const join = preview.snap?.kind === 'end' ? preview.snap.end : null;
-          setState(extend(state, origin.at, section, join));
+          // An end snap names the open end the far end joins onto.
+          const onto = preview.snap?.kind === 'end' ? preview.snap.end : null;
+          setState(extend(state, origin.at, section, onto));
         } else {
+          // A new network: startNetwork seats the first section at the pending
+          // anchor's position (held in state) and this previewed heading.
           setState(startNetwork(state, section, origin.pose.heading));
         }
         break;
@@ -240,6 +244,8 @@ export function startEditor(
       if (!state.pendingAnchor) {
         return;
       }
+      // Read the heading off the live preview so the lock captures exactly the
+      // aim the section would lay at, without recomputing the angle snap.
       const preview = buildPreview(computeTransform());
       lockedHeading =
         preview.kind === 'lay' ? preview.origin.pose.heading : null;

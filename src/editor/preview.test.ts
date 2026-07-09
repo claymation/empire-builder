@@ -29,7 +29,7 @@ const railhead = (p: Pose): DrawOrigin => ({
 const anchor = (p: Pose): DrawOrigin => ({kind: 'anchor', pose: p});
 
 /** A pending anchor still being aimed from `position`. */
-const aiming = (position: Point): DrawOrigin => ({kind: 'aiming', position});
+const aiming = (position: Point): DrawOrigin => ({kind: 'point', position});
 
 // An open end the railhead cannot snap onto: the single arc from the railhead to
 // (100, 50) arrives banking, off the end's line. Its ring can only hover.
@@ -46,7 +46,7 @@ const FACING_END = oe(end('f', 'B'), {
 describe('computePreview', () => {
   it('previews nothing without a pointer', () => {
     const p = computePreview(railhead(RAILHEAD), null, [SIDE_END], 1, false);
-    expect(p.kind).toBe('idle');
+    expect(p.kind).toBe('nothing');
   });
 
   it('hovers an open end with no railhead — the click can still select', () => {
@@ -287,6 +287,6 @@ describe('aiming a pending anchor', () => {
 
   it('previews nothing from a degenerate aim', () => {
     const p = computePreview(aiming({x: 3, y: 4}), {x: 3, y: 4}, [], 1, false);
-    expect(p.kind).toBe('idle');
+    expect(p.kind).toBe('nothing');
   });
 });
