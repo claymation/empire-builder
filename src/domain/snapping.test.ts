@@ -156,7 +156,7 @@ describe('resolveSnap', () => {
   // offer. Its heading line is x = 100, its normal line y = 100.
   const tangentEnd: Pose = {position: {x: 100, y: 100}, heading: Math.PI / 2};
 
-  it('latches onto an end the section can reach facing it', () => {
+  it('snaps onto an end the section can reach facing it', () => {
     const snap = resolveSnap(
       from,
       {x: 104, y: 103},
@@ -208,7 +208,7 @@ describe('resolveSnap', () => {
     expect(snap.target.y).toBeCloseTo(250);
   });
 
-  it("latches onto a placed section's open B end, arriving facing it", () => {
+  it("snaps onto a placed section's open B end, arriving facing it", () => {
     // A section standing north of (100, 100): its open B end's pose faces back
     // into it, north. The quarter-turn arc from the railhead arrives heading
     // north — into the section, seating the ends back-to-back — so the point
@@ -235,8 +235,8 @@ describe('resolveSnap', () => {
 
   it('prefers the point even when a line is strictly nearer', () => {
     // (108, 100): sits exactly on the tangent end's normal line (gap 0) yet 8
-    // from its point. The line is the closer feature, but latching the end
-    // itself wins.
+    // from its point. The line is the closer feature, but snapping onto the
+    // end itself wins.
     const snap = resolveSnap(
       from,
       {x: 108, y: 100},
@@ -305,7 +305,7 @@ describe('resolveSnap', () => {
     expect(snap.target.x).toBeCloseTo(100);
   });
 
-  it('latches onto the nearer of two reachable ends within the point magnet', () => {
+  it('snaps onto the nearer of two reachable ends within the point magnet', () => {
     // Two quarter-turn exits, both tangent-reachable; the nearer is listed
     // second, so a first-wins bug would pick the wrong one.
     const nearer: Pose = {position: {x: 100, y: 100}, heading: Math.PI / 2};
@@ -428,7 +428,7 @@ describe('resolveSnap', () => {
 
   it('skips the zero-length point on an end at the railhead', () => {
     // Drawing from the anchor itself: a target within the point magnet but off
-    // its lines must not latch the end (that section would be zero-length); it
+    // its lines must not snap onto it (that section would be zero-length); it
     // falls through to the angle snap.
     const onlyEnd: Pose = {position: {x: 0, y: 0}, heading: 0};
     const snap = resolveSnap(
