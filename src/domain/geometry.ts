@@ -153,8 +153,8 @@ export function reversePose(pose: Pose): Pose {
 /**
  * Whether two poses align within the given tolerances (EPSILON by default): the
  * same position, with headings parallel — pointing the same way or exactly
- * opposite. Two section ends meeting at a join align when they sit at one place
- * on one line, whichever way each was reached by threading.
+ * opposite. Alignment ignores facing, so a caller can test that two poses sit
+ * at one place on one line without caring which way each was reached.
  */
 export function posesAlign(
   a: Pose,
@@ -339,7 +339,7 @@ export function unionBounds(a: Bounds, b: Bounds): Bounds {
 // ── Placed segments ──
 
 /**
- * A straight segment placed in the plane: anchored at a start pose and running
+ * A line segment placed in the plane: anchored at a start pose and running
  * `length` along its heading.
  */
 export interface PlacedSegment {
