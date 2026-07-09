@@ -24,13 +24,13 @@ const oe = (sectionEnd: SectionEnd, pose: Pose): SectionEndPose => ({
   pose,
 });
 
-// An open end the railhead cannot latch: the single arc from the railhead to
+// An open end the railhead cannot snap onto: the single arc from the railhead to
 // (100, 50) arrives banking, off the end's line. Its ring can only hover.
 const SIDE_END = oe(end('s', 'B'), {position: {x: 100, y: 50}, heading: 0});
 
 // An open end whose pose faces north — its section stands north of (100, 100).
-// The quarter-turn arc from the railhead arrives facing it, so its point
-// latches: the click closes.
+// The quarter-turn arc from the railhead arrives facing it, so the ghost
+// snaps onto it: the click joins.
 const FACING_END = oe(end('f', 'B'), {
   position: {x: 100, y: 100},
   heading: Math.PI / 2,
@@ -142,7 +142,7 @@ describe('computePreview', () => {
     expect(outside.shape).not.toBeNull();
   });
 
-  it('a latched end outranks the hover: the click closes, not selects', () => {
+  it('an end snap outranks the hover: the click joins, not selects', () => {
     const p = computePreview(
       pose(RAILHEAD),
       {x: 104, y: 103},
@@ -153,7 +153,7 @@ describe('computePreview', () => {
     expect(p.hoveredEnd).toBeNull();
     expect(p.closeOnto).toEqual(end('f', 'B'));
     expect(p.shape).not.toBeNull();
-    // The ghost reaches the latched ring exactly.
+    // The ghost reaches the open end's ring exactly.
     expect(p.snap).toMatchObject({kind: 'end', target: {x: 100, y: 100}});
   });
 
