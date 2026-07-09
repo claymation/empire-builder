@@ -178,7 +178,7 @@ export function startEditor(
     // Route the click by the same preview the overlay drew: a hovered ring
     // selects that end; a shape lays it — from the pending anchor as a new
     // network at the previewed heading, or extended from the railhead, an
-    // end snap closing the join. With nothing to select or lay,
+    // end snap joining onto an open end. With nothing to select or lay,
     // `anchorPoint` — the pointer, pulled onto any guideline — is where the
     // click drops the anchor a new network grows from.
     const preview = buildPreview(transform);

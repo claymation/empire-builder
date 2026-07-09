@@ -6,7 +6,7 @@
  * value.
  *
  * The pointer means exactly one thing at a time, and the preview shows which:
- * a ghost reaching an open end — the click closes the join; a hovered ring
+ * a ghost reaching an open end — the click joins the sections; a hovered ring
  * with no ghost — the click selects that end; a ghost alone — the click lays
  * the section; with nothing selected to draw from, the click drops a new
  * network's anchor at `anchorPoint`, the pointer pulled onto any guideline in
@@ -147,7 +147,7 @@ export function computePreview(
     POINT_MAGNET_PX / viewScale,
     LINE_MAGNET_PX / viewScale
   );
-  // An end snap outranks a hover: the click closes the join. Without one, a
+  // An end snap outranks a hover: the click joins the sections. Without one, a
   // pointer on a ring hovers it — the click selects, so the ghost is
   // suppressed rather than shown reaching for track the click would not lay.
   if (snap.kind !== 'end') {
