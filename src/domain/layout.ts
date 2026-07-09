@@ -45,14 +45,6 @@ export interface SectionEndPose {
 }
 
 /**
- * Anchors a network to the plane: a section end fixed at an absolute world pose,
- * from which every other pose in its network derives by threading. One anchor per
- * network fixes that network's placement. It is a {@link SectionEndPose} used in
- * that role — the pose is chosen, not derived.
- */
-export type Anchor = SectionEndPose;
-
-/**
  * The track plan as a graph: the sections, the joins between their ends, and the
  * anchors that place each network. Plain, serializable data; placed geometry is
  * derived on demand by {@link placeLayout}, never stored here.
@@ -60,7 +52,13 @@ export type Anchor = SectionEndPose;
 export interface Layout {
   readonly sections: readonly Section[];
   readonly joins: readonly Join[];
-  readonly anchors: readonly Anchor[];
+  /**
+   * One per network, each fixing that network's placement: a section end
+   * ({@link SectionEndPose}) pinned at an absolute world pose, from which every
+   * other pose in the network derives by threading. The pose is chosen, not
+   * derived.
+   */
+  readonly anchors: readonly SectionEndPose[];
 }
 
 /** The empty plan: no sections, joins, or anchors. */
@@ -290,7 +288,7 @@ function networkOf(
 function threadNetwork(
   layout: Layout,
   byId: ReadonlyMap<SectionId, Section>,
-  anchor: Anchor,
+  anchor: SectionEndPose,
   placed: Map<SectionId, PlacedSection>
 ): void {
   const start = byId.get(anchor.sectionEnd.sectionId);
