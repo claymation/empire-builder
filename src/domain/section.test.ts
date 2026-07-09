@@ -143,9 +143,11 @@ describe('placeSection — ends face inward', () => {
       const label = `${shape.kind} from ${Math.round(radToDeg(heading))}°`;
       it(`B's pose is the reverse of the sweep's exit (${label})`, () => {
         const placed = placeSection(shape, 'A', from);
-        const swept = placed.geometry[0];
+        const geometry = placed.geometry[0];
         const exit =
-          swept.kind === 'segment' ? segmentEndPose(swept) : arcEndPose(swept);
+          geometry.kind === 'segment'
+            ? segmentEndPose(geometry)
+            : arcEndPose(geometry);
         expect(posesEqual(endPose(placed, 'A'), from)).toBe(true);
         expect(posesEqual(endPose(placed, 'B'), reversePose(exit))).toBe(true);
       });
