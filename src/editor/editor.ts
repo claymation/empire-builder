@@ -7,6 +7,7 @@
 
 import paper from 'paper';
 import {Point, reversePose} from '../lib/geometry';
+import {assertNever} from '../lib/validate';
 import {
   openEnds,
   openEndPoses,
@@ -14,7 +15,12 @@ import {
   PlacedLayout,
   poseOf,
 } from '../domain/layout';
-import {Section, SectionShape, sectionLength} from '../domain/section';
+import {
+  placeSection,
+  Section,
+  SectionShape,
+  sectionLength,
+} from '../domain/section';
 import {Space} from '../domain/space';
 import {toInches} from '../domain/units';
 import {renderLayout, renderOverlay, sceneTransform} from '../render/scene';
@@ -79,21 +85,26 @@ export function startEditor(
 
   /**
    * Where drawing grows from (see {@link DrawOrigin}), or null when nothing is
-   * selected. A pending anchor aims — or, with the heading locked, stands as a
-   * full pose. A selected railhead is placed and reversed: an end's pose faces
-   * into its section, and drawing extends away from it.
+   * selected. A pending anchor aims — or, with the heading locked, stands as an
+   * `anchor` at a full pose. A selected railhead is placed and reversed (an
+   * end's pose faces into its section, so drawing extends away from it) and
+   * carries the end it extends.
    */
   function drawOrigin(): DrawOrigin | null {
     if (state.pendingAnchor) {
       return lockedHeading !== null
         ? {
-            kind: 'pose',
+            kind: 'anchor',
             pose: {position: state.pendingAnchor, heading: lockedHeading},
           }
-        : {kind: 'point', position: state.pendingAnchor};
+        : {kind: 'aiming', position: state.pendingAnchor};
     }
     return state.railhead
-      ? {kind: 'pose', pose: reversePose(poseOf(placedLayout, state.railhead))}
+      ? {
+          kind: 'railhead',
+          pose: reversePose(poseOf(placedLayout, state.railhead)),
+          at: state.railhead,
+        }
       : null;
   }
 
@@ -130,18 +141,24 @@ export function startEditor(
     // The start's dot and ring mark selection state, not the preview: they
     // show the moment an anchor drops or an end is selected, with the pointer
     // wherever it is.
-    // The snap's drawable feedback, projected here so the overlay stays plain
+    // The snap's drawable feedback is projected here so the overlay stays plain
     // draw data: an `angle` snap carries no feature to draw, so both are null.
+    const snap =
+      preview.kind === 'lay' || preview.kind === 'anchor' ? preview.snap : null;
     renderOverlay(transform, {
-      ghost: preview.ghost,
+      ghost:
+        preview.kind === 'lay'
+          ? placeSection(preview.shape, 'A', preview.origin.pose)
+          : null,
       start:
         state.pendingAnchor ??
         (state.railhead ? poseOf(placedLayout, state.railhead).position : null),
-      guide: preview.snap?.kind === 'line' ? preview.snap.line : null,
-      seat: preview.snap?.kind === 'end' ? preview.snap.target : null,
-      halo: preview.hoveredEnd
-        ? poseOf(placedLayout, preview.hoveredEnd).position
-        : null,
+      guide: snap?.kind === 'line' ? snap.line : null,
+      seat: snap?.kind === 'end' ? snap.target : null,
+      halo:
+        preview.kind === 'select'
+          ? poseOf(placedLayout, preview.end).position
+          : null,
     });
   }
 
@@ -175,32 +192,30 @@ export function startEditor(
   tool.onMouseUp = (event: paper.ToolEvent) => {
     const transform = computeTransform();
     pointer = transform.toDomain({x: event.point.x, y: event.point.y});
-    // Route the click by the same preview the overlay drew: a hovered ring
-    // selects that end; a shape lays it — from the pending anchor as a new
-    // network at the previewed heading, or extended from the railhead, an
-    // end snap joining onto an open end. With nothing to select or lay,
-    // `anchorPoint` — the pointer, pulled onto any guideline — is where the
-    // click drops the anchor a new network grows from.
+    // Route the click by the same preview the overlay drew.
     const preview = buildPreview(transform);
-    if (preview.hoveredEnd) {
-      setState(selectRailhead(state, preview.hoveredEnd));
-    } else if (preview.shape) {
-      if (state.pendingAnchor && preview.originPose) {
-        setState(
-          startNetwork(state, withId(preview.shape), preview.originPose.heading)
-        );
-      } else if (state.railhead) {
-        setState(
-          extend(
-            state,
-            state.railhead,
-            withId(preview.shape),
-            preview.closeOnto
-          )
-        );
+    switch (preview.kind) {
+      case 'idle':
+        break;
+      case 'select':
+        setState(selectRailhead(state, preview.end));
+        break;
+      case 'anchor':
+        setState(dropAnchor(state, preview.at));
+        break;
+      case 'lay': {
+        const section = withId(preview.shape);
+        const origin = preview.origin;
+        if (origin.kind === 'railhead') {
+          const join = preview.snap?.kind === 'end' ? preview.snap.end : null;
+          setState(extend(state, origin.at, section, join));
+        } else {
+          setState(startNetwork(state, section, origin.pose.heading));
+        }
+        break;
       }
-    } else if (preview.anchorPoint) {
-      setState(dropAnchor(state, preview.anchorPoint));
+      default:
+        assertNever(preview);
     }
     refreshAll();
   };
@@ -225,8 +240,9 @@ export function startEditor(
       if (!state.pendingAnchor) {
         return;
       }
+      const preview = buildPreview(computeTransform());
       lockedHeading =
-        buildPreview(computeTransform()).originPose?.heading ?? null;
+        preview.kind === 'lay' ? preview.origin.pose.heading : null;
     } else {
       lockedHeading = null;
     }
