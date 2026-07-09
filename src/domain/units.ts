@@ -4,7 +4,7 @@
  * express dimensions in the units a hobbyist actually reaches for.
  */
 
-import {requireFinite} from './validate';
+import {requireFinite} from '../lib/validate';
 
 /** Millimeters in one inch (exact, by definition). */
 export const MM_PER_INCH = 25.4;

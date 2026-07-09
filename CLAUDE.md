@@ -73,7 +73,8 @@ We follow the [Google TypeScript Style Guide](https://google.github.io/styleguid
 
 ## Structure
 
-- `src/domain/` — track/section/layout types and geometry logic (no Paper.js); pure and unit-tested
+- `src/lib/` — domain-agnostic substrate: pure plane/SE(2) geometry (`geometry.ts`) and shared input guards (`validate.ts`). Knows nothing of track; an ESLint boundary forbids it from importing `domain`, `render`, `editor`, or `main`. Pure and unit-tested.
+- `src/domain/` — the track model built on `src/lib/`: track/section/layout/space types and logic (no Paper.js); pure and unit-tested
 - `src/render/` — stateless Paper.js drawing given data, plus the domain↔canvas transform. `draw*` draws one shape; `render*` composes a layer from data.
 - `src/editor/` — the interactive controller: editor state (`state.ts`, pure) and the Paper.js event/orchestration edge (`editor.ts`). `refresh*` re-syncs the canvas from current state by calling `render/`'s `render*`.
 - `src/main.ts` — entry point; builds the default space and starts the editor

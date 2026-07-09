@@ -6,7 +6,7 @@
  */
 
 import paper from 'paper';
-import {Point, reversePose} from '../domain/geometry';
+import {Point, reversePose} from '../lib/geometry';
 import {
   openEnds,
   openEndPoses,

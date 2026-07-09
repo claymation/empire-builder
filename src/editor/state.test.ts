@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {degToRad, type Point} from '../domain/geometry';
+import {degToRad, type Point} from '../lib/geometry';
 import {openEnds, placeLayout, poseOf, type SectionEnd} from '../domain/layout';
 import {
   curve,

@@ -12,7 +12,7 @@ import {
   unitVector,
   type Bounds,
   type Pose,
-} from './geometry';
+} from '../lib/geometry';
 import {
   anchorSection,
   EMPTY_LAYOUT,

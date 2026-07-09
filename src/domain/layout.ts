@@ -10,7 +10,7 @@
  * anchorSection}/{@link joinSection} grow the graph.
  */
 
-import {posesAlign, Pose, reversePose} from './geometry';
+import {posesAlign, Pose, reversePose} from '../lib/geometry';
 import {
   endPose,
   EndName,

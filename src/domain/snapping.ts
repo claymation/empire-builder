@@ -33,7 +33,7 @@ import {
   tangentAndNormalLines,
   unitArcChord,
   unitVector,
-} from './geometry';
+} from '../lib/geometry';
 import {SectionEnd, SectionEndPose} from './layout';
 import {
   Curved,
@@ -44,7 +44,7 @@ import {
   Straight,
   straight,
 } from './section';
-import {assertNever} from './validate';
+import {assertNever} from '../lib/validate';
 
 /**
  * What the pointer's target snapped to. Every kind carries the resolved `point`
