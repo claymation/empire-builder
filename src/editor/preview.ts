@@ -27,7 +27,7 @@ import {
   Pose,
   subtract,
   unitVector,
-} from '../domain/geometry';
+} from '../lib/geometry';
 import {SectionEnd, SectionEndPose} from '../domain/layout';
 import {
   endPose,

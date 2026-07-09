@@ -24,7 +24,7 @@
  * answer "where does the next section grow from".
  */
 
-import {Point} from '../domain/geometry';
+import {Point} from '../lib/geometry';
 import {
   anchorSection,
   EMPTY_LAYOUT,

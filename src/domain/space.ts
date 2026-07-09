@@ -4,8 +4,8 @@
  * (width, height), measured in millimeters.
  */
 
-import {Bounds} from './geometry';
-import {requirePositive} from './validate';
+import {Bounds} from '../lib/geometry';
+import {requirePositive} from '../lib/validate';
 
 /** A rectangular sheet of benchwork, anchored with its lower-left at the origin. */
 export interface Space {

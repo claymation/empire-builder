@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {degToRad, radToDeg, type Point, type Pose} from '../domain/geometry';
+import {degToRad, radToDeg, type Point, type Pose} from '../lib/geometry';
 import {type SectionEnd, type SectionEndPose} from '../domain/layout';
 import {shapeTo} from '../domain/snapping';
 import {computePreview, type DrawOrigin} from './preview';

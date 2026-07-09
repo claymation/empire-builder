@@ -10,7 +10,7 @@ import {
   subtract,
   unitVector,
   type Pose,
-} from './geometry';
+} from '../lib/geometry';
 import {
   curve,
   endPose,

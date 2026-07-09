@@ -19,4 +19,25 @@ module.exports = [
       },
     },
   },
+  // src/lib is the domain-agnostic substrate: pure plane geometry and shared
+  // guards, dependency-free of the app layered above it. Enforce that leaf
+  // status so it can't quietly grow an import back into the track domain or the
+  // Paper.js/DOM edges.
+  {
+    files: ['src/lib/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/domain/**', '**/render/**', '**/editor/**', '**/main'],
+              message:
+                'src/lib is the domain-agnostic substrate; it must not import from domain, render, editor, or main.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];

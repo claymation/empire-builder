@@ -26,7 +26,7 @@ import {
   scale,
   segmentEndPoint,
   subtract,
-} from '../domain/geometry';
+} from '../lib/geometry';
 import {PlacedLayout} from '../domain/layout';
 import {PlacedSection} from '../domain/section';
 import {Space} from '../domain/space';

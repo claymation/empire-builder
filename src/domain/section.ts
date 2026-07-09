@@ -29,8 +29,8 @@ import {
   segmentBounds,
   segmentEndPose,
   unionBounds,
-} from './geometry';
-import {assertNever, requirePositive} from './validate';
+} from '../lib/geometry';
+import {assertNever, requirePositive} from '../lib/validate';
 
 /** Stable identity for a section within a layout. Opaque; assigned by the editor. */
 export type SectionId = string;

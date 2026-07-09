@@ -6,7 +6,7 @@
  * into a position on the layout.
  */
 
-import {Point} from '../domain/geometry';
+import {Point} from '../lib/geometry';
 import {Space} from '../domain/space';
 
 /** A two-way mapping between domain and canvas points. */
