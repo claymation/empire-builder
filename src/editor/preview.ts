@@ -134,7 +134,7 @@ export function computePreview(
       openEnds,
       LINE_MAGNET_PX / viewScale
     );
-    return {...NOTHING, snap, anchorPoint: snap ? snap.point : target};
+    return {...NOTHING, snap, anchorPoint: snap ? snap.target : target};
   }
   if (origin.kind === 'point') {
     return aimPreview(origin.position, target, openEnds, viewScale);
@@ -210,7 +210,7 @@ function aimPreview(
         alignedStraight,
         {
           kind: 'line',
-          point: endPose(placeSection(alignedStraight, 'A', pose), 'B')
+          target: endPose(placeSection(alignedStraight, 'A', pose), 'B')
             .position,
           line: snap.line,
         },

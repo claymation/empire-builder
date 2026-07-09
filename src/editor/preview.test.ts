@@ -154,7 +154,7 @@ describe('computePreview', () => {
     expect(p.closeOnto).toEqual(end('f', 'B'));
     expect(p.shape).not.toBeNull();
     // The ghost reaches the latched ring exactly.
-    expect(p.snap).toMatchObject({kind: 'end', point: {x: 100, y: 100}});
+    expect(p.snap).toMatchObject({kind: 'end', target: {x: 100, y: 100}});
   });
 
   it('hovers the railhead’s own ring, laying nothing', () => {
@@ -185,8 +185,8 @@ describe('computePreview', () => {
     // the pose's normal, so the half-circle starting a return loop is exact.
     const p = computePreview(pose(RAILHEAD), {x: 4, y: 100}, [], 1, false);
     expect(p.snap?.kind).toBe('line');
-    expect(p.snap?.point.x).toBeCloseTo(0);
-    expect(p.snap?.point.y).toBeCloseTo(100);
+    expect(p.snap?.target.x).toBeCloseTo(0);
+    expect(p.snap?.target.y).toBeCloseTo(100);
     if (p.shape?.kind !== 'curved') throw new Error('expected a curve');
     expect(radToDeg(p.shape.arc.sweep)).toBeCloseTo(180);
     expect(p.shape.arc.radius).toBeCloseTo(50);
@@ -265,8 +265,8 @@ describe('aiming a pending anchor', () => {
     if (p.shape?.kind !== 'straight') throw new Error('expected a straight');
     expect(p.shape.length).toBeCloseTo(100);
     expect(p.snap?.kind).toBe('line');
-    expect(p.snap?.point.x).toBeCloseTo(100);
-    expect(p.snap?.point.y).toBeCloseTo(200);
+    expect(p.snap?.target.x).toBeCloseTo(100);
+    expect(p.snap?.target.y).toBeCloseTo(200);
   });
 
   it('a hovered ring outranks the aim', () => {

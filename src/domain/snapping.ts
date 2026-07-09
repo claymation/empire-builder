@@ -47,21 +47,21 @@ import {
 import {assertNever} from '../lib/validate';
 
 /**
- * What the pointer's target snapped to. Every kind carries the resolved `point`
- * the section is then built toward; `end` and `line` also carry the open-end
- * feature they latched onto, which the editor draws.
+ * What the pointer snapped to. Every kind carries the resolved `target` the
+ * section is then built toward; `end` and `line` also carry the feature they
+ * latched onto, which the editor draws.
  *
- * - `end`: an open end — drawn as a ring at its `point`. Carries the `end` it
+ * - `end`: an open end — drawn as a ring at its `target`. Carries the `end` it
  *   latched onto, so the caller can act on it (e.g. record a join).
  * - `line`: one of an open end's normal or tangent lines (carries the `line`) —
  *   drawn as a guide.
- * - `angle`: no open end in range; the sweep angle-snaps toward `point`. There is
- *   no feature to carry — the snapped sweep is fixed when the arc is built.
+ * - `angle`: no open end in range; the sweep angle-snaps toward `target`. There
+ *   is no feature to carry — the snapped sweep is fixed when the arc is built.
  */
 export type Snap =
-  | {readonly kind: 'end'; readonly point: Point; readonly end: SectionEnd}
-  | {readonly kind: 'line'; readonly point: Point; readonly line: Line}
-  | {readonly kind: 'angle'; readonly point: Point};
+  | {readonly kind: 'end'; readonly target: Point; readonly end: SectionEnd}
+  | {readonly kind: 'line'; readonly target: Point; readonly line: Line}
+  | {readonly kind: 'angle'; readonly target: Point};
 
 /**
  * Resolves how a section laid from `from` toward `target` snaps: onto an open
@@ -120,7 +120,7 @@ export function resolveSnap(
     }
   }
   if (nearest) {
-    return {kind: 'end', point: nearest.pose.position, end: nearest.end};
+    return {kind: 'end', target: nearest.pose.position, end: nearest.end};
   }
 
   // `from` offers its own lines alongside the open ends': an anchor stands at
@@ -132,9 +132,9 @@ export function resolveSnap(
     .filter(line => !colinear(from, line));
   const nearestLine = nearestLineTo(target, lines, lineTolerance);
   if (nearestLine) {
-    return {kind: 'line', point: nearestLine.point, line: nearestLine.line};
+    return {kind: 'line', target: nearestLine.point, line: nearestLine.line};
   }
-  return {kind: 'angle', point: target};
+  return {kind: 'angle', target};
 }
 
 /**
@@ -158,7 +158,7 @@ export function resolveAnchorSnap(
   const lines = openEnds.flatMap(({pose}) => tangentAndNormalLines(pose));
   const nearestLine = nearestLineTo(target, lines, tolerance);
   return nearestLine
-    ? {kind: 'line', point: nearestLine.point, line: nearestLine.line}
+    ? {kind: 'line', target: nearestLine.point, line: nearestLine.line}
     : null;
 }
 
@@ -184,11 +184,11 @@ export function shapeForSnap(
 ): SectionShape | null {
   switch (snap.kind) {
     case 'angle':
-      return snappedShapeTo(from, snap.point, increment, threshold);
+      return snappedShapeTo(from, snap.target, increment, threshold);
     case 'line':
-      return shapeOntoLine(from, snap.point, snap.line, increment, threshold);
+      return shapeOntoLine(from, snap.target, snap.line, increment, threshold);
     case 'end':
-      return shapeTo(from, snap.point);
+      return shapeTo(from, snap.target);
     default:
       return assertNever(snap);
   }
