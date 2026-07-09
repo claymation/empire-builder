@@ -1,5 +1,5 @@
 /**
- * The lay-track tool's editor state, as a pure value with pure transitions, so
+ * The editor's state, as a pure value with pure transitions, so
  * the drawing logic can be tested apart from Paper.js and the DOM. The editor
  * edge (./editor) owns an instance, calls these on pointer and keyboard events,
  * and renders the result.
