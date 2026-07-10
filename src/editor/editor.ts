@@ -51,8 +51,8 @@ export function startEditor(
   let pointer: Point | null = null;
   // Snapping suspended (Option/Alt held) for raw freehand placement.
   let snapSuspended = false;
-  // The heading a pending anchor's aim is locked to (Shift held), so the
-  // pointer can move off-axis to shape a curve; null while the aim follows
+  // The heading a pending anchor is locked to (Shift held), so the
+  // pointer can move off-axis to shape a curve; null while the heading follows
   // the pointer. Held-modifier state, a sibling of snapSuspended — it lives at
   // this edge, not in EditorState, which keeps the pending anchor a bare
   // position and records a heading only when a section commits, so every
@@ -78,7 +78,7 @@ export function startEditor(
       placedLayout = placeLayout(newState.layout);
     }
     state = newState;
-    // Any transition ends the aim in progress: the lock belongs to the
+    // Any transition ends the aiming in progress: the lock belongs to the
     // pending anchor it was captured over.
     lockedHeading = null;
   }
@@ -234,7 +234,7 @@ export function startEditor(
       paper.view.update();
     }
   };
-  // Holding Shift locks a pending anchor's aim at its previewed heading, so
+  // Holding Shift locks a pending anchor at its previewed heading, so
   // the pointer can move off-axis to shape the first section into a curve.
   const setHeadingLock = (held: boolean) => {
     if (held === (lockedHeading !== null)) {
@@ -245,7 +245,7 @@ export function startEditor(
         return;
       }
       // Read the heading off the live preview so the lock captures exactly the
-      // aim the section would lay at, without recomputing the angle snap.
+      // heading the section would lay at, without recomputing the angle snap.
       const preview = buildPreview(computeTransform());
       lockedHeading =
         preview.kind === 'lay' ? preview.origin.pose.heading : null;

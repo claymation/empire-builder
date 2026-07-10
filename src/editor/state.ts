@@ -100,7 +100,7 @@ export function selectRailhead(
 
 /**
  * Start a new network: lay its first section, anchored by its `A` end at the
- * pending anchor position, leaving at the given `heading` — the aim the
+ * pending anchor position, leaving at the given `heading` — the one the
  * section was previewed with ({@link anchorSection}). Clears the pending
  * anchor; the railhead advances to the section's far end. The prior snapshot
  * goes to `past` — one undo step — and the redo stack is dropped.
