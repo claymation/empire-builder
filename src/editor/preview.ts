@@ -100,7 +100,7 @@ export type Preview =
 const NOTHING: Preview = {kind: 'nothing'};
 
 /**
- * Computes the {@link Preview} for a pointer at `target`. `origin` is where
+ * Computes the {@link Preview} for the `pointer` position. `origin` is where
  * drawing grows from ({@link DrawOrigin}), or null when nothing is selected.
  * `viewScale` converts the pixel magnets to domain units. Suspending snapping
  * (Option/Alt) lays a plain section to the pointer, with no snaps, no guides,
@@ -108,23 +108,23 @@ const NOTHING: Preview = {kind: 'nothing'};
  */
 export function computePreview(
   origin: DrawOrigin | null,
-  target: Point | null,
+  pointer: Point | null,
   openEnds: readonly SectionEndPose[],
   viewScale: number,
   snapSuspended: boolean
 ): Preview {
-  if (!target) {
+  if (!pointer) {
     return NOTHING;
   }
   const outcome = snapSuspended
-    ? freehand(origin, target)
-    : withSnapping(origin, target, openEnds, viewScale);
+    ? freehand(origin, pointer)
+    : withSnapping(origin, pointer, openEnds, viewScale);
 
   // A hovered ring makes the click select that end instead — unless an end snap
   // claims the click (an end snap outranks a hover), or snapping is suspended
   // (which offers no hovers).
   if (!snapSuspended && !isEndSnap(outcome)) {
-    const hovered = findHoveredEnd(target, openEnds, RING_HIT_PX / viewScale);
+    const hovered = findHoveredEnd(pointer, openEnds, RING_HIT_PX / viewScale);
     if (hovered) {
       return {kind: 'select', end: hovered};
     }
@@ -145,24 +145,24 @@ function isEndSnap(preview: Preview): boolean {
  */
 function withSnapping(
   origin: DrawOrigin | null,
-  target: Point,
+  pointer: Point,
   openEnds: readonly SectionEndPose[],
   viewScale: number
 ): Preview {
   if (!origin) {
     const snap = resolveAnchorSnap(
-      target,
+      pointer,
       openEnds,
       LINE_MAGNET_PX / viewScale
     );
-    return {kind: 'anchor', at: snap ? snap.target : target, snap};
+    return {kind: 'anchor', at: snap ? snap.target : pointer, snap};
   }
   if (origin.kind === 'point') {
-    return aimPreview(origin.position, target, openEnds, viewScale);
+    return aimPreview(origin.position, pointer, openEnds, viewScale);
   }
   const snap = resolveSnap(
     origin.pose,
-    target,
+    pointer,
     openEnds,
     POINT_MAGNET_PX / viewScale,
     LINE_MAGNET_PX / viewScale
@@ -179,12 +179,12 @@ function withSnapping(
  * nothing selected, or the pointer sitting on an aiming anchor — a click drops
  * a fresh anchor at the raw pointer.
  */
-function freehand(origin: DrawOrigin | null, target: Point): Preview {
-  const from = origin ? settle(origin, target) : null;
+function freehand(origin: DrawOrigin | null, pointer: Point): Preview {
+  const from = origin ? settle(origin, pointer) : null;
   if (!from) {
-    return {kind: 'anchor', at: target, snap: null};
+    return {kind: 'anchor', at: pointer, snap: null};
   }
-  const shape = shapeTo(from.pose, target);
+  const shape = shapeTo(from.pose, pointer);
   return shape ? {kind: 'lay', origin: from, shape, snap: null} : NOTHING;
 }
 
@@ -200,11 +200,11 @@ function freehand(origin: DrawOrigin | null, target: Point): Preview {
  */
 function aimPreview(
   anchor: Point,
-  target: Point,
+  pointer: Point,
   openEnds: readonly SectionEndPose[],
   viewScale: number
 ): Preview {
-  const heading = headingToward(anchor, target);
+  const heading = headingToward(anchor, pointer);
   if (heading === null) {
     return NOTHING;
   }
@@ -218,7 +218,7 @@ function aimPreview(
     kind: 'anchor',
     pose: {position: anchor, heading: snappedHeading},
   };
-  const snap = resolveAnchorSnap(target, openEnds, LINE_MAGNET_PX / viewScale);
+  const snap = resolveAnchorSnap(pointer, openEnds, LINE_MAGNET_PX / viewScale);
   if (snap && snap.kind === 'line') {
     const alignedStraight = straightOntoLine(origin.pose, snap.line);
     if (alignedStraight) {
@@ -235,7 +235,7 @@ function aimPreview(
   }
   // A snapped heading leaves the pointer a hair off-axis; the straight runs to
   // its forward projection, so the preview keeps tracking the pointer.
-  const reach = dot(unitVector(snappedHeading), subtract(target, anchor));
+  const reach = dot(unitVector(snappedHeading), subtract(pointer, anchor));
   return reach > EPSILON
     ? {kind: 'lay', origin, shape: straight(reach), snap: null}
     : NOTHING;
@@ -244,14 +244,14 @@ function aimPreview(
 /**
  * Settles an origin's heading for a suspended (raw) lay: a settled origin
  * passes through; a `point` origin becomes an `anchor` by pointing straight at
- * `target`, with no angle snap. Null when the pointer sits on the anchor itself
+ * `pointer`, with no angle snap. Null when the pointer sits on the anchor itself
  * and there is no direction to point yet.
  */
-function settle(origin: DrawOrigin, target: Point): SettledOrigin | null {
+function settle(origin: DrawOrigin, pointer: Point): SettledOrigin | null {
   if (origin.kind !== 'point') {
     return origin;
   }
-  const heading = headingToward(origin.position, target);
+  const heading = headingToward(origin.position, pointer);
   return heading === null
     ? null
     : {kind: 'anchor', pose: {position: origin.position, heading}};
@@ -259,13 +259,13 @@ function settle(origin: DrawOrigin, target: Point): SettledOrigin | null {
 
 /** The open end whose ring the pointer is within `radius` of; nearest wins. */
 function findHoveredEnd(
-  target: Point,
+  pointer: Point,
   openEnds: readonly SectionEndPose[],
   radius: number
 ): SectionEnd | null {
   let nearest: {end: SectionEnd; gap: number} | null = null;
   for (const {sectionEnd, pose} of openEnds) {
-    const gap = distance(target, pose.position);
+    const gap = distance(pointer, pose.position);
     if (gap <= radius && (!nearest || gap < nearest.gap)) {
       nearest = {end: sectionEnd, gap};
     }
