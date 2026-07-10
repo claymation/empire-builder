@@ -170,7 +170,7 @@ describe('computePreview', () => {
   });
 
   it('snaps a 180° curve from a locked heading onto its normal guideline', () => {
-    // A network's first section with the aim locked: the anchor stands as a
+    // A network's first section with the heading locked: the anchor stands as a
     // full pose and no open end exists. A pointer just off abreast pulls onto
     // the pose's normal, so the half-circle starting a return loop is exact.
     const p = computePreview(anchor(RAILHEAD), {x: 4, y: 100}, [], 1, false);
@@ -204,7 +204,7 @@ describe('computePreview', () => {
 
 describe('aiming a pending anchor', () => {
   it('aims a straight at the pointer, angle-snapping the heading', () => {
-    // 43° lies within the 5° threshold of 45°: the aim snaps, and the
+    // 43° lies within the 5° threshold of 45°: the heading snaps, and the
     // straight runs to the pointer's projection on the snapped heading.
     const target = {
       x: 100 * Math.cos(degToRad(43)),
@@ -217,7 +217,7 @@ describe('aiming a pending anchor', () => {
     expect(p.shape.length).toBeCloseTo(100 * Math.cos(degToRad(2)));
   });
 
-  it('keeps a deliberate off-grid aim', () => {
+  it('keeps a deliberate off-grid heading', () => {
     // 38° sits 8° and 7° from the nearest multiples: no snap.
     const target = {
       x: 100 * Math.cos(degToRad(38)),
@@ -240,9 +240,9 @@ describe('aiming a pending anchor', () => {
     expect(locked.shape.kind).toBe('curved');
   });
 
-  it('slides the straight onto a guideline, keeping the snapped aim', () => {
+  it('slides the straight onto a guideline, keeping the snapped heading', () => {
     // From (0, 200) toward a pointer a degree off level and 3 off the open
-    // end's normal (x = 100): the aim snaps level, and the end slides to the
+    // end's normal (x = 100): the heading snaps level, and the end slides to the
     // crossing (100, 200) — the length that lines up with the old track,
     // without tilting the run.
     const p = computePreview(
@@ -261,7 +261,7 @@ describe('aiming a pending anchor', () => {
     expect(p.snap?.target.y).toBeCloseTo(200);
   });
 
-  it('a hovered ring outranks the aim', () => {
+  it('a hovered ring outranks the aimed straight', () => {
     const p = computePreview(
       aiming({x: 0, y: 0}),
       {x: 100, y: 55},
@@ -285,7 +285,7 @@ describe('aiming a pending anchor', () => {
     expect(p.snap).toBeNull();
   });
 
-  it('previews nothing from a degenerate aim', () => {
+  it('previews nothing when the pointer sits on the anchor', () => {
     const p = computePreview(aiming({x: 3, y: 4}), {x: 3, y: 4}, [], 1, false);
     expect(p.kind).toBe('nothing');
   });

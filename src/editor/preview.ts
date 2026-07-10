@@ -158,7 +158,7 @@ function withSnapping(
     return {kind: 'anchor', at: snap ? snap.target : pointer, snap};
   }
   if (origin.kind === 'point') {
-    return aimPreview(origin.position, pointer, openEnds, viewScale);
+    return aimAnchor(origin.position, pointer, openEnds, viewScale);
   }
   const snap = resolveSnap(
     origin.pose,
@@ -191,14 +191,14 @@ function freehand(origin: DrawOrigin | null, pointer: Point): Preview {
 /**
  * The preview while aiming a pending anchor: the heading follows the pointer,
  * so the section on offer is always the straight from the anchor toward it —
- * curves wait for the heading to be locked. The aim angle-snaps to tidy
+ * curves wait for the heading to be locked. The heading angle-snaps to tidy
  * multiples, so level and square starts come easily while a deliberate off-grid
- * aim stands; a pointer near an open end's guideline ({@link resolveAnchorSnap})
+ * heading stands; a pointer near an open end's guideline ({@link resolveAnchorSnap})
  * then slides the straight's end to where the heading crosses it — the length
  * that lines the new track's end up with the old, while the heading itself
  * stands, so a level start stays level and stays parallel.
  */
-function aimPreview(
+function aimAnchor(
   anchor: Point,
   pointer: Point,
   openEnds: readonly SectionEndPose[],
