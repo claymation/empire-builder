@@ -143,17 +143,17 @@ export function openEndPoses(
   }));
 }
 
-/** Finds the end joined to `at`, at its neighbor; null if `at` is open. Symmetric. */
+/** Finds the end joined to `end`, at its neighbor; null if `end` is open. Symmetric. */
 export function findNeighborEnd(
   layout: Layout,
-  at: SectionEnd
+  end: SectionEnd
 ): SectionEnd | null {
   for (const join of layout.joins) {
     const [a, b] = join.ends;
-    if (sameEnd(a, at)) {
+    if (sameEnd(a, end)) {
       return b;
     }
-    if (sameEnd(b, at)) {
+    if (sameEnd(b, end)) {
       return a;
     }
   }
@@ -178,7 +178,7 @@ export function anchorSection(
 }
 
 /**
- * Join `section` onto open end `at`, seating the section's `end` there and
+ * Join `section` onto open end `onto`, seating the section's `end` there and
  * recording that join. When the section's other end lands on an existing open end
  * `closeOnto`, record that join too — the close.
  *
@@ -194,22 +194,22 @@ export function anchorSection(
  */
 export function joinSection(
   layout: Layout,
-  at: SectionEnd,
+  onto: SectionEnd,
   section: Section,
   end: EndName,
   closeOnto: SectionEnd | null
 ): Layout {
   const newEnd: SectionEnd = {sectionId: section.id, end};
-  const joins: Join[] = [...layout.joins, {ends: [at, newEnd]}];
+  const joins: Join[] = [...layout.joins, {ends: [onto, newEnd]}];
   let anchors = layout.anchors;
   if (closeOnto) {
     joins.push({
       ends: [{sectionId: section.id, end: otherEnd(section, end)}, closeOnto],
     });
     const closeOntoNetwork = networkOf(layout, closeOnto.sectionId);
-    const spansTwoNetworks = !closeOntoNetwork.has(at.sectionId);
+    const spansTwoNetworks = !closeOntoNetwork.has(onto.sectionId);
     if (spansTwoNetworks) {
-      // The close fuses the two networks into one, which keeps `at`'s anchor:
+      // The close fuses the two networks into one, which keeps `onto`'s anchor:
       // the absorbed network's anchor is dropped, leaving one per network.
       anchors = anchors.filter(
         anchor => !closeOntoNetwork.has(anchor.sectionEnd.sectionId)

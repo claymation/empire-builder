@@ -55,7 +55,7 @@ export const RING_HIT_PX = 12;
 /**
  * Where drawing grows from:
  *
- * - `railhead`: a selected open end `at`, extended from `pose`;
+ * - `railhead`: a selected open end `railhead`, extended from `pose`;
  * - `anchor`: a pending anchor whose heading is set, starting a new network at
  *   `pose`;
  * - `point`: a pending anchor whose heading still follows the pointer, so it has
@@ -67,7 +67,11 @@ export const RING_HIT_PX = 12;
  */
 export type DrawOrigin =
   | {readonly kind: 'anchor'; readonly pose: Pose}
-  | {readonly kind: 'railhead'; readonly pose: Pose; readonly at: SectionEnd}
+  | {
+      readonly kind: 'railhead';
+      readonly pose: Pose;
+      readonly railhead: SectionEnd;
+    }
   | {readonly kind: 'point'; readonly position: Point};
 
 /** A settled origin: a `DrawOrigin` that carries a pose, so a section lays from it. */

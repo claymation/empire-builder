@@ -124,7 +124,7 @@ export function startNetwork(
 }
 
 /**
- * Lay `section` joined onto open end `at` ({@link joinSection}), optionally
+ * Lay `section` joined onto open end `onto` ({@link joinSection}), optionally
  * closing its far end onto `closeOnto`. The railhead advances to that far end —
  * or to null when `closeOnto` consumed it: the loop is closed and that run has
  * nowhere to go until another open end is selected. The prior snapshot goes to
@@ -132,13 +132,13 @@ export function startNetwork(
  */
 export function extend(
   state: EditorState,
-  at: SectionEnd,
+  onto: SectionEnd,
   section: Section,
   closeOnto: SectionEnd | null
 ): EditorState {
   return commit(
     state,
-    joinSection(state.layout, at, section, 'A', closeOnto),
+    joinSection(state.layout, onto, section, 'A', closeOnto),
     closeOnto ? null : {sectionId: section.id, end: otherEnd(section, 'A')}
   );
 }

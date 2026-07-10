@@ -103,7 +103,7 @@ export function startEditor(
       ? {
           kind: 'railhead',
           pose: reversePose(poseOf(placedLayout, state.railhead)),
-          at: state.railhead,
+          railhead: state.railhead,
         }
       : null;
   }
@@ -209,8 +209,9 @@ export function startEditor(
         const origin = preview.origin;
         if (origin.kind === 'railhead') {
           // An end snap names the open end the far end joins onto.
-          const onto = preview.snap?.kind === 'end' ? preview.snap.end : null;
-          setState(extend(state, origin.at, section, onto));
+          const closeOnto =
+            preview.snap?.kind === 'end' ? preview.snap.end : null;
+          setState(extend(state, origin.railhead, section, closeOnto));
         } else {
           // A new network: startNetwork seats the first section at the pending
           // anchor's position (held in state) and this previewed heading.
