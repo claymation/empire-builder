@@ -22,7 +22,7 @@ const oe = (sectionEnd: SectionEnd, pose: Pose): SectionEndPose => ({
 const railhead = (p: Pose): DrawOrigin => ({
   kind: 'railhead',
   pose: p,
-  at: end('r', 'A'),
+  railhead: end('r', 'A'),
 });
 
 /** A pending anchor whose heading is locked to a full pose. */
