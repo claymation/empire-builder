@@ -54,7 +54,7 @@ import {assertNever} from '../lib/validate';
  * - `end`: an open end — drawn as a ring at its `target`. Carries the `end` it
  *   snapped to (to record a join) and the `shape` that seats onto it, resolved
  *   once by {@link shapeOntoPose}, so what is drawn and what is laid share one
- *   source rather than being rebuilt downstream.
+ *   source.
  * - `line`: one of an open end's normal or tangent lines (carries the `line`) —
  *   drawn as a guide.
  * - `angle`: no open end in range; the sweep angle-snaps toward `target`. There
@@ -117,10 +117,8 @@ export function resolveSnap(
     if (gap > pointTolerance || (nearest && gap >= nearest.gap)) {
       continue;
     }
-    // Offer the end only when a section actually seats onto it: {@link
-    // shapeOntoPose} finds the one that arrives tangentially back-to-back, or
-    // none does and the join would kink — which a run never permits. That
-    // section rides along on the snap, so drawing and laying share one source.
+    // Offer the end only when a section seats onto it — else the join kinks,
+    // which a run never permits.
     const shape = shapeOntoPose(from, pose);
     if (shape) {
       nearest = {end: sectionEnd, pose, gap, shape};
@@ -291,13 +289,7 @@ export function rawShapeTo(from: Pose, target: Point): SectionShape | null {
 /**
  * The section laid from `from` that seats back-to-back onto `to`: its far end at
  * `to`'s position, facing opposite, so threading seats the two ends tangentially.
- * Null when no straight or arc seats that way — a single arc joins two fixed
- * poses only when they are arc-compatible, a condition on their relative
- * placement rather than the general case.
- *
- * One arc reaches `to`'s position from `from` (the circle tangent to `from`'s
- * heading through that point — {@link rawShapeTo}), so its far heading is fixed and
- * seating reduces to testing that heading against `to`.
+ * Null when none does.
  */
 export function shapeOntoPose(from: Pose, to: Pose): SectionShape | null {
   const shape = rawShapeTo(from, to.position);
