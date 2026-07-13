@@ -208,8 +208,8 @@ export function startEditor(
         const section = withId(preview.shape);
         const origin = preview.origin;
         if (origin.kind === 'railhead') {
-          // The far join, if any, is the domain's to derive from where the far
-          // end lands — an end snap only drew the ring inviting it.
+          // Extend an existing network: seat the section onto the railhead, and
+          // the domain seats its far end too where it lands on an open end.
           setState(extend(state, origin.railhead, section));
         } else {
           // A new network: startNetwork seats the first section at the pending

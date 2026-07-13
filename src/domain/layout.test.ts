@@ -17,7 +17,7 @@ import {
   anchorSection,
   EMPTY_LAYOUT,
   feasible,
-  joinSection,
+  laySection,
   openEnds,
   findNeighborEnd,
   placeLayout,
@@ -67,13 +67,13 @@ function oval(anchor: Pose, straightLength: number, radius: number): Layout {
     'A',
     anchor
   );
-  layout = joinSection(
+  layout = laySection(
     layout,
     end('s1', 'B'),
     withId('s2', curve(radius, 180)),
     'A'
   );
-  layout = joinSection(
+  layout = laySection(
     layout,
     end('s2', 'B'),
     withId('s3', straight(straightLength)),
@@ -81,7 +81,7 @@ function oval(anchor: Pose, straightLength: number, radius: number): Layout {
   );
   // The last curve's far end lands back on the anchored A: the loop close is
   // derived from that coincidence, no longer named by the caller.
-  return joinSection(
+  return laySection(
     layout,
     end('s3', 'B'),
     withId('s4', curve(radius, 180)),
@@ -115,7 +115,7 @@ describe('placeLayout', () => {
       'A',
       ORIGIN
     );
-    layout = joinSection(
+    layout = laySection(
       layout,
       end('s1', 'B'),
       withId('s2', curve(50, 90)),
@@ -161,7 +161,7 @@ describe('placeLayout', () => {
       'B',
       ORIGIN
     );
-    layout = joinSection(
+    layout = laySection(
       layout,
       end('s1', 'A'),
       withId('s2', straight(40)),
@@ -186,7 +186,7 @@ describe('placeLayout', () => {
       'A',
       ORIGIN
     );
-    layout = joinSection(
+    layout = laySection(
       layout,
       end('s1', 'A'),
       withId('s2', straight(60)),
@@ -215,7 +215,7 @@ describe('placeLayout', () => {
       'B',
       anchor
     );
-    layout = joinSection(
+    layout = laySection(
       layout,
       end('s1', 'A'),
       withId('s2', straight(60)),
@@ -244,7 +244,7 @@ describe('placeLayout', () => {
         'A',
         {position: {x: -4, y: 7}, heading}
       );
-      layout = joinSection(
+      layout = laySection(
         layout,
         end('s1', 'B'),
         withId('s2', curve(50, sweepDeg)),
@@ -319,7 +319,7 @@ describe('placeLayout', () => {
     );
     layout = anchorSection(layout, withId('s2', straight(100)), 'A', anchor2);
     const separate = placeLayout(layout);
-    const merged = joinSection(
+    const merged = laySection(
       layout,
       end('s1', 'B'),
       withId('s3', curve(50, 180)),
@@ -377,7 +377,7 @@ describe('openEnds', () => {
       'A',
       ORIGIN
     );
-    layout = joinSection(
+    layout = laySection(
       layout,
       end('s1', 'B'),
       withId('s2', straight(100)),
@@ -399,12 +399,7 @@ describe('findNeighborEnd', () => {
     'A',
     ORIGIN
   );
-  layout = joinSection(
-    layout,
-    end('s1', 'B'),
-    withId('s2', straight(100)),
-    'A'
-  );
+  layout = laySection(layout, end('s1', 'B'), withId('s2', straight(100)), 'A');
 
   it('reports the joined end from either side', () => {
     expect(findNeighborEnd(layout, end('s1', 'B'))).toEqual(end('s2', 'A'));
@@ -447,7 +442,7 @@ describe('anchorSection', () => {
   });
 });
 
-describe('joinSection', () => {
+describe('laySection', () => {
   const base = anchorSection(
     EMPTY_LAYOUT,
     withId('s1', straight(100)),
@@ -456,7 +451,7 @@ describe('joinSection', () => {
   );
 
   it('adds the section and one join between the open end and the attaching end', () => {
-    const layout = joinSection(
+    const layout = laySection(
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),
@@ -468,7 +463,7 @@ describe('joinSection', () => {
   });
 
   it('attaches by the named end, joining the open end to that end', () => {
-    const layout = joinSection(
+    const layout = laySection(
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),
@@ -478,7 +473,7 @@ describe('joinSection', () => {
   });
 
   it('derives the far join when the far end lands back on an open end', () => {
-    // The oval's last curve lands its B on the anchored A: joinSection records
+    // The oval's last curve lands its B on the anchored A: laySection records
     // both the join onto the railhead and the derived closing join.
     const layout = oval(ORIGIN, inches(48), inches(18));
     expect(layout.joins).toContainEqual({
@@ -504,7 +499,7 @@ describe('joinSection', () => {
   it('a fuse onto another network drops the absorbed anchor, keeping from’s', () => {
     const before = twoNetworks();
     // s3's far end lands back-to-back on s2's B, fusing the two networks.
-    const merged = joinSection(
+    const merged = laySection(
       before,
       end('s1', 'B'),
       withId('s3', curve(50, 180)),
@@ -524,7 +519,7 @@ describe('joinSection', () => {
   });
 
   it('a plain join never touches the anchors', () => {
-    const grown = joinSection(
+    const grown = laySection(
       twoNetworks(),
       end('s1', 'B'),
       withId('s3', straight(40)),
@@ -548,7 +543,7 @@ describe('joinSection', () => {
       heading: Math.PI / 2,
     });
     expect(() =>
-      joinSection(layout, end('s1', 'B'), withId('s3', curve(50, 180)), 'A')
+      laySection(layout, end('s1', 'B'), withId('s3', curve(50, 180)), 'A')
     ).toThrow(RangeError);
   });
 
@@ -572,7 +567,7 @@ describe('joinSection', () => {
     });
     // A straight from s1's B lands its far end at (150,0) facing west — the
     // reverse of s3's east-facing A.
-    const joined = joinSection(
+    const joined = laySection(
       layout,
       end('s1', 'B'),
       withId('s4', straight(50)),
@@ -586,7 +581,7 @@ describe('joinSection', () => {
   it('derives no far join when the far end reaches open space', () => {
     // s2 runs on to (200,0); nothing sits there, so only the near join is
     // recorded and both far ends stay open.
-    const layout = joinSection(
+    const layout = laySection(
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),

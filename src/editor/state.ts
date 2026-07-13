@@ -29,7 +29,7 @@ import {
   anchorSection,
   EMPTY_LAYOUT,
   findNeighborEnd,
-  joinSection,
+  laySection,
   Layout,
   openEnds,
   otherEnd,
@@ -125,18 +125,17 @@ export function startNetwork(
 }
 
 /**
- * Lay `section` joined onto open end `from` ({@link joinSection}). The railhead
- * advances to the section's far end — or to null when a derived far join
- * consumed it: the run reached another open end (a loop or a fuse) and has
- * nowhere to grow until another open end is selected. The prior snapshot goes to
- * `past` — one undo step — and the redo stack is dropped.
+ * Lay `section` joined onto open end `from` ({@link laySection}). The railhead
+ * advances to the section's far end, or to null when a derived far join consumed
+ * it — the run reached another open end and has nowhere to grow. The prior
+ * snapshot goes to `past` — one undo step — and the redo stack is dropped.
  */
 export function extend(
   state: EditorState,
   from: SectionEnd,
   section: Section
 ): EditorState {
-  const layout = joinSection(state.layout, from, section, 'A');
+  const layout = laySection(state.layout, from, section, 'A');
   const farEnd: SectionEnd = {
     sectionId: section.id,
     end: otherEnd(section, 'A'),
