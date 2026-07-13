@@ -210,8 +210,8 @@ export function laySection(
   const nearPose = reversePose(poseOf(placed, from));
   const farEnd = otherEnd(section, nearEnd);
   const farPose = endPose(placeSection(section, nearEnd, nearPose), farEnd);
-  const landing = landingAt(layout, placed, farPose);
-  if (landing.kind === 'kink') {
+  const onto = seatFor(layout, placed, farPose);
+  if (!onto && meetsOpenEnd(layout, placed, farPose)) {
     throw new RangeError(
       'section cannot be laid: its far end would kink onto an open end'
     );
@@ -219,7 +219,7 @@ export function laySection(
 
   const sections = [...layout.sections, section];
   const nearJoin: Join = {ends: [from, {sectionId: section.id, end: nearEnd}]};
-  if (landing.kind === 'clear') {
+  if (!onto) {
     return {
       sections,
       joins: [...layout.joins, nearJoin],
@@ -229,10 +229,8 @@ export function laySection(
 
   // The far end seats onto another open end. A loop keeps its single anchor; a
   // fuse across two networks drops the absorbed one's, leaving one per network.
-  const farJoin: Join = {
-    ends: [{sectionId: section.id, end: farEnd}, landing.onto],
-  };
-  const reachedNetwork = networkOf(layout, landing.onto.sectionId);
+  const farJoin: Join = {ends: [{sectionId: section.id, end: farEnd}, onto]};
+  const reachedNetwork = networkOf(layout, onto.sectionId);
   const anchors = reachedNetwork.has(from.sectionId)
     ? layout.anchors
     : layout.anchors.filter(
@@ -243,45 +241,47 @@ export function laySection(
 
 /**
  * Whether `shape`, laid with its `A` end at `from`, can be seated: its far end
- * either reaches open space or meets an open end tangentially, back-to-back. A
- * far end meeting an open end off-tangent would kink, which no run permits.
+ * either reaches open space or seats onto an open end, back-to-back. A far end
+ * meeting an open end off-tangent would kink, which no run permits.
  */
 export function feasible(
   layout: Layout,
   from: Pose,
   shape: SectionShape
 ): boolean {
+  const placed = placeLayout(layout);
   const farPose = endPose(placeSection(shape, 'A', from), otherEnd(shape, 'A'));
-  return landingAt(layout, placeLayout(layout), farPose).kind !== 'kink';
+  return (
+    seatFor(layout, placed, farPose) !== null ||
+    !meetsOpenEnd(layout, placed, farPose)
+  );
 }
 
-/** Where a pose lands among a layout's open ends. */
-type Landing =
-  | {readonly kind: 'clear'} // reaches open space, no open end at the point
-  | {readonly kind: 'seats'; readonly onto: SectionEnd} // an open end faces back
-  | {readonly kind: 'kink'}; // an open end shares the point but off-tangent
-
 /**
- * Where `pose` lands among the layout's open ends: `clear` when none sits at its
- * point, `seats` (carrying that end) when one faces back at it, or `kink` when
- * one shares the point off-tangent.
- *
- * Among ends sharing the point a seating one is preferred, so the verdict is a
- * fact of the geometry, not of the order sections were added.
+ * The open end `pose` seats onto — the one facing back at it, so the two seat
+ * back-to-back — or null. A facing match, not mere coincidence, so it holds
+ * whichever order the sections were added.
  */
-function landingAt(layout: Layout, placed: PlacedLayout, pose: Pose): Landing {
-  const coincidentEnds = openEndPoses(layout, placed).filter(
-    openEnd => distance(openEnd.pose.position, pose.position) <= EPSILON
-  );
-  if (coincidentEnds.length === 0) {
-    return {kind: 'clear'};
-  }
-  const seatedEnd = coincidentEnds.find(openEnd =>
+function seatFor(
+  layout: Layout,
+  placed: PlacedLayout,
+  pose: Pose
+): SectionEnd | null {
+  const partner = openEndPoses(layout, placed).find(openEnd =>
     posesEqual(openEnd.pose, reversePose(pose))
   );
-  return seatedEnd
-    ? {kind: 'seats', onto: seatedEnd.sectionEnd}
-    : {kind: 'kink'};
+  return partner?.sectionEnd ?? null;
+}
+
+/** Whether an open end shares `pose`'s point, whether or not it seats there. */
+function meetsOpenEnd(
+  layout: Layout,
+  placed: PlacedLayout,
+  pose: Pose
+): boolean {
+  return openEndPoses(layout, placed).some(
+    openEnd => distance(openEnd.pose.position, pose.position) <= EPSILON
+  );
 }
 
 /** A section's end that is not `end` — the far end of a two-ended section. */
