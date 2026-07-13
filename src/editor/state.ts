@@ -28,6 +28,7 @@ import {Point} from '../lib/geometry';
 import {
   anchorSection,
   EMPTY_LAYOUT,
+  findNeighborEnd,
   joinSection,
   Layout,
   openEnds,
@@ -124,23 +125,24 @@ export function startNetwork(
 }
 
 /**
- * Lay `section` joined onto open end `onto` ({@link joinSection}), optionally
- * closing its far end onto `closeOnto`. The railhead advances to that far end —
- * or to null when `closeOnto` consumed it: the loop is closed and that run has
- * nowhere to go until another open end is selected. The prior snapshot goes to
+ * Lay `section` joined onto open end `from` ({@link joinSection}). The railhead
+ * advances to the section's far end — or to null when a derived far join
+ * consumed it: the run reached another open end (a loop or a fuse) and has
+ * nowhere to grow until another open end is selected. The prior snapshot goes to
  * `past` — one undo step — and the redo stack is dropped.
  */
 export function extend(
   state: EditorState,
-  onto: SectionEnd,
-  section: Section,
-  closeOnto: SectionEnd | null
+  from: SectionEnd,
+  section: Section
 ): EditorState {
-  return commit(
-    state,
-    joinSection(state.layout, onto, section, 'A', closeOnto),
-    closeOnto ? null : {sectionId: section.id, end: otherEnd(section, 'A')}
-  );
+  const layout = joinSection(state.layout, from, section, 'A');
+  const farEnd: SectionEnd = {
+    sectionId: section.id,
+    end: otherEnd(section, 'A'),
+  };
+  const railhead = findNeighborEnd(layout, farEnd) ? null : farEnd;
+  return commit(state, layout, railhead);
 }
 
 /**

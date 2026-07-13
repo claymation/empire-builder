@@ -98,14 +98,9 @@ describe('editor state', () => {
       withId('s1', straight(100)),
       0
     );
-    state = extend(state, end('s1', 'B'), withId('s2', curve(50, 180)), null);
-    state = extend(state, end('s2', 'B'), withId('s3', straight(100)), null);
-    const closed = extend(
-      state,
-      end('s3', 'B'),
-      withId('s4', curve(50, 180)),
-      end('s1', 'A')
-    );
+    state = extend(state, end('s1', 'B'), withId('s2', curve(50, 180)));
+    state = extend(state, end('s2', 'B'), withId('s3', straight(100)));
+    const closed = extend(state, end('s3', 'B'), withId('s4', curve(50, 180)));
     expect(openEnds(closed.layout)).toEqual([]);
     expect(openEnds(undo(closed).layout)).not.toEqual([]);
   });
@@ -119,15 +114,13 @@ describe('editor state', () => {
     const extended = extend(
       anchored,
       end('s1', 'B'),
-      withId('s2', straight(200)),
-      null
+      withId('s2', straight(200))
     );
     // Undo s2, then grow a different section from the same open end.
     const branched = extend(
       undo(extended),
       end('s1', 'B'),
-      withId('s3', straight(150)),
-      null
+      withId('s3', straight(150))
     );
     expect(branched.layout.sections.map(s => s.id)).toEqual(['s1', 's3']);
     expect(redo(branched)).toBe(branched); // the undone s2 is gone
@@ -163,8 +156,7 @@ describe('selectRailhead', () => {
     const state = extend(
       anchored(),
       end('s1', 'B'),
-      withId('s2', straight(50)),
-      null
+      withId('s2', straight(50))
     );
     expect(() => selectRailhead(state, end('s1', 'B'))).toThrow(RangeError);
   });
@@ -191,22 +183,16 @@ describe('commit railhead', () => {
     const state = extend(
       anchored(),
       end('s1', 'B'),
-      withId('s2', straight(50)),
-      null
+      withId('s2', straight(50))
     );
     expect(state.railhead).toEqual(end('s2', 'B'));
   });
 
-  it('extend with closeOnto nulls it — the loop consumed the far end', () => {
+  it('nulls the railhead when a derived far join consumes the far end', () => {
     let state = anchored();
-    state = extend(state, end('s1', 'B'), withId('s2', curve(50, 180)), null);
-    state = extend(state, end('s2', 'B'), withId('s3', straight(100)), null);
-    const closed = extend(
-      state,
-      end('s3', 'B'),
-      withId('s4', curve(50, 180)),
-      end('s1', 'A')
-    );
+    state = extend(state, end('s1', 'B'), withId('s2', curve(50, 180)));
+    state = extend(state, end('s2', 'B'), withId('s3', straight(100)));
+    const closed = extend(state, end('s3', 'B'), withId('s4', curve(50, 180)));
     expect(closed.railhead).toBeNull();
   });
 
@@ -215,8 +201,7 @@ describe('commit railhead', () => {
     const extended = extend(
       selected,
       end('s1', 'A'),
-      withId('s2', straight(50)),
-      null
+      withId('s2', straight(50))
     );
     expect(extended.past.at(-1)?.railhead).toEqual(end('s1', 'A'));
   });
@@ -225,12 +210,7 @@ describe('commit railhead', () => {
 describe('undo/redo railhead', () => {
   it('undo restores layout and railhead together; redo is symmetric', () => {
     const before = anchored();
-    const extended = extend(
-      before,
-      end('s1', 'B'),
-      withId('s2', straight(50)),
-      null
-    );
+    const extended = extend(before, end('s1', 'B'), withId('s2', straight(50)));
     const undone = undo(extended);
     expect(undone.layout.sections.map(s => s.id)).toEqual(['s1']);
     expect(undone.railhead).toEqual(end('s1', 'B'));
@@ -244,16 +224,14 @@ describe('undo/redo railhead', () => {
     const extended = extend(
       selected,
       end('s1', 'A'),
-      withId('s2', straight(50)),
-      null
+      withId('s2', straight(50))
     );
     const undone = undo(extended);
     expect(undone.railhead).toEqual(end('s1', 'A'));
     const redrawn = extend(
       undone,
       undone.railhead!,
-      withId('s3', straight(75)),
-      null
+      withId('s3', straight(75))
     );
     expect(redrawn.layout.joins).toContainEqual({
       ends: [end('s1', 'A'), end('s3', 'A')],
@@ -303,11 +281,10 @@ describe('starting a second network', () => {
     const merged = extend(
       selected,
       end('s1', 'B'),
-      withId('s3', curve(50, 180)),
-      end('s2', 'B')
+      withId('s3', curve(50, 180))
     );
     expect(merged.layout.anchors).toHaveLength(1);
-    expect(merged.railhead).toBeNull(); // the close consumed the far end
+    expect(merged.railhead).toBeNull(); // the far join consumed the far end
     const undone = undo(merged);
     expect(undone.layout.anchors).toHaveLength(2);
     expect(undone.railhead).toEqual(end('s1', 'B'));
@@ -317,24 +294,14 @@ describe('starting a second network', () => {
 
 describe('the two-straights oval (US-5-3)', () => {
   it('assembles two networks into one loop with one anchor and no open ends', () => {
-    // A curve from s1's B closes onto s2's B: the networks merge, s2's anchor
+    // A curve from s1's B lands on s2's B: the networks fuse, s2's anchor
     // absorbed into s1's.
     let state = selectRailhead(twoNetworks(), end('s1', 'B'));
-    state = extend(
-      state,
-      end('s1', 'B'),
-      withId('s3', curve(50, 180)),
-      end('s2', 'B')
-    );
+    state = extend(state, end('s1', 'B'), withId('s3', curve(50, 180)));
     expect(state.layout.anchors).toHaveLength(1);
-    // The far side: a curve from s1's A closes onto s2's A — the loop close.
+    // The far side: a curve from s1's A lands on s2's A — now the loop close.
     state = selectRailhead(state, end('s1', 'A'));
-    state = extend(
-      state,
-      end('s1', 'A'),
-      withId('s4', curve(50, -180)),
-      end('s2', 'A')
-    );
+    state = extend(state, end('s1', 'A'), withId('s4', curve(50, -180)));
     expect(openEnds(state.layout)).toEqual([]);
     expect(state.layout.anchors).toHaveLength(1);
     expect(state.railhead).toBeNull();
@@ -361,8 +328,7 @@ describe('growing from a selected A end', () => {
     const state = extend(
       selected,
       selected.railhead!,
-      withId('s2', straight(60)),
-      null
+      withId('s2', straight(60))
     );
     const placed = placeLayout(state.layout);
     const b = poseOf(placed, end('s2', 'B'));

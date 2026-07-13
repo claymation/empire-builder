@@ -208,10 +208,9 @@ export function startEditor(
         const section = withId(preview.shape);
         const origin = preview.origin;
         if (origin.kind === 'railhead') {
-          // An end snap names the open end the far end joins onto.
-          const closeOnto =
-            preview.snap?.kind === 'end' ? preview.snap.end : null;
-          setState(extend(state, origin.railhead, section, closeOnto));
+          // The far join, if any, is the domain's to derive from where the far
+          // end lands — an end snap only drew the ring inviting it.
+          setState(extend(state, origin.railhead, section));
         } else {
           // A new network: startNetwork seats the first section at the pending
           // anchor's position (held in state) and this previewed heading.

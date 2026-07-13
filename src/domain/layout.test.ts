@@ -16,6 +16,7 @@ import {
 import {
   anchorSection,
   EMPTY_LAYOUT,
+  feasible,
   joinSection,
   openEnds,
   findNeighborEnd,
@@ -70,22 +71,21 @@ function oval(anchor: Pose, straightLength: number, radius: number): Layout {
     layout,
     end('s1', 'B'),
     withId('s2', curve(radius, 180)),
-    'A',
-    null
+    'A'
   );
   layout = joinSection(
     layout,
     end('s2', 'B'),
     withId('s3', straight(straightLength)),
-    'A',
-    null
+    'A'
   );
+  // The last curve's far end lands back on the anchored A: the loop close is
+  // derived from that coincidence, no longer named by the caller.
   return joinSection(
     layout,
     end('s3', 'B'),
     withId('s4', curve(radius, 180)),
-    'A',
-    end('s1', 'A')
+    'A'
   );
 }
 
@@ -119,8 +119,7 @@ describe('placeLayout', () => {
       layout,
       end('s1', 'B'),
       withId('s2', curve(50, 90)),
-      'A',
-      null
+      'A'
     );
     const placed = placeLayout(layout).sectionsById;
     // s2's A shares s1's B position, the poses mutually reversed.
@@ -166,8 +165,7 @@ describe('placeLayout', () => {
       layout,
       end('s1', 'A'),
       withId('s2', straight(40)),
-      'A',
-      null
+      'A'
     );
     const placed = placeLayout(layout).sectionsById;
     // s1's B sits at the anchor; its A a length up the anchor's heading.
@@ -192,8 +190,7 @@ describe('placeLayout', () => {
       layout,
       end('s1', 'A'),
       withId('s2', straight(60)),
-      'A',
-      null
+      'A'
     );
     const placed = placeLayout(layout);
     const s2a = poseOf(placed, end('s2', 'A'));
@@ -222,8 +219,7 @@ describe('placeLayout', () => {
       layout,
       end('s1', 'A'),
       withId('s2', straight(60)),
-      'A',
-      null
+      'A'
     );
     const placed = placeLayout(layout);
     const s1a = poseOf(placed, end('s1', 'A'));
@@ -252,8 +248,7 @@ describe('placeLayout', () => {
         layout,
         end('s1', 'B'),
         withId('s2', curve(50, sweepDeg)),
-        'B',
-        null
+        'B'
       );
       const placed = placeLayout(layout);
       const s1b = poseOf(placed, end('s1', 'B'));
@@ -328,8 +323,7 @@ describe('placeLayout', () => {
       layout,
       end('s1', 'B'),
       withId('s3', curve(50, 180)),
-      'A',
-      end('s2', 'B')
+      'A'
     );
     expect(merged.anchors).toEqual([
       {sectionEnd: end('s1', 'A'), pose: anchor1},
@@ -387,8 +381,7 @@ describe('openEnds', () => {
       layout,
       end('s1', 'B'),
       withId('s2', straight(100)),
-      'A',
-      null
+      'A'
     );
     // s1.B and s2.A are joined; s1.A and s2.B remain open.
     expect(openEnds(layout)).toEqual([end('s1', 'A'), end('s2', 'B')]);
@@ -410,8 +403,7 @@ describe('findNeighborEnd', () => {
     layout,
     end('s1', 'B'),
     withId('s2', straight(100)),
-    'A',
-    null
+    'A'
   );
 
   it('reports the joined end from either side', () => {
@@ -468,8 +460,7 @@ describe('joinSection', () => {
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),
-      'A',
-      null
+      'A'
     );
     expect(layout.sections.map(s => s.id)).toEqual(['s1', 's2']);
     expect(layout.joins).toEqual([{ends: [end('s1', 'B'), end('s2', 'A')]}]);
@@ -481,29 +472,14 @@ describe('joinSection', () => {
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),
-      'B',
-      null
+      'B'
     );
     expect(layout.joins).toEqual([{ends: [end('s1', 'B'), end('s2', 'B')]}]);
   });
 
-  it('closes the other end onto an existing open end', () => {
-    // Attaching by A, the section's other end (B) is the one that closes.
-    const layout = joinSection(
-      base,
-      end('s1', 'B'),
-      withId('s2', straight(100)),
-      'A',
-      end('s1', 'A')
-    );
-    expect(layout.joins).toContainEqual({
-      ends: [end('s2', 'B'), end('s1', 'A')],
-    });
-  });
-
-  it('records a second join closing the new B onto an aligned open end', () => {
-    // The oval's last curve closes onto the anchored A end: joinSection records
-    // both the join onto the railhead and the closing join.
+  it('derives the far join when the far end lands back on an open end', () => {
+    // The oval's last curve lands its B on the anchored A: joinSection records
+    // both the join onto the railhead and the derived closing join.
     const layout = oval(ORIGIN, inches(48), inches(18));
     expect(layout.joins).toContainEqual({
       ends: [end('s4', 'B'), end('s1', 'A')],
@@ -525,14 +501,14 @@ describe('joinSection', () => {
     });
   }
 
-  it('a close onto another network drops the absorbed anchor and keeps at’s', () => {
+  it('a fuse onto another network drops the absorbed anchor, keeping from’s', () => {
     const before = twoNetworks();
+    // s3's far end lands back-to-back on s2's B, fusing the two networks.
     const merged = joinSection(
       before,
       end('s1', 'B'),
       withId('s3', curve(50, 180)),
-      'A',
-      end('s2', 'B')
+      'A'
     );
     expect(merged.anchors).toEqual([
       {sectionEnd: end('s1', 'A'), pose: ORIGIN},
@@ -540,7 +516,7 @@ describe('joinSection', () => {
     expect(before.anchors).toHaveLength(2); // input unmutated
   });
 
-  it('a same-network close keeps the anchor: membership decides, not closeOnto', () => {
+  it('a same-network loop keeps the anchor: membership decides, not the far join', () => {
     const closed = oval(ORIGIN, inches(48), inches(18));
     expect(closed.anchors).toEqual([
       {sectionEnd: end('s1', 'A'), pose: ORIGIN},
@@ -552,27 +528,113 @@ describe('joinSection', () => {
       twoNetworks(),
       end('s1', 'B'),
       withId('s3', straight(40)),
-      'A',
-      null
+      'A'
     );
     expect(grown.anchors).toHaveLength(2);
   });
 
-  it('records a misaligned closeOnto; placement, not joinSection, rejects it', () => {
-    // s2 is a straight from (100,0) to (200,0); asserting its B closes onto
-    // s1's A at the origin cannot hold. joinSection is pure topology, so it
-    // records the join without complaint — placeLayout is where the geometry is
-    // found unsatisfiable.
+  it('throws when the far end would kink onto an open end', () => {
+    // s2's open A sits exactly where s3's far end lands, but faces north — not
+    // back toward it. The join would kink, so the domain refuses it at commit
+    // rather than record a bad join for placement to discover later.
+    let layout = anchorSection(
+      EMPTY_LAYOUT,
+      withId('s1', straight(100)),
+      'A',
+      ORIGIN
+    );
+    layout = anchorSection(layout, withId('s2', straight(100)), 'A', {
+      position: {x: 100, y: 100},
+      heading: Math.PI / 2,
+    });
+    expect(() =>
+      joinSection(layout, end('s1', 'B'), withId('s3', curve(50, 180)), 'A')
+    ).toThrow(RangeError);
+  });
+
+  it('joins the seating end when a coincident sibling would kink', () => {
+    // s2.A and s3.A both sit at (150,0): s2 faces north (a kink), s3 faces east
+    // (seats back-to-back with the far end). The join must find s3 regardless of
+    // s2 being anchored first — the verdict follows geometry, not insertion order.
+    let layout = anchorSection(
+      EMPTY_LAYOUT,
+      withId('s1', straight(100)),
+      'A',
+      ORIGIN
+    );
+    layout = anchorSection(layout, withId('s2', straight(100)), 'A', {
+      position: {x: 150, y: 0},
+      heading: Math.PI / 2,
+    });
+    layout = anchorSection(layout, withId('s3', straight(100)), 'A', {
+      position: {x: 150, y: 0},
+      heading: 0,
+    });
+    // A straight from s1's B lands its far end at (150,0) facing west — the
+    // reverse of s3's east-facing A.
+    const joined = joinSection(
+      layout,
+      end('s1', 'B'),
+      withId('s4', straight(50)),
+      'A'
+    );
+    expect(joined.joins).toContainEqual({
+      ends: [end('s4', 'B'), end('s3', 'A')],
+    });
+  });
+
+  it('derives no far join when the far end reaches open space', () => {
+    // s2 runs on to (200,0); nothing sits there, so only the near join is
+    // recorded and both far ends stay open.
     const layout = joinSection(
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),
-      'A',
-      end('s1', 'A')
+      'A'
     );
-    expect(layout.joins).toContainEqual({
-      ends: [end('s2', 'B'), end('s1', 'A')],
+    expect(layout.joins).toEqual([{ends: [end('s1', 'B'), end('s2', 'A')]}]);
+    expect(openEnds(layout)).toContainEqual(end('s2', 'B'));
+  });
+});
+
+describe('feasible', () => {
+  const eastAt = (x: number, y: number): Pose => ({
+    position: {x, y},
+    heading: 0,
+  });
+
+  // s1 straight(100) from the origin heading east; open ends at (0,0) and
+  // (100,0). A section laid from (100,0) heading east extends into open space.
+  const base = anchorSection(
+    EMPTY_LAYOUT,
+    withId('s1', straight(100)),
+    'A',
+    ORIGIN
+  );
+
+  it('accepts a section whose far end reaches open space', () => {
+    expect(feasible(base, eastAt(100, 0), straight(50))).toBe(true);
+  });
+
+  it('accepts a far end that seats back-to-back on an open end', () => {
+    // A straight from (100,0) east ends at (150,0); place an open end there
+    // facing east, so the far end seats back-to-back.
+    const layout = anchorSection(
+      base,
+      withId('s2', straight(30)),
+      'A',
+      eastAt(150, 0)
+    );
+    expect(feasible(layout, eastAt(100, 0), straight(50))).toBe(true);
+  });
+
+  it('rejects a far end that meets an open end off-tangent', () => {
+    // An open end at (150,0) facing north: the far end shares the point but
+    // faces east — a kink.
+    const layout = anchorSection(base, withId('s2', straight(30)), 'A', {
+      position: {x: 150, y: 0},
+      heading: Math.PI / 2,
     });
-    expect(() => placeLayout(layout)).toThrow(RangeError);
+    expect(feasible(layout, eastAt(100, 0), straight(50))).toBe(false);
   });
 });
