@@ -36,7 +36,7 @@ import {
   resolveAnchorSnap,
   resolveSnap,
   shapeForSnap,
-  shapeTo,
+  rawShapeTo,
   shownSnap,
   Snap,
   snapToIncrement,
@@ -188,7 +188,7 @@ function freehand(origin: DrawOrigin | null, pointer: Point): Preview {
   if (!from) {
     return {kind: 'anchor', at: pointer, snap: null};
   }
-  const shape = shapeTo(from.pose, pointer);
+  const shape = rawShapeTo(from.pose, pointer);
   return shape ? {kind: 'lay', origin: from, shape, snap: null} : NOTHING;
 }
 
