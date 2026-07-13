@@ -1,7 +1,7 @@
 import {describe, it, expect} from 'vitest';
 import {degToRad, radToDeg, type Point, type Pose} from '../lib/geometry';
 import {type SectionEnd, type SectionEndPose} from '../domain/layout';
-import {shapeTo} from '../domain/snapping';
+import {rawShapeTo} from '../domain/snapping';
 import {computePreview, type DrawOrigin} from './preview';
 
 /** The railhead's outward pose: at the origin, facing east (+x). */
@@ -193,7 +193,7 @@ describe('computePreview', () => {
     );
     if (p.kind !== 'lay') throw new Error('expected a lay');
     expect(p.snap).toBeNull();
-    expect(p.shape).toEqual(shapeTo(RAILHEAD, {x: 100, y: 50}));
+    expect(p.shape).toEqual(rawShapeTo(RAILHEAD, {x: 100, y: 50}));
   });
 
   it('suspending snapping with no railhead drops at the raw pointer', () => {

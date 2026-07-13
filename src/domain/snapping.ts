@@ -52,14 +52,21 @@ import {assertNever} from '../lib/validate';
  * snapped to, which the editor draws.
  *
  * - `end`: an open end — drawn as a ring at its `target`. Carries the `end` it
- *   snapped to, so the caller can act on it (e.g. record a join).
+ *   snapped to (to record a join) and the `shape` that seats onto it, resolved
+ *   once by {@link shapeOntoPose}, so what is drawn and what is laid share one
+ *   source rather than being rebuilt downstream.
  * - `line`: one of an open end's normal or tangent lines (carries the `line`) —
  *   drawn as a guide.
  * - `angle`: no open end in range; the sweep angle-snaps toward `target`. There
  *   is no feature to carry — the snapped sweep is fixed when the arc is built.
  */
 export type Snap =
-  | {readonly kind: 'end'; readonly target: Point; readonly end: SectionEnd}
+  | {
+      readonly kind: 'end';
+      readonly target: Point;
+      readonly end: SectionEnd;
+      readonly shape: SectionShape;
+    }
   | {readonly kind: 'line'; readonly target: Point; readonly line: Line}
   | {readonly kind: 'angle'; readonly target: Point};
 
@@ -95,7 +102,12 @@ export function resolveSnap(
 ): Snap {
   // An end wins over any line, so look for the nearest open end first and skip
   // the line search entirely when one is in range.
-  let nearest: {end: SectionEnd; pose: Pose; gap: number} | null = null;
+  let nearest: {
+    end: SectionEnd;
+    pose: Pose;
+    gap: number;
+    shape: SectionShape;
+  } | null = null;
   for (const {sectionEnd, pose} of openEnds) {
     // The railhead can't snap to itself: a section to its own start is empty.
     if (distance(pose.position, from.position) <= EPSILON) {
@@ -105,22 +117,22 @@ export function resolveSnap(
     if (gap > pointTolerance || (nearest && gap >= nearest.gap)) {
       continue;
     }
-    // An end snap lays a section straight onto the end, so only offer it when
-    // that section meets the end tangentially back-to-back — otherwise the
-    // join would kink, which a run never permits. The section joining onto the
-    // end reaches its position; it qualifies when its far end (B) seats as the
-    // reverse of the open end's pose, the facing join threading seats.
-    const shape = shapeTo(from, pose.position);
-    if (!shape) {
-      continue;
-    }
-    const farEndPose = endPose(placeSection(shape, 'A', from), 'B');
-    if (posesEqual(farEndPose, reversePose(pose))) {
-      nearest = {end: sectionEnd, pose, gap};
+    // Offer the end only when a section actually seats onto it: {@link
+    // shapeOntoPose} finds the one that arrives tangentially back-to-back, or
+    // none does and the join would kink — which a run never permits. That
+    // section rides along on the snap, so drawing and laying share one source.
+    const shape = shapeOntoPose(from, pose);
+    if (shape) {
+      nearest = {end: sectionEnd, pose, gap, shape};
     }
   }
   if (nearest) {
-    return {kind: 'end', target: nearest.pose.position, end: nearest.end};
+    return {
+      kind: 'end',
+      target: nearest.pose.position,
+      end: nearest.end,
+      shape: nearest.shape,
+    };
   }
 
   // `from` offers its own lines alongside the open ends': an anchor stands at
@@ -174,7 +186,8 @@ export function resolveAnchorSnap(
  * - `line`: the end must land on a line, which leaves one degree of freedom;
  *   {@link shapeOntoLine} angle-snaps the shape, then spends that freedom
  *   sliding the end onto the line.
- * - `end`: pinned to an open end, so the section just reaches it.
+ * - `end`: already resolved by {@link resolveSnap} to the section that seats
+ *   onto the end, so it carries through unchanged — no angle freedom to spend.
  */
 export function shapeForSnap(
   from: Pose,
@@ -184,11 +197,11 @@ export function shapeForSnap(
 ): SectionShape | null {
   switch (snap.kind) {
     case 'angle':
-      return snappedShapeTo(from, snap.target, increment, threshold);
+      return shapeToPoint(from, snap.target, increment, threshold);
     case 'line':
       return shapeOntoLine(from, snap.target, snap.line, increment, threshold);
     case 'end':
-      return shapeTo(from, snap.target);
+      return snap.shape;
     default:
       return assertNever(snap);
   }
@@ -222,7 +235,7 @@ export function shownSnap(
  * The section from `from` to `target`: the unique straight or arc that leaves
  * `from` tangent to its heading and ends at `target` — or `null` when none
  * exists (the target is `from`'s own position, or lies straight behind it).
- * This is the exact geometry, with no snapping; {@link snappedShapeTo} and
+ * This is the exact geometry, with no snapping; {@link shapeToPoint} and
  * {@link shapeOntoLine} layer the angle and line snaps onto it, and a point
  * snap, which already names an exact target, uses it as is.
  *
@@ -233,7 +246,7 @@ export function shownSnap(
  * direction, and the angle subtended at the center is the sweep. A target on the
  * heading line has no such circle — it is a straight, or, if behind, unreachable.
  */
-export function shapeTo(from: Pose, target: Point): SectionShape | null {
+export function rawShapeTo(from: Pose, target: Point): SectionShape | null {
   const forward = unitVector(from.heading);
   const left = unitVector(from.heading + Math.PI / 2);
   const toTarget = subtract(target, from.position);
@@ -276,6 +289,26 @@ export function shapeTo(from: Pose, target: Point): SectionShape | null {
 }
 
 /**
+ * The section laid from `from` that seats back-to-back onto `to`: its far end at
+ * `to`'s position, facing opposite, so threading seats the two ends tangentially.
+ * Null when no straight or arc seats that way — a single arc joins two fixed
+ * poses only when they are arc-compatible, a condition on their relative
+ * placement rather than the general case.
+ *
+ * One arc reaches `to`'s position from `from` (the circle tangent to `from`'s
+ * heading through that point — {@link rawShapeTo}), so its far heading is fixed and
+ * seating reduces to testing that heading against `to`.
+ */
+export function shapeOntoPose(from: Pose, to: Pose): SectionShape | null {
+  const shape = rawShapeTo(from, to.position);
+  if (!shape) {
+    return null;
+  }
+  const farEndPose = endPose(placeSection(shape, 'A', from), 'B');
+  return posesEqual(farEndPose, reversePose(to)) ? shape : null;
+}
+
+/**
  * Snaps `value` to the nearest multiple of `increment` if it lands within
  * `threshold` of one, otherwise leaves it untouched — so a value set
  * deliberately off-grid stands, while one nudged close to a multiple snaps
@@ -291,7 +324,7 @@ export function snapToIncrement(
 }
 
 /**
- * Like {@link shapeTo}, but with the curve's sweep snapped to a tidy
+ * Like {@link rawShapeTo}, but with the curve's sweep snapped to a tidy
  * angle (clean angles, arbitrary radii — the flex/handlaid promise). When the
  * sweep snaps, the radius is *fitted* so the snapped arc still ends as near the
  * pointer as it can, so the preview keeps tracking the pointer instead of
@@ -299,13 +332,13 @@ export function snapToIncrement(
  * sweep lands on no tidy multiple, and a section already straight, pass through
  * unchanged. `increment`/`threshold` are radians.
  */
-export function snappedShapeTo(
+export function shapeToPoint(
   from: Pose,
   target: Point,
   increment: number,
   threshold: number
 ): SectionShape | null {
-  const rawShape = shapeTo(from, target);
+  const rawShape = rawShapeTo(from, target);
   if (!rawShape || rawShape.kind === 'straight') {
     return rawShape;
   }
@@ -353,7 +386,7 @@ export function shapeOntoLine(
   increment: number,
   threshold: number
 ): SectionShape | null {
-  const snappedShape = snappedShapeTo(from, target, increment, threshold);
+  const snappedShape = shapeToPoint(from, target, increment, threshold);
   if (!snappedShape) {
     return null;
   }

@@ -1,14 +1,28 @@
 import {describe, it, expect} from 'vitest';
-import {degToRad, radToDeg, type Point, type Pose} from '../lib/geometry';
+import {
+  degToRad,
+  posesEqual,
+  radToDeg,
+  reversePose,
+  type Point,
+  type Pose,
+} from '../lib/geometry';
 import {type SectionEnd, type SectionEndPose} from './layout';
-import {curve, endPose, placeSection, straight} from './section';
+import {
+  curve,
+  endPose,
+  placeSection,
+  straight,
+  type SectionShape,
+} from './section';
 import {
   resolveAnchorSnap,
   resolveSnap,
   shapeForSnap,
   shapeOntoLine,
-  shapeTo,
-  snappedShapeTo,
+  shapeOntoPose,
+  rawShapeTo,
+  shapeToPoint,
   snapToIncrement,
   shownSnap,
 } from './snapping';
@@ -24,28 +38,28 @@ const oe = (pose: Pose): SectionEndPose => ({sectionEnd: SOME_END, pose});
 
 /** Asserts the section from `from` actually ends at `target`. */
 function reaches(from: Pose, target: Point): void {
-  const section = shapeTo(from, target);
+  const section = rawShapeTo(from, target);
   if (!section) throw new Error('expected a section');
   const b = endPose(placeSection(section, 'A', from), 'B');
   expect(b.position.x).toBeCloseTo(target.x);
   expect(b.position.y).toBeCloseTo(target.y);
 }
 
-describe('shapeTo', () => {
+describe('rawShapeTo', () => {
   it('returns a straight to a point dead ahead', () => {
-    expect(shapeTo(ORIGIN, {x: 100, y: 0})?.kind).toBe('straight');
+    expect(rawShapeTo(ORIGIN, {x: 100, y: 0})?.kind).toBe('straight');
     reaches(ORIGIN, {x: 100, y: 0});
   });
 
   it('curves left toward a point off to the left', () => {
-    const section = shapeTo(ORIGIN, {x: 100, y: 100});
+    const section = rawShapeTo(ORIGIN, {x: 100, y: 100});
     if (section?.kind !== 'curved') throw new Error('expected a curve');
     expect(section.arc.sweep).toBeGreaterThan(0); // counter-clockwise
     reaches(ORIGIN, {x: 100, y: 100});
   });
 
   it('curves right toward a point off to the right', () => {
-    const section = shapeTo(ORIGIN, {x: 100, y: -100});
+    const section = rawShapeTo(ORIGIN, {x: 100, y: -100});
     if (section?.kind !== 'curved') throw new Error('expected a curve');
     expect(section.arc.sweep).toBeLessThan(0); // clockwise
     reaches(ORIGIN, {x: 100, y: -100});
@@ -78,24 +92,78 @@ describe('shapeTo', () => {
   });
 
   it('returns null for a degenerate or unreachable target', () => {
-    expect(shapeTo(ORIGIN, {x: 0, y: 0})).toBeNull();
-    expect(shapeTo(ORIGIN, {x: -100, y: 0})).toBeNull();
+    expect(rawShapeTo(ORIGIN, {x: 0, y: 0})).toBeNull();
+    expect(rawShapeTo(ORIGIN, {x: -100, y: 0})).toBeNull();
   });
 });
 
-describe('snappedShapeTo', () => {
+describe('shapeOntoPose', () => {
+  /** Asserts a section seats back-to-back onto `to`, and returns it. */
+  function seatsOnto(from: Pose, to: Pose): SectionShape {
+    const shape = shapeOntoPose(from, to);
+    if (!shape) throw new Error('expected a section onto the end');
+    const b = endPose(placeSection(shape, 'A', from), 'B');
+    expect(posesEqual(b, reversePose(to))).toBe(true);
+    return shape;
+  }
+
+  it('curves onto an end it can reach facing it', () => {
+    // From the east-facing origin, the quarter-circle to (100, 100) arrives
+    // heading north, back-to-back with an end that faces north there.
+    const to: Pose = {position: {x: 100, y: 100}, heading: Math.PI / 2};
+    expect(seatsOnto(ORIGIN, to).kind).toBe('curved');
+  });
+
+  it('runs straight onto a collinear end continuing the line', () => {
+    // (100, 0) facing east — its section carries on down the line; a straight
+    // from the east-facing origin fills the gap and seats back-to-back.
+    const to: Pose = {position: {x: 100, y: 0}, heading: 0};
+    expect(seatsOnto(ORIGIN, to).kind).toBe('straight');
+  });
+
+  it('declines an end the section would reach banking, not facing it', () => {
+    // (100, 50) facing east: the single arc there arrives banking — a kink.
+    expect(
+      shapeOntoPose(ORIGIN, {position: {x: 100, y: 50}, heading: 0})
+    ).toBeNull();
+  });
+
+  it('declines a target behind the railhead', () => {
+    const to: Pose = {position: {x: -100, y: 0}, heading: Math.PI};
+    expect(shapeOntoPose(ORIGIN, to)).toBeNull();
+  });
+
+  it('seats back-to-back across quadrants, headings, and both bends', () => {
+    // Round-trip: a placed shape's far end fixes the pose it must seat onto, so
+    // shapeOntoPose must recover a section there, not wrongly decline it.
+    const froms: Pose[] = [
+      {position: {x: 0, y: 0}, heading: 0},
+      {position: {x: 5, y: -3}, heading: Math.PI / 2},
+      {position: {x: -2, y: 4}, heading: -Math.PI / 4},
+    ];
+    const shapes: SectionShape[] = [
+      straight(120),
+      curve(80, 90),
+      curve(60, -135),
+      curve(150, 160),
+    ];
+    for (const from of froms) {
+      for (const shape of shapes) {
+        const b = endPose(placeSection(shape, 'A', from), 'B');
+        seatsOnto(from, reversePose(b));
+      }
+    }
+  });
+});
+
+describe('shapeToPoint', () => {
   const increment = degToRad(15);
   const threshold = degToRad(5);
 
   it('snaps the sweep and fits the radius so the end stays near the pointer', () => {
     // From the origin heading east, a pointer just shy of the 90° arc's corner
     // snaps to 90°, with the radius fitted to the pointer's projection (97.5).
-    const section = snappedShapeTo(
-      ORIGIN,
-      {x: 100, y: 95},
-      increment,
-      threshold
-    );
+    const section = shapeToPoint(ORIGIN, {x: 100, y: 95}, increment, threshold);
     if (section?.kind !== 'curved') throw new Error('expected a curve');
     expect(radToDeg(section.arc.sweep)).toBeCloseTo(90);
     const b = endPose(placeSection(section, 'A', ORIGIN), 'B');
@@ -105,26 +173,19 @@ describe('snappedShapeTo', () => {
 
   it('leaves an off-grid sweep (and its radius) alone', () => {
     const target = {x: 100, y: 90}; // ~84° — outside the snap threshold
-    expect(snappedShapeTo(ORIGIN, target, increment, threshold)).toEqual(
-      shapeTo(ORIGIN, target)
+    expect(shapeToPoint(ORIGIN, target, increment, threshold)).toEqual(
+      rawShapeTo(ORIGIN, target)
     );
   });
 
   it('flattens a near-straight curve to the pointer projection', () => {
-    const section = snappedShapeTo(
-      ORIGIN,
-      {x: 200, y: 3},
-      increment,
-      threshold
-    );
+    const section = shapeToPoint(ORIGIN, {x: 200, y: 3}, increment, threshold);
     if (section?.kind !== 'straight') throw new Error('expected a straight');
     expect(section.length).toBeCloseTo(200); // forward projection of the pointer
   });
 
   it('returns null for a degenerate target', () => {
-    expect(
-      snappedShapeTo(ORIGIN, {x: 0, y: 0}, increment, threshold)
-    ).toBeNull();
+    expect(shapeToPoint(ORIGIN, {x: 0, y: 0}, increment, threshold)).toBeNull();
   });
 });
 
@@ -619,7 +680,7 @@ describe('shapeOntoLine', () => {
       threshold
     );
     expect(section).toEqual(
-      snappedShapeTo(from, {x: 50, y: 0}, increment, threshold)
+      shapeToPoint(from, {x: 50, y: 0}, increment, threshold)
     );
   });
 
@@ -638,16 +699,21 @@ describe('shapeForSnap', () => {
   it('angle-snaps toward the target when no end is in range', () => {
     const snap = {kind: 'angle' as const, target: {x: 100, y: 95}};
     expect(shapeForSnap(ORIGIN, snap, increment, threshold)).toEqual(
-      snappedShapeTo(ORIGIN, snap.target, increment, threshold)
+      shapeToPoint(ORIGIN, snap.target, increment, threshold)
     );
   });
 
-  it('aims straight at a snapped open-end point', () => {
-    const end: Pose = {position: {x: 100, y: 40}, heading: Math.PI};
-    const snap = {kind: 'end' as const, target: end.position, end: SOME_END};
-    expect(shapeForSnap(ORIGIN, snap, increment, threshold)).toEqual(
-      shapeTo(ORIGIN, end.position)
-    );
+  it('returns the section an end snap already carries, unrebuilt', () => {
+    // resolveSnap resolved the seating section once; shapeForSnap hands it back,
+    // it does not recompute one from the target point.
+    const shape = straight(80);
+    const snap = {
+      kind: 'end' as const,
+      target: {x: 100, y: 40},
+      end: SOME_END,
+      shape,
+    };
+    expect(shapeForSnap(ORIGIN, snap, increment, threshold)).toBe(shape);
   });
 
   it('aligns a snapped line, landing the end on it', () => {
@@ -682,7 +748,12 @@ describe('shownSnap', () => {
 
   it('passes point and angle snaps through', () => {
     const end: Pose = {position: {x: 100, y: 40}, heading: Math.PI};
-    const point = {kind: 'end' as const, target: end.position, end: SOME_END};
+    const point = {
+      kind: 'end' as const,
+      target: end.position,
+      end: SOME_END,
+      shape: straight(10),
+    };
     const angle = {kind: 'angle' as const, target: {x: 100, y: 95}};
     expect(shownSnap(ORIGIN, point, straight(10))).toEqual(point);
     expect(shownSnap(ORIGIN, angle, straight(10))).toEqual(angle);
