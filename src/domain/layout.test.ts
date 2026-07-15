@@ -14,9 +14,9 @@ import {
   type Pose,
 } from '../lib/geometry';
 import {
+  addSection,
   anchorSection,
   EMPTY_LAYOUT,
-  joinSection,
   openEnds,
   findNeighborEnd,
   placeLayout,
@@ -66,21 +66,21 @@ function oval(anchor: Pose, straightLength: number, radius: number): Layout {
     'A',
     anchor
   );
-  layout = joinSection(
+  layout = addSection(
     layout,
     end('s1', 'B'),
     withId('s2', curve(radius, 180)),
     'A',
     null
   );
-  layout = joinSection(
+  layout = addSection(
     layout,
     end('s2', 'B'),
     withId('s3', straight(straightLength)),
     'A',
     null
   );
-  return joinSection(
+  return addSection(
     layout,
     end('s3', 'B'),
     withId('s4', curve(radius, 180)),
@@ -115,7 +115,7 @@ describe('placeLayout', () => {
       'A',
       ORIGIN
     );
-    layout = joinSection(
+    layout = addSection(
       layout,
       end('s1', 'B'),
       withId('s2', curve(50, 90)),
@@ -162,7 +162,7 @@ describe('placeLayout', () => {
       'B',
       ORIGIN
     );
-    layout = joinSection(
+    layout = addSection(
       layout,
       end('s1', 'A'),
       withId('s2', straight(40)),
@@ -188,7 +188,7 @@ describe('placeLayout', () => {
       'A',
       ORIGIN
     );
-    layout = joinSection(
+    layout = addSection(
       layout,
       end('s1', 'A'),
       withId('s2', straight(60)),
@@ -218,7 +218,7 @@ describe('placeLayout', () => {
       'B',
       anchor
     );
-    layout = joinSection(
+    layout = addSection(
       layout,
       end('s1', 'A'),
       withId('s2', straight(60)),
@@ -248,7 +248,7 @@ describe('placeLayout', () => {
         'A',
         {position: {x: -4, y: 7}, heading}
       );
-      layout = joinSection(
+      layout = addSection(
         layout,
         end('s1', 'B'),
         withId('s2', curve(50, sweepDeg)),
@@ -303,7 +303,7 @@ describe('placeLayout', () => {
 
   it('places an absorbed network at the poses it had under its own anchor', () => {
     // Two parallel straights heading 30°, each its own network; a 180° curve
-    // grown from s1's B closes B↔B onto s2's B, fusing them. s2's anchor is
+    // grown from s1's B joins B↔B onto s2's B, fusing them. s2's anchor is
     // gone, so threading through the new joins must reproduce the poses s2
     // had under it.
     const heading = degToRad(30);
@@ -324,7 +324,7 @@ describe('placeLayout', () => {
     );
     layout = anchorSection(layout, withId('s2', straight(100)), 'A', anchor2);
     const separate = placeLayout(layout);
-    const merged = joinSection(
+    const merged = addSection(
       layout,
       end('s1', 'B'),
       withId('s3', curve(50, 180)),
@@ -383,7 +383,7 @@ describe('openEnds', () => {
       'A',
       ORIGIN
     );
-    layout = joinSection(
+    layout = addSection(
       layout,
       end('s1', 'B'),
       withId('s2', straight(100)),
@@ -406,7 +406,7 @@ describe('findNeighborEnd', () => {
     'A',
     ORIGIN
   );
-  layout = joinSection(
+  layout = addSection(
     layout,
     end('s1', 'B'),
     withId('s2', straight(100)),
@@ -455,7 +455,7 @@ describe('anchorSection', () => {
   });
 });
 
-describe('joinSection', () => {
+describe('addSection', () => {
   const base = anchorSection(
     EMPTY_LAYOUT,
     withId('s1', straight(100)),
@@ -464,7 +464,7 @@ describe('joinSection', () => {
   );
 
   it('adds the section and one join between the open end and the attaching end', () => {
-    const layout = joinSection(
+    const layout = addSection(
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),
@@ -477,7 +477,7 @@ describe('joinSection', () => {
   });
 
   it('attaches by the named end, joining the open end to that end', () => {
-    const layout = joinSection(
+    const layout = addSection(
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),
@@ -487,9 +487,9 @@ describe('joinSection', () => {
     expect(layout.joins).toEqual([{ends: [end('s1', 'B'), end('s2', 'B')]}]);
   });
 
-  it('closes the other end onto an existing open end', () => {
-    // Attaching by A, the section's other end (B) is the one that closes.
-    const layout = joinSection(
+  it('records the far join onto the given open end', () => {
+    // Laying by A, the section's far end (B) joins onto `onto`.
+    const layout = addSection(
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),
@@ -501,9 +501,9 @@ describe('joinSection', () => {
     });
   });
 
-  it('records a second join closing the new B onto an aligned open end', () => {
-    // The oval's last curve closes onto the anchored A end: joinSection records
-    // both the join onto the railhead and the closing join.
+  it('records both joins for the oval’s closing curve', () => {
+    // The oval's last curve joins onto the anchored A end: addSection records
+    // both the near join onto the railhead and the far join.
     const layout = oval(ORIGIN, inches(48), inches(18));
     expect(layout.joins).toContainEqual({
       ends: [end('s4', 'B'), end('s1', 'A')],
@@ -525,9 +525,9 @@ describe('joinSection', () => {
     });
   }
 
-  it('a close onto another network drops the absorbed anchor and keeps at’s', () => {
+  it('a fuse onto another network drops the absorbed anchor, keeping from’s', () => {
     const before = twoNetworks();
-    const merged = joinSection(
+    const merged = addSection(
       before,
       end('s1', 'B'),
       withId('s3', curve(50, 180)),
@@ -540,7 +540,7 @@ describe('joinSection', () => {
     expect(before.anchors).toHaveLength(2); // input unmutated
   });
 
-  it('a same-network close keeps the anchor: membership decides, not closeOnto', () => {
+  it('a same-network loop keeps the anchor: membership decides, not the far join', () => {
     const closed = oval(ORIGIN, inches(48), inches(18));
     expect(closed.anchors).toEqual([
       {sectionEnd: end('s1', 'A'), pose: ORIGIN},
@@ -548,7 +548,7 @@ describe('joinSection', () => {
   });
 
   it('a plain join never touches the anchors', () => {
-    const grown = joinSection(
+    const grown = addSection(
       twoNetworks(),
       end('s1', 'B'),
       withId('s3', straight(40)),
@@ -558,12 +558,12 @@ describe('joinSection', () => {
     expect(grown.anchors).toHaveLength(2);
   });
 
-  it('records a misaligned closeOnto; placement, not joinSection, rejects it', () => {
-    // s2 is a straight from (100,0) to (200,0); asserting its B closes onto
-    // s1's A at the origin cannot hold. joinSection is pure topology, so it
+  it('records a misaligned onto; placement, not addSection, rejects it', () => {
+    // s2 is a straight from (100,0) to (200,0); asserting its B joins onto
+    // s1's A at the origin cannot hold. addSection is pure topology, so it
     // records the join without complaint — placeLayout is where the geometry is
     // found unsatisfiable.
-    const layout = joinSection(
+    const layout = addSection(
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),

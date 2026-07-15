@@ -7,7 +7,7 @@
  * Because joined ends share a pose, tangency holds by construction — there is no
  * way to express a kink between connected sections. {@link openEnds} reports the
  * ends carrying no join, the places a new section can grow from; {@link
- * anchorSection}/{@link joinSection} grow the graph.
+ * anchorSection}/{@link addSection} grow the graph.
  */
 
 import {posesAlign, Pose, reversePose} from '../lib/geometry';
@@ -19,6 +19,7 @@ import {
   PlacedSection,
   Section,
   SectionId,
+  SectionShape,
 } from './section';
 
 /** A reference to one end of a section: which section, which end. */
@@ -178,56 +179,54 @@ export function anchorSection(
 }
 
 /**
- * Join `section` onto open end `onto`, seating the section's `end` there and
- * recording that join. When the section's other end lands on an existing open end
- * `closeOnto`, record that join too — the close.
+ * Add `section` to the layout, seating its `nearEnd` onto open end `from` and
+ * recording that join. When `onto` is given — the open end the section's far end
+ * lands on — record that join too: a loop within one network, or a fuse of two.
  *
- * Joins keep one anchor per network: a close that fuses two networks drops the
- * absorbed network's anchor — the one `closeOnto`'s network carried — so the
- * network drawn from keeps its placement authority. The absorbed sections
- * re-derive their poses by threading through the new join. A close within one
- * network (the loop) keeps its anchor; membership, not the presence of
- * `closeOnto`, decides.
+ * A fuse keeps `from`'s anchor and drops the absorbed network's; the absorbed
+ * sections re-derive their poses by threading through the new join, so the
+ * network drawn from keeps its placement authority. A loop keeps its single
+ * anchor. Whether the two ends already share a network decides which.
  *
- * Pure topology: whether a `closeOnto` actually aligns is a geometric fact,
- * surfaced where geometry is computed ({@link placeLayout}), not enforced here.
+ * Pure topology: whether `onto` aligns is a geometric fact, checked where
+ * geometry is computed ({@link placeLayout}); the caller offers only a seating
+ * `onto`.
  */
-export function joinSection(
+export function addSection(
   layout: Layout,
-  onto: SectionEnd,
+  from: SectionEnd,
   section: Section,
-  end: EndName,
-  closeOnto: SectionEnd | null
+  nearEnd: EndName,
+  onto: SectionEnd | null
 ): Layout {
-  const newEnd: SectionEnd = {sectionId: section.id, end};
-  const joins: Join[] = [...layout.joins, {ends: [onto, newEnd]}];
-  let anchors = layout.anchors;
-  if (closeOnto) {
-    joins.push({
-      ends: [{sectionId: section.id, end: otherEnd(section, end)}, closeOnto],
-    });
-    const closeOntoNetwork = networkOf(layout, closeOnto.sectionId);
-    const spansTwoNetworks = !closeOntoNetwork.has(onto.sectionId);
-    if (spansTwoNetworks) {
-      // The close fuses the two networks into one, which keeps `onto`'s anchor:
-      // the absorbed network's anchor is dropped, leaving one per network.
-      anchors = anchors.filter(
-        anchor => !closeOntoNetwork.has(anchor.sectionEnd.sectionId)
-      );
-    }
+  const nearJoin: Join = {ends: [from, {sectionId: section.id, end: nearEnd}]};
+  const sections = [...layout.sections, section];
+  if (!onto) {
+    return {
+      sections,
+      joins: [...layout.joins, nearJoin],
+      anchors: layout.anchors,
+    };
   }
-  return {
-    sections: [...layout.sections, section],
-    joins,
-    anchors,
-  };
+
+  // The far end joins `onto`. A loop keeps its single anchor; a fuse across two
+  // networks drops the absorbed one's, leaving one anchor per network.
+  const farEnd = otherEnd(section, nearEnd);
+  const farJoin: Join = {ends: [{sectionId: section.id, end: farEnd}, onto]};
+  const reachedNetwork = networkOf(layout, onto.sectionId);
+  const anchors = reachedNetwork.has(from.sectionId)
+    ? layout.anchors
+    : layout.anchors.filter(
+        anchor => !reachedNetwork.has(anchor.sectionEnd.sectionId)
+      );
+  return {sections, joins: [...layout.joins, nearJoin, farJoin], anchors};
 }
 
 /** A section's end that is not `end` — the far end of a two-ended section. */
-export function otherEnd(section: Section, end: EndName): EndName {
+export function otherEnd(section: SectionShape, end: EndName): EndName {
   const farEnd = endsOf(section).find(candidate => candidate !== end);
   if (!farEnd) {
-    throw new RangeError(`section ${section.id} has no end besides ${end}`);
+    throw new RangeError(`a ${section.kind} section has no end besides ${end}`);
   }
   return farEnd;
 }

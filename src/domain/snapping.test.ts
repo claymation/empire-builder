@@ -16,6 +16,7 @@ import {
   type SectionShape,
 } from './section';
 import {
+  feasible,
   resolveAnchorSnap,
   resolveSnap,
   shapeForSnap,
@@ -153,6 +154,29 @@ describe('shapeOntoPose', () => {
         seatsOnto(from, reversePose(b));
       }
     }
+  });
+});
+
+describe('feasible', () => {
+  // Laying a straight(50) east from (100,0): its far end lands at (150,0)
+  // facing west.
+  const from: Pose = {position: {x: 100, y: 0}, heading: 0};
+
+  it('accepts a far end that reaches open space', () => {
+    expect(feasible(from, straight(50), [])).toBe(true);
+  });
+
+  it('accepts a far end that seats back-to-back on an open end', () => {
+    // An open end at (150,0) facing east; the far end faces west there.
+    const openEnd = oe({position: {x: 150, y: 0}, heading: 0});
+    expect(feasible(from, straight(50), [openEnd])).toBe(true);
+  });
+
+  it('rejects a far end that meets an open end off-tangent', () => {
+    // An open end at (150,0) facing north: the far end shares the point but
+    // faces west — a kink.
+    const openEnd = oe({position: {x: 150, y: 0}, heading: Math.PI / 2});
+    expect(feasible(from, straight(50), [openEnd])).toBe(false);
   });
 });
 

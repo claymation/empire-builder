@@ -197,7 +197,7 @@ describe('commit railhead', () => {
     expect(state.railhead).toEqual(end('s2', 'B'));
   });
 
-  it('extend with closeOnto nulls it — the loop consumed the far end', () => {
+  it('extend with an onto nulls the railhead — the far join consumed the far end', () => {
     let state = anchored();
     state = extend(state, end('s1', 'B'), withId('s2', curve(50, 180)), null);
     state = extend(state, end('s2', 'B'), withId('s3', straight(100)), null);
@@ -307,7 +307,7 @@ describe('starting a second network', () => {
       end('s2', 'B')
     );
     expect(merged.layout.anchors).toHaveLength(1);
-    expect(merged.railhead).toBeNull(); // the close consumed the far end
+    expect(merged.railhead).toBeNull(); // the far join consumed the far end
     const undone = undo(merged);
     expect(undone.layout.anchors).toHaveLength(2);
     expect(undone.railhead).toEqual(end('s1', 'B'));
@@ -317,7 +317,7 @@ describe('starting a second network', () => {
 
 describe('the two-straights oval (US-5-3)', () => {
   it('assembles two networks into one loop with one anchor and no open ends', () => {
-    // A curve from s1's B closes onto s2's B: the networks merge, s2's anchor
+    // A curve from s1's B joins onto s2's B: the networks fuse, s2's anchor
     // absorbed into s1's.
     let state = selectRailhead(twoNetworks(), end('s1', 'B'));
     state = extend(
@@ -327,7 +327,7 @@ describe('the two-straights oval (US-5-3)', () => {
       end('s2', 'B')
     );
     expect(state.layout.anchors).toHaveLength(1);
-    // The far side: a curve from s1's A closes onto s2's A — the loop close.
+    // The far side: a curve from s1's A joins onto s2's A — now the loop close.
     state = selectRailhead(state, end('s1', 'A'));
     state = extend(
       state,
