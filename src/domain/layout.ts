@@ -7,17 +7,10 @@
  * Because joined ends share a pose, tangency holds by construction — there is no
  * way to express a kink between connected sections. {@link openEnds} reports the
  * ends carrying no join, the places a new section can grow from; {@link
- * anchorSection}/{@link laySection} grow the graph.
+ * anchorSection}/{@link addSection} grow the graph.
  */
 
-import {
-  distance,
-  EPSILON,
-  posesAlign,
-  posesEqual,
-  Pose,
-  reversePose,
-} from '../lib/geometry';
+import {posesAlign, Pose, reversePose} from '../lib/geometry';
 import {
   endPose,
   EndName,
@@ -196,10 +189,10 @@ export function anchorSection(
  * anchor. Whether the two ends already share a network decides which.
  *
  * Pure topology: whether `onto` aligns is a geometric fact, checked where
- * geometry is computed ({@link placeLayout}). The caller offers only a seating
- * `onto` ({@link feasible}).
+ * geometry is computed ({@link placeLayout}); the caller offers only a seating
+ * `onto`.
  */
-export function laySection(
+export function addSection(
   layout: Layout,
   from: SectionEnd,
   section: Section,
@@ -227,31 +220,6 @@ export function laySection(
         anchor => !reachedNetwork.has(anchor.sectionEnd.sectionId)
       );
   return {sections, joins: [...layout.joins, nearJoin, farJoin], anchors};
-}
-
-/**
- * Whether `shape`, laid with its `A` end at `from`, can be seated: its far end
- * either reaches open space or seats onto an open end, back-to-back. A far end
- * meeting an open end off-tangent would kink, which no run permits.
- *
- * A pure query, separate from the topology {@link laySection} records: the
- * editor asks it while drawing, and geometry is enforced at placement
- * ({@link placeLayout}).
- */
-export function feasible(
-  layout: Layout,
-  from: Pose,
-  shape: SectionShape
-): boolean {
-  const farPose = endPose(placeSection(shape, 'A', from), otherEnd(shape, 'A'));
-  const openPoses = openEndPoses(layout, placeLayout(layout));
-  const seatsOnAnEnd = openPoses.some(openEnd =>
-    posesEqual(openEnd.pose, reversePose(farPose))
-  );
-  const meetsAnEnd = openPoses.some(
-    openEnd => distance(openEnd.pose.position, farPose.position) <= EPSILON
-  );
-  return seatsOnAnEnd || !meetsAnEnd;
 }
 
 /** A section's end that is not `end` — the far end of a two-ended section. */

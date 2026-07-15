@@ -14,10 +14,9 @@ import {
   type Pose,
 } from '../lib/geometry';
 import {
+  addSection,
   anchorSection,
   EMPTY_LAYOUT,
-  feasible,
-  laySection,
   openEnds,
   findNeighborEnd,
   placeLayout,
@@ -67,21 +66,21 @@ function oval(anchor: Pose, straightLength: number, radius: number): Layout {
     'A',
     anchor
   );
-  layout = laySection(
+  layout = addSection(
     layout,
     end('s1', 'B'),
     withId('s2', curve(radius, 180)),
     'A',
     null
   );
-  layout = laySection(
+  layout = addSection(
     layout,
     end('s2', 'B'),
     withId('s3', straight(straightLength)),
     'A',
     null
   );
-  return laySection(
+  return addSection(
     layout,
     end('s3', 'B'),
     withId('s4', curve(radius, 180)),
@@ -116,7 +115,7 @@ describe('placeLayout', () => {
       'A',
       ORIGIN
     );
-    layout = laySection(
+    layout = addSection(
       layout,
       end('s1', 'B'),
       withId('s2', curve(50, 90)),
@@ -163,7 +162,7 @@ describe('placeLayout', () => {
       'B',
       ORIGIN
     );
-    layout = laySection(
+    layout = addSection(
       layout,
       end('s1', 'A'),
       withId('s2', straight(40)),
@@ -189,7 +188,7 @@ describe('placeLayout', () => {
       'A',
       ORIGIN
     );
-    layout = laySection(
+    layout = addSection(
       layout,
       end('s1', 'A'),
       withId('s2', straight(60)),
@@ -219,7 +218,7 @@ describe('placeLayout', () => {
       'B',
       anchor
     );
-    layout = laySection(
+    layout = addSection(
       layout,
       end('s1', 'A'),
       withId('s2', straight(60)),
@@ -249,7 +248,7 @@ describe('placeLayout', () => {
         'A',
         {position: {x: -4, y: 7}, heading}
       );
-      layout = laySection(
+      layout = addSection(
         layout,
         end('s1', 'B'),
         withId('s2', curve(50, sweepDeg)),
@@ -325,7 +324,7 @@ describe('placeLayout', () => {
     );
     layout = anchorSection(layout, withId('s2', straight(100)), 'A', anchor2);
     const separate = placeLayout(layout);
-    const merged = laySection(
+    const merged = addSection(
       layout,
       end('s1', 'B'),
       withId('s3', curve(50, 180)),
@@ -384,7 +383,7 @@ describe('openEnds', () => {
       'A',
       ORIGIN
     );
-    layout = laySection(
+    layout = addSection(
       layout,
       end('s1', 'B'),
       withId('s2', straight(100)),
@@ -407,7 +406,7 @@ describe('findNeighborEnd', () => {
     'A',
     ORIGIN
   );
-  layout = laySection(
+  layout = addSection(
     layout,
     end('s1', 'B'),
     withId('s2', straight(100)),
@@ -456,7 +455,7 @@ describe('anchorSection', () => {
   });
 });
 
-describe('laySection', () => {
+describe('addSection', () => {
   const base = anchorSection(
     EMPTY_LAYOUT,
     withId('s1', straight(100)),
@@ -465,7 +464,7 @@ describe('laySection', () => {
   );
 
   it('adds the section and one join between the open end and the attaching end', () => {
-    const layout = laySection(
+    const layout = addSection(
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),
@@ -478,7 +477,7 @@ describe('laySection', () => {
   });
 
   it('attaches by the named end, joining the open end to that end', () => {
-    const layout = laySection(
+    const layout = addSection(
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),
@@ -490,7 +489,7 @@ describe('laySection', () => {
 
   it('records the far join onto the given open end', () => {
     // Laying by A, the section's far end (B) joins onto `onto`.
-    const layout = laySection(
+    const layout = addSection(
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),
@@ -503,7 +502,7 @@ describe('laySection', () => {
   });
 
   it('records both joins for the oval’s closing curve', () => {
-    // The oval's last curve joins onto the anchored A end: laySection records
+    // The oval's last curve joins onto the anchored A end: addSection records
     // both the near join onto the railhead and the far join.
     const layout = oval(ORIGIN, inches(48), inches(18));
     expect(layout.joins).toContainEqual({
@@ -528,7 +527,7 @@ describe('laySection', () => {
 
   it('a fuse onto another network drops the absorbed anchor, keeping from’s', () => {
     const before = twoNetworks();
-    const merged = laySection(
+    const merged = addSection(
       before,
       end('s1', 'B'),
       withId('s3', curve(50, 180)),
@@ -549,7 +548,7 @@ describe('laySection', () => {
   });
 
   it('a plain join never touches the anchors', () => {
-    const grown = laySection(
+    const grown = addSection(
       twoNetworks(),
       end('s1', 'B'),
       withId('s3', straight(40)),
@@ -559,12 +558,12 @@ describe('laySection', () => {
     expect(grown.anchors).toHaveLength(2);
   });
 
-  it('records a misaligned onto; placement, not laySection, rejects it', () => {
+  it('records a misaligned onto; placement, not addSection, rejects it', () => {
     // s2 is a straight from (100,0) to (200,0); asserting its B joins onto
-    // s1's A at the origin cannot hold. laySection is pure topology, so it
+    // s1's A at the origin cannot hold. addSection is pure topology, so it
     // records the join without complaint — placeLayout is where the geometry is
     // found unsatisfiable.
-    const layout = laySection(
+    const layout = addSection(
       base,
       end('s1', 'B'),
       withId('s2', straight(100)),
@@ -575,47 +574,5 @@ describe('laySection', () => {
       ends: [end('s2', 'B'), end('s1', 'A')],
     });
     expect(() => placeLayout(layout)).toThrow(RangeError);
-  });
-});
-
-describe('feasible', () => {
-  const eastAt = (x: number, y: number): Pose => ({
-    position: {x, y},
-    heading: 0,
-  });
-
-  // s1 straight(100) from the origin heading east; its open B sits at (100,0).
-  // A section laid from (100,0) heading east extends into open space.
-  const base = anchorSection(
-    EMPTY_LAYOUT,
-    withId('s1', straight(100)),
-    'A',
-    ORIGIN
-  );
-
-  it('accepts a section whose far end reaches open space', () => {
-    expect(feasible(base, eastAt(100, 0), straight(50))).toBe(true);
-  });
-
-  it('accepts a far end that seats back-to-back on an open end', () => {
-    // An open end at (150,0) facing east; a straight from (100,0) ends there
-    // facing west, seating back-to-back.
-    const layout = anchorSection(
-      base,
-      withId('s2', straight(30)),
-      'A',
-      eastAt(150, 0)
-    );
-    expect(feasible(layout, eastAt(100, 0), straight(50))).toBe(true);
-  });
-
-  it('rejects a far end that meets an open end off-tangent', () => {
-    // An open end at (150,0) facing north: the far end shares the point but
-    // faces west — a kink.
-    const layout = anchorSection(base, withId('s2', straight(30)), 'A', {
-      position: {x: 150, y: 0},
-      heading: Math.PI / 2,
-    });
-    expect(feasible(layout, eastAt(100, 0), straight(50))).toBe(false);
   });
 });

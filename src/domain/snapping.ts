@@ -301,6 +301,30 @@ export function shapeOntoPose(from: Pose, to: Pose): SectionShape | null {
 }
 
 /**
+ * Whether `shape`, laid with its `A` end at `from`, can be seated among the
+ * `openEnds`: its far end either reaches open space — no open end at its point —
+ * or seats onto one back-to-back. A far end meeting an open end off-tangent would
+ * kink, which no run permits.
+ *
+ * A pure query the editor asks while drawing; the topology a laid section records
+ * is a separate concern, its geometry enforced at placement ({@link placeLayout}).
+ */
+export function feasible(
+  from: Pose,
+  shape: SectionShape,
+  openEnds: readonly SectionEndPose[]
+): boolean {
+  const farPose = endPose(placeSection(shape, 'A', from), 'B');
+  const seatsOnAnEnd = openEnds.some(openEnd =>
+    posesEqual(openEnd.pose, reversePose(farPose))
+  );
+  const meetsAnEnd = openEnds.some(
+    openEnd => distance(openEnd.pose.position, farPose.position) <= EPSILON
+  );
+  return seatsOnAnEnd || !meetsAnEnd;
+}
+
+/**
  * Snaps `value` to the nearest multiple of `increment` if it lands within
  * `threshold` of one, otherwise leaves it untouched — so a value set
  * deliberately off-grid stands, while one nudged close to a multiple snaps
