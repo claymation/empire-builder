@@ -21,7 +21,7 @@ On first visit, the unit system is chosen from the browser locale without prompt
 
 Track plan authors may switch between imperial and metric at any time. Labels and dimension readouts update immediately. Unit changes are undoable (see `undo-redo`).
 
-Length entry and preview labels use the active system (see `draw-track`). Default benchwork size is the same physical sheet (4'×8' / equivalent metric) regardless of display units (see `draw-benchwork`).
+Length entry and preview labels use the active system (see `draw-track`). Grid and scale bar readouts follow the same system (see `grid-and-measurements`). Default benchwork size is the same physical sheet (4'×8' / equivalent metric) regardless of display units (see `draw-benchwork`).
 
 # UI
 

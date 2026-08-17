@@ -19,7 +19,7 @@ Obstacles are plan elements that mark blocked area. They own the “track cannot
 
 Track plan authors enter an obstacle mode (or equivalent) and draw obstacle outlines with simple shape tools (rectangle and polygon at minimum).
 
-While drawing track, previews that would intersect an obstacle cannot be committed. Feedback makes the violation obvious (see constraint styling used for invalid track).
+While drawing track, previews that would intersect an obstacle cannot be committed. Feedback makes the violation obvious; invalid track uses the same red treatment as advisory constraint violations (see `constraints`).
 
 Authors may select, reshape, and delete obstacles (see `select-and-edit`).
 
