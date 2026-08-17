@@ -30,6 +30,8 @@ Track previews include a label at the free end (near the mouse pointer) that inc
 
 Drawing continues automatically from the active railhead. Drawing is terminated by pressing Esc.
 
+Committed sections can be stepped back or forward with undo and redo (see `undo-redo`).
+
 # UI
 
 Committed track is rendered above the benchwork in its own static layer. Previewed track is rendered above committed track in a layer redrawn as the mouse pointer moves.

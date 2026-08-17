@@ -16,7 +16,7 @@ None.
 
 The track plan editing session resumes (from local storage) when revisiting the application.
 
-Track plan authors may clear the editor to return to an empty canvas with default 4'x8' benchwork.
+Track plan authors may clear the editor to return to an empty canvas with default 4'x8' benchwork. Clear is undoable in the current session (see `undo-redo`).
 
 # UI
 

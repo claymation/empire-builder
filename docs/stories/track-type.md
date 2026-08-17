@@ -24,7 +24,7 @@ Classification is a property of each track section. It does not change tangency,
 
 Track plan authors set the active track type before or while drawing; new sections receive the active type when committed.
 
-Authors may change the type of existing sections after selecting them.
+Authors may change the type of existing sections after selecting them. Type changes are undoable (see `undo-redo`).
 
 The active track type is visible while drawing so authors know what they will place.
 
