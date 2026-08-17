@@ -26,7 +26,7 @@ Track plan authors may create a new railhead by clicking on the canvas to anchor
 
 Hovering over an inactive railhead (open end) while drawing snaps to the railhead (~5 px magnet) if and only if the sections would join tangent.
 
-Track previews include a label at the free end (near the mouse pointer) that includes the section length ℒ, radius ℛ (curved sections), and heading angle ∠ (straight sections).
+Track previews include a label at the free end (near the mouse pointer) that includes the section length ℒ, radius ℛ (curved sections), and heading angle ∠ (straight sections). Length and radius use the active unit system (see `units`).
 
 Drawing continues automatically from the active railhead. Drawing is terminated by pressing Esc.
 
