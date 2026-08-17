@@ -24,6 +24,8 @@ Track plan authors draw track by selecting a "railhead" (an open end), moving th
 
 Track plan authors may create a new railhead by clicking on the canvas to anchor a new section, and then "aiming" the section by moving the mouse pointer to preview a straight section. If the user desires a straight section, clicking again sets the second endpoint and commits the section to the layout. If the user desires a curved section, holding a modifier "locks" the heading, and moving the mouse pointer again draws an arc; clicking again sets the second endpoint, committing the section to the layout.
 
+Hovering over an inactive railhead (open end) while drawing snaps to the railhead (~5 px magnet) if and only if the sections would join tangent.
+
 Track previews include a label at the free end (near the mouse pointer) that includes the section length ℒ, radius ℛ (curved sections), and heading angle ∠ (straight sections).
 
 Drawing continues automatically from the active railhead. Drawing is terminated by pressing Esc.
