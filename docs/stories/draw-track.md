@@ -34,7 +34,7 @@ Drawing continues automatically from the active railhead. Drawing is terminated 
 
 Committed track is rendered above the benchwork in its own static layer. Previewed track is rendered above committed track in a layer redrawn as the mouse pointer moves.
 
-Committed track is solid black; previewed track is dashed electric blue. We use a single stroke to represent the track midline; we do not draw each rail. Mainline track is heavier than siding, spur, and yard track.
+Committed track is solid black; previewed track is dashed electric blue. We use a single stroke to represent the track midline; we do not draw each rail. Mainline track is heavier than siding, spur, and yard track (see `track-type`).
 
 Railheads (open ends) are rendered as dots. When hovered or selected, a dot grows a ring. The active railhead is electric blue.
 
