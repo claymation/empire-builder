@@ -12,8 +12,8 @@ Undo and redo operate on committed plan changes. Ephemeral interaction state—t
 
 1. Undo reverses the most recent undoable action; redo reapplies the most recently undone action.
 2. A new undoable action after undo clears the redo branch.
-3. Undoable actions include committing or removing track, benchwork edits, track type changes (see `track-type`), unit system changes (see `units`), and clear plan (see `save-and-load`).
-4. Pan, zoom, selection changes, and in-progress previews are not undoable actions.
+3. Undoable actions include committing or removing track, benchwork edits, obstacle edits (see `obstacles`), railhead joins (see `join-railheads`), track type changes (see `track-type`), unit system changes (see `units`), and clear plan (see `save-and-load`).
+4. Pan, zoom, selection changes (see `select-and-edit`), and in-progress previews are not undoable actions.
 5. Undo history is for the current editing session only; it need not survive reload.
 6. History depth may be capped at a practical limit.
 

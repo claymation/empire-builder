@@ -14,7 +14,7 @@ Prototype railroad engineers measure curves by their degree of curvature; model 
 
 1. Adjoining track sections must be tangent; they cannot kink, as trains would derail.
 2. Track cannot extend beyond the benchwork, as there would be nothing to support it.
-3. Track cannot pass through obstacles.
+3. Track cannot pass through obstacles (see `obstacles`).
 4. Curves have a fixed radius.
 5. Curves cannot be tighter than a scale-dependent minimum radius.
 
@@ -24,13 +24,13 @@ Track plan authors draw track by selecting a "railhead" (an open end), moving th
 
 Track plan authors may create a new railhead by clicking on the canvas to anchor a new section, and then "aiming" the section by moving the mouse pointer to preview a straight section. If the user desires a straight section, clicking again sets the second endpoint and commits the section to the layout. If the user desires a curved section, holding a modifier "locks" the heading, and moving the mouse pointer again draws an arc; clicking again sets the second endpoint, committing the section to the layout.
 
-Hovering over an inactive railhead (open end) while drawing snaps to the railhead (~5 px magnet) if and only if the sections would join tangent.
+Hovering over an inactive railhead (open end) while drawing snaps to the railhead (~5 px magnet) if and only if the sections would join tangent. Closing a gap between two existing open ends is covered by `join-railheads`.
 
 Track previews include a label at the free end (near the mouse pointer) that includes the section length ℒ, radius ℛ (curved sections), and heading angle ∠ (straight sections). Length and radius use the active unit system (see `units`).
 
 Drawing continues automatically from the active railhead. Drawing is terminated by pressing Esc.
 
-Committed sections can be stepped back or forward with undo and redo (see `undo-redo`).
+Committed sections can be selected, deleted, and edited (see `select-and-edit`), and stepped back or forward with undo and redo (see `undo-redo`).
 
 # UI
 

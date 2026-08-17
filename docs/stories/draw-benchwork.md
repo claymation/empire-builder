@@ -9,7 +9,7 @@ Model railroad use benchwork to support the roadbed, track, and scenery. Common 
 # Constraints
 
 1. Track cannot extend beyond the benchwork, as there would be nothing to support it.
-2. Track cannot pass through obstacles.
+2. Track cannot pass through obstacles (see `obstacles`).
 
 # UX
 
