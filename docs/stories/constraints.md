@@ -10,7 +10,7 @@ Model railroads are subject to various constraints:
 * adjacent track clearance
 * vertical track clearance
 
-The NMRA publishes standards and guidelines for popular hobby scales (HO, N, _etc_), which we apply as default constraints when the track plan author selects a scale.
+The NMRA publishes standards and guidelines for popular hobby scales (HO, N, _etc_), which we apply as default constraints when the track plan author selects a scale (see `scale`).
 
 # Constraints
 
