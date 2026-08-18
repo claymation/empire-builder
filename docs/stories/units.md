@@ -29,6 +29,18 @@ There is a units control (toolbar, settings, or equivalent) with imperial and me
 
 Measurement labels show feet/inches for imperial and meters/millimeters for metric, as appropriate to magnitude.
 
+# Non-goals
+
+- Mixed unit systems on one plan at the same time.
+- Rescaling geometry when switching units.
+
+# Acceptance criteria
+
+1. First visit picks imperial or metric from browser locale without a prompt.
+2. Switching units updates labels immediately without moving geometry.
+3. Preference persists across save and load.
+4. Unit changes are undoable.
+
 # Status
 
 Not implemented.

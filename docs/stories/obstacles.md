@@ -29,6 +29,18 @@ Obstacles render above benchwork and below track, or with equivalent layering th
 
 Obstacle fill is distinct from benchwork wood tone—neutral, semi-transparent shading with a simple stroke—so blocked area reads clearly without looking like structure the builder will construct.
 
+# Non-goals
+
+- Soft scenery that track may cross.
+- 3D clearance envelopes beyond 2D footprint.
+
+# Acceptance criteria
+
+1. Author can draw rectangle and polygon obstacles.
+2. Track previews intersecting an obstacle cannot commit and show hard-rule feedback.
+3. Obstacles persist across save/load; edits are undoable.
+4. Obstacles render distinctly from benchwork.
+
 # Status
 
 Not implemented.

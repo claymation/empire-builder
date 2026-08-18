@@ -24,6 +24,19 @@ Authors may edit or disable the constraints. Authors may commit track that viola
 
 Track that violates a constraint (committed or previewed) is red.
 
+# Non-goals
+
+- Mandatory blocking of advisory clearance/radius rules (those remain advisory; hard rules live on track/benchwork/obstacles stories).
+- Full NMRA standards encyclopedia inside the product UI.
+
+# Acceptance criteria
+
+1. Selecting a scale installs documented default constraints for that scale (see `scale`).
+2. Author can edit each clearance/radius value to a positive real number or disable a constraint.
+3. Track that violates an enabled advisory constraint renders red in preview and when committed.
+4. Authors can still commit track that violates advisory constraints.
+5. Constraint values persist across save/load with the plan.
+
 # Status
 
 Not implemented.

@@ -30,6 +30,19 @@ The grid renders behind benchwork as light, evenly spaced lines. Spacing is read
 
 A scale reference (scale bar or equivalent) shows a labeled real-world length in the viewport.
 
+# Non-goals
+
+- Dimension strings attached as permanent annotations on every object (optional later).
+- Surveyor-grade coordinate readouts.
+
+# Acceptance criteria
+
+1. Author can show and hide the grid.
+2. Grid spacing is a positive length; labels use active units.
+3. A scale bar shows a labeled real-world length in the viewport.
+4. Grid preferences that are plan/session settings survive save/load as specified.
+5. Optional snap-to-grid does not override track tangency/radius rules.
+
 # Status
 
 Not implemented.

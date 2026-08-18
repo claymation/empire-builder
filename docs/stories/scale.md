@@ -20,6 +20,18 @@ Selecting a scale uses the default scale-appropriate constraints, overwriting an
 
 Drop-down.
 
+# Non-goals
+
+- Fine-grained gauge variants beyond named scales listed in elaboration.
+- Automatic geometric rescale of existing track when scale changes (constraints update; geometry stays).
+
+# Acceptance criteria
+
+1. Author can choose a scale from the documented list via a drop-down.
+2. Choosing a scale applies default constraints after a warning when it would overwrite customized constraints.
+3. Larger scale selection can mark existing track as violating min-radius; geometry is not auto-rewritten.
+4. Scale selection is preserved across save and load.
+
 # Status
 
 Not implemented.

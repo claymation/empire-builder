@@ -29,6 +29,18 @@ Joinable railhead pairs highlight when they are in range and geometrically compa
 
 Incompatible nearby ends do not show the join-ready highlight.
 
+# Non-goals
+
+- Forced join that inserts easements or kinks automatically when geometry does not meet.
+- Joining more than two railheads in one action.
+
+# Acceptance criteria
+
+1. Compatible open railheads in range highlight as joinable.
+2. Join commits only when tangency and hard clearance rules hold.
+3. After join, both railheads are gone and the path is continuous.
+4. Join is undoable; failed join leaves geometry unchanged with feedback.
+
 # Status
 
 Not implemented.

@@ -34,6 +34,18 @@ There is a delete control (toolbar or menu). Delete is disabled when the selecti
 
 Standard shortcut: Delete/Backspace removes the selection when the canvas has focus and a text field does not.
 
+# Non-goals
+
+- Free transform of track that breaks tangency without repair.
+- Numeric property inspector beyond track type (future work).
+
+# Acceptance criteria
+
+1. Click selects committed track or benchwork; empty canvas or Esc clears selection.
+2. Delete/Backspace removes the selection and is undoable.
+3. Edits cannot commit geometry that breaks hard track rules.
+4. Selection alone is not undoable.
+
 # Status
 
 Not implemented.

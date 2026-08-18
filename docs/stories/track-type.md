@@ -36,6 +36,18 @@ There is a track type control (toolbar, palette, or equivalent) listing mainline
 
 Selected sections show their type in the same control.
 
+# Non-goals
+
+- Speed limits, signaling rules, or operating sessions driven by type.
+- Automatic type inference from geometry.
+
+# Acceptance criteria
+
+1. Every new section defaults to mainline unless another active type is selected.
+2. Author can set active type while drawing and reclassify selected sections.
+3. Stroke weight reflects type; geometry and joins are unchanged by type edits.
+4. Type is preserved across save/load and is undoable when changed.
+
 # Status
 
 Not implemented.
