@@ -9,13 +9,13 @@ Model railroad use benchwork to support the roadbed, track, and scenery. Common 
 # Constraints
 
 1. Track cannot extend beyond the benchwork, as there would be nothing to support it.
-2. Track cannot pass through obstacles.
+2. Track cannot pass through obstacles (see `obstacles`).
 
 # UX
 
-New layouts begin with a 4' tall by 8' wide benchwork area representing a 4'x8' sheet of plywood — many modelers first layout.
+New layouts begin with a 4' tall by 8' wide benchwork area representing a 4'×8' sheet of plywood — a common first layout for many modelers. Dimensions are displayed in the active unit system (see `units`).
 
-Track plan authors may enter a benchwork drawing mode to edit the benchwork layer using conventional line drawing tools. Connected shapes are filled. A push/pull tool/gesture allows authors to resize an existing area.
+Track plan authors may enter a benchwork drawing mode to edit the benchwork layer using conventional line drawing tools. Connected shapes are filled. A push/pull tool/gesture allows authors to resize an existing area. Benchwork edits are undoable (see `undo-redo`).
 
 # UI
 

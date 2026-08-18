@@ -1,6 +1,6 @@
 # Story
 
-As a track plan author, I want to select a scale for my track plan, so that scale-appropriate constraints can be applied, and scale dimensions can be displayed.
+As a track plan author, I want to select a scale for my track plan, so that scale-appropriate constraints can be applied, and scale dimensions can be displayed (see `units`).
 
 # Elaboration
 
